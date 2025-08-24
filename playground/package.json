@@ -1,0 +1,14 @@
+{
+  "name": "unoidc-playground",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types --watch ./main.ts",
+    "bun": "bun --watch main.ts",
+    "deno": "deno --watch -A main.ts"
+  },
+  "devDependencies": {
+    "h3": "2.0.0-beta.3",
+    "unoidc": "latest"
+  }
+}
