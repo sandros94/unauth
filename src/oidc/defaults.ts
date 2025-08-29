@@ -13,27 +13,13 @@ export type ResolvedOIDCIdTokenOptions = Omit<
 };
 
 export function withIdTokenDefaults(
-  opts:
-    | OIDCIdTokenOptions
-    | (Omit<OIDCIdTokenOptions, "signOptions"> & {
-        signOptions?: Partial<JWSSignOptions> & {
-          alg: string;
-          expiresIn?: number;
-        };
-      }),
+  opts: OIDCIdTokenOptions,
 ): ResolvedOIDCIdTokenOptions {
-  const { issuer, jwsKey } = opts;
-  const signOptions = (opts as OIDCIdTokenOptions).signOptions || {
-    alg: (opts as any).signOptions?.alg,
-  };
-  if (!signOptions || !signOptions.alg) {
-    throw new Error(
-      "[OIDC] signOptions.alg is required to compute *_hash claims",
-    );
-  }
+  const { issuer, jwsKey, signOptions } = opts;
+
   const resolvedSign: JWSSignOptions & { expiresIn: number } = {
     ...signOptions,
-    expiresIn: signOptions.expiresIn ?? OIDC_DEFAULTS.idTokenExpiresIn,
+    expiresIn: signOptions?.expiresIn ?? OIDC_DEFAULTS.idTokenExpiresIn,
   };
 
   return { issuer, jwsKey, signOptions: resolvedSign };

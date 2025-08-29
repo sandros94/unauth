@@ -19,8 +19,7 @@ export interface OIDCIdTokenClaims extends JWTClaims {
 export interface OIDCIdTokenOptions {
   issuer: string;
   jwsKey: JWK;
-  /** TODO: for now we use alg to derive *_hash claims per spec */
-  signOptions: JWSSignOptions;
+  signOptions?: JWSSignOptions;
 }
 
 export interface OIDCBuildIdTokenArgs {
