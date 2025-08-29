@@ -175,16 +175,16 @@ export async function buildAuthorizationCode(
 
   const extraClaims = cb ? await cb(req, resolved) : {};
 
-  const claims: OAuthAuthorizationCodeClaims = {
+  const claims: Omit<OAuthAuthorizationCodeClaims, "iat"> = {
     jti: randomJti(),
+    ...extraClaims,
     iss: issuer,
     sub: req.client_id,
     scope,
     code_challenge: req.code_challenge,
     code_challenge_method: m,
     redirect_uri: req.redirect_uri,
-    ...extraClaims,
-  } as OAuthAuthorizationCodeClaims;
+  };
 
   const code = await encrypt(claims, jweSecret, encryptOptions);
   return { code, state: req.state };
