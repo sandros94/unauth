@@ -174,8 +174,8 @@ describe("oidc/userinfo", () => {
     expect(out).toHaveProperty("email_verified", false);
     expect(out).toHaveProperty("phone_number_verified", true);
     // non-standard claim is preserved on the object itself
-    expect((out as any).unknown).toBe("x");
+    expect(out.unknown).toBe("x");
     // prototype should not be polluted
-    expect((out as any).polluted).toBeUndefined();
+    expect(out.polluted).toBeUndefined();
   });
 });

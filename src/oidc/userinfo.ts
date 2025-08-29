@@ -3,9 +3,9 @@ import type { OIDCUserInfoProfile } from "./types";
 /**
  * Build a compliant UserInfo response by picking allowed standard claims from a provided profile.
  */
-export function buildUserInfo(
+export function buildUserInfo<T extends Record<string, unknown>>(
   profile: OIDCUserInfoProfile,
-): OIDCUserInfoProfile {
+): OIDCUserInfoProfile & T {
   const out: Record<string, unknown> = {};
 
   // Required claim: sub must be a string
@@ -75,5 +75,5 @@ export function buildUserInfo(
     (out as any)[k] = v as unknown;
   }
 
-  return out as OIDCUserInfoProfile;
+  return out as OIDCUserInfoProfile & T;
 }
