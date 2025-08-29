@@ -53,5 +53,3 @@ export interface OAuthAccessTokenClaims extends JWTClaims {
   /** The scope of the access request. */
   scope: string;
 }
-
-export type { JWK, JWTClaims } from "unjwt";

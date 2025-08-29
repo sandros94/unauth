@@ -71,7 +71,8 @@ export type OAuthTokenRequest =
        */
       client_id: string;
       /**
-       * The original code verifier string. Must be validated only if the `code_challenge` parameter was included in the authorization request. MUST NOT be used otherwise.
+       * The original code verifier string. Must be validated only if the `code_challenge`
+       * parameter was included in the authorization request. MUST NOT be used otherwise.
        */
       code_verifier?: string;
       /**
@@ -101,7 +102,8 @@ export interface OAuthTokenResponse {
    */
   scope: string;
   /**
-   * The refresh token, which can be used to obtain new access tokens based on the grant passed in the corresponding token request.
+   * The refresh token, which can be used to obtain new access tokens
+   * based on the grant passed in the corresponding token request.
    */
   refresh_token?: string;
 }
@@ -136,7 +138,7 @@ export interface OAuthTokenOptions {
    */
   verifyOptions: JWSVerifyOptions;
   /**
-   * A function to generate a unique identifier for the token.
+   * A function to generate a unique identifier for tokens.
    */
   randomJti?: () => string;
   /**

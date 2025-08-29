@@ -158,7 +158,7 @@ export async function buildAuthorizationCode(
   // Scope
   const scope = normalizeScope(req.scope, defaultScope, availableScopes);
 
-  // PKCE: Required for code flow in our library (matches token.ts expectations)
+  // PKCE: Required for code flow
   if (!req.code_challenge) {
     throw new OAuthAuthorizeException(
       "invalid_request",
