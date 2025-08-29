@@ -2,7 +2,11 @@ import { hash, secureCompare } from "unsecure";
 import { decrypt } from "unjwt/jwe";
 import { verify } from "unjwt/jws";
 
-import type { OAuthRefreshTokenClaims, OAuthAuthorizationCodeClaims, OAuthAccessTokenClaims } from "./types";
+import type {
+  OAuthRefreshTokenClaims,
+  OAuthAuthorizationCodeClaims,
+  OAuthAccessTokenClaims,
+} from "./types";
 import type { OAuthTokenOptions } from "./token";
 
 /**
@@ -68,31 +72,38 @@ export function buildAuthorizeErrorParams(
 export async function introspectToken<T extends OAuthAccessTokenClaims>(
   token: string,
   opts: Pick<OAuthTokenOptions, "issuer" | "jwsKey" | "verifyOptions">,
-): Promise<{ active: boolean; claims?: T }>
-export async function introspectToken<T extends OAuthRefreshTokenClaims | OAuthAuthorizationCodeClaims>(
+): Promise<{ active: boolean; claims?: T }>;
+export async function introspectToken<
+  T extends OAuthRefreshTokenClaims | OAuthAuthorizationCodeClaims,
+>(
   token: string,
   opts: Pick<OAuthTokenOptions, "issuer" | "jweSecret" | "decryptOptions">,
-): Promise<{ active: boolean; claims?: T }>
-export async function introspectToken<T extends OAuthRefreshTokenClaims | OAuthAuthorizationCodeClaims | OAuthAccessTokenClaims>(
+): Promise<{ active: boolean; claims?: T }>;
+export async function introspectToken<
+  T extends
+    | OAuthRefreshTokenClaims
+    | OAuthAuthorizationCodeClaims
+    | OAuthAccessTokenClaims,
+>(
   token: string,
-  opts: Pick<OAuthTokenOptions, "issuer" | "jweSecret" | "decryptOptions"> | Pick<OAuthTokenOptions, "issuer" | "jwsKey" | "verifyOptions">,
+  opts:
+    | Pick<OAuthTokenOptions, "issuer" | "jweSecret" | "decryptOptions">
+    | Pick<OAuthTokenOptions, "issuer" | "jwsKey" | "verifyOptions">,
 ): Promise<{ active: boolean; claims?: T }> {
   try {
-    if ('jwsKey' in opts) {
+    if ("jwsKey" in opts) {
       const { payload } = await verify<T>(token, opts.jwsKey, {
         issuer: opts.issuer,
         ...opts.verifyOptions,
       });
       return { active: true, claims: payload };
-    }
-    else if ('jweSecret' in opts) {
+    } else if ("jweSecret" in opts) {
       const { payload } = await decrypt<T>(token, opts.jweSecret, {
         issuer: opts.issuer,
         ...opts.decryptOptions,
       });
       return { active: true, claims: payload };
-    }
-    else {
+    } else {
       throw new Error("[OAuth] Unsupported token type");
     }
   } catch {

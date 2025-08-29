@@ -176,9 +176,7 @@ export function isOAuthAuthorizationCodeRequest(
 export async function oAuthClientCredentials(
   args: Extract<OAuthTokenRequest, { grant_type: "client_credentials" }>,
   options: OAuthTokenOptions,
-  cb?: (
-    opts: OAuthTokenOptions,
-  ) => MaybePromise<JWTClaims & { scope: string }>,
+  cb?: (opts: OAuthTokenOptions) => MaybePromise<JWTClaims & { scope: string }>,
 ): Promise<OAuthTokenResponse> {
   if (!isOAuthCredentialRequest(args)) {
     throw new Error("[OAuth] Invalid client credentials request");
