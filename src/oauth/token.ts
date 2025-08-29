@@ -1,4 +1,3 @@
-import { hash, secureCompare } from "unsecure";
 import { encrypt, decrypt } from "unjwt/jwe";
 import { sign } from "unjwt/jws";
 import type {
@@ -13,7 +12,8 @@ import type { MaybePromise } from "../types/index";
 import type {
   OAuthRefreshTokenClaims,
   OAuthAuthorizationCodeClaims,
-} from "./index";
+} from "./types";
+import { validatePKCE } from "./utils";
 
 /**
  * OAuth 2.1 Token Endpoint utilities
@@ -382,24 +382,4 @@ export async function oAuthRefreshToken(
     scope,
     refresh_token,
   };
-}
-
-/**
- * PKCE verification helper shared with authorize.ts semantics
- */
-async function validatePKCE(
-  codeVerifier: string,
-  codeChallenge: string,
-  codeChallengeMethod: "plain" | "S256" = "plain",
-): Promise<boolean> {
-  if (codeChallengeMethod === "plain") {
-    return secureCompare(codeChallenge, codeVerifier);
-  } else if (typeof codeChallengeMethod === "string") {
-    const hashedVerifier = await hash(codeVerifier, {
-      algorithm: "SHA-256",
-      returnAs: "b64url",
-    });
-    return secureCompare(codeChallenge, hashedVerifier);
-  }
-  return false;
 }

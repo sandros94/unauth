@@ -1,9 +1,9 @@
 import { encrypt } from "unjwt/jwe";
 import type { JWK, JWEEncryptOptions, JWTClaims } from "unjwt";
-import { hash, secureCompare } from "unsecure";
 
 import type { MaybePromise } from "../types/index";
-import type { OAuthAuthorizationCodeClaims } from "./index";
+import type { OAuthAuthorizationCodeClaims } from "./types";
+import { normalizeScope } from "./utils";
 
 /**
  * OAuth 2.1 Authorization Endpoint utilities
@@ -116,26 +116,6 @@ export class OAuthAuthorizeException extends Error {
   }
 }
 
-/** Validate and normalize scope per available list if provided */
-function normalizeScope(
-  requested: string | undefined,
-  fallback: string | undefined,
-  available?: string[],
-): string {
-  const scope = (requested || fallback || "").trim();
-  if (!scope) {
-    throw new OAuthAuthorizeException("invalid_scope", "Missing scope");
-  }
-  if (!available || available.length === 0) return scope;
-  const requestedSet = new Set(scope.split(/\s+/g).filter(Boolean));
-  for (const s of requestedSet) {
-    if (!available.includes(s)) {
-      throw new OAuthAuthorizeException("invalid_scope", `Unknown scope: ${s}`);
-    }
-  }
-  return [...requestedSet].join(" ");
-}
-
 /** Enforce supported response_type=code only (OAuth 2.1) */
 export function validateResponseType(rt: string): asserts rt is "code" {
   if (rt !== "code") {
@@ -242,23 +222,4 @@ export function authorizeError(
   state?: string,
 ): OAuthAuthorizeError {
   return { error, error_description: description, state };
-}
-
-/**
- * PKCE verifier checking utility for the token endpoint side, exported for callers.
- * Mirrors the one used in token.ts and kept here for symmetry.
- */
-export async function validatePKCE(
-  codeVerifier: string,
-  codeChallenge: string,
-  codeChallengeMethod: "plain" | "S256" = "plain",
-): Promise<boolean> {
-  if (codeChallengeMethod === "plain") {
-    return secureCompare(codeChallenge, codeVerifier);
-  }
-  const hashedVerifier = await hash(codeVerifier, {
-    algorithm: "SHA-256",
-    returnAs: "b64url",
-  });
-  return secureCompare(codeChallenge, hashedVerifier);
 }
