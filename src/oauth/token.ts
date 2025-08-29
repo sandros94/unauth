@@ -20,20 +20,6 @@ import type {
  * These helpers validate the token request, issue access tokens, and handle token revocation.
  */
 
-export interface _OAuthServerConfig {
-  issuer: string;
-  privateKey: JWK;
-  publicKey: JWK;
-  accessTokenLifetime?: number; // Default: 3600
-  refreshTokenLifetime?: number; // Default: 1209600 (30 days)
-  authorizationCodeLifetime?: number; // Default: 600
-  scopes?: {
-    available?: string[];
-    default?: string[];
-  };
-  jweSecret?: string | JWK;
-}
-
 export type OAuthTokenRequest =
   | {
       /**
@@ -197,7 +183,7 @@ export async function oAuthAuthorizationCode(
     throw new Error("[OAuth] Invalid authorization code request");
   }
 
-  const { client_id, code, code_verifier } = args;
+  const { client_id, code, code_verifier, redirect_uri } = args;
   const {
     issuer,
     jweSecret,
@@ -223,6 +209,7 @@ export async function oAuthAuthorizationCode(
     throw new Error("[OAuth] Invalid authorization code");
   });
 
+  // Scope comes from the authorization code (preferred) with optional default fallback
   const scope = payload.scope || options.defaultScope;
   if (!scope) {
     console.error(
@@ -231,12 +218,24 @@ export async function oAuthAuthorizationCode(
     throw new Error("[OAuth] Missing scope");
   }
 
+  // Optional: if redirect_uri was present in both the token request and the code, enforce equality
+  if (
+    redirect_uri &&
+    payload.redirect_uri &&
+    redirect_uri !== payload.redirect_uri
+  ) {
+    console.error(
+      `[OAuth] redirect_uri mismatch.\n\t${client_id} sent ${redirect_uri}, code has ${payload.redirect_uri}`,
+    );
+    throw new Error("[OAuth] Invalid redirect_uri");
+  }
+
   if (
     !code_verifier ||
     !payload.code_challenge ||
     !(await validatePKCE(
-      payload.code_challenge,
       code_verifier,
+      payload.code_challenge,
       payload.code_challenge_method,
     ))
   ) {
@@ -309,14 +308,6 @@ export async function oAuthRefreshToken(
     signOptions,
   } = options;
 
-  const scope = args.scope || options.defaultScope;
-  if (!scope) {
-    console.error(
-      `[OAuth] Missing scope.\n\t${client_id} tried to refresh token with: ${oldRefreshToken}`,
-    );
-    throw new Error("[OAuth] Missing scope");
-  }
-
   const { payload } = await decrypt<OAuthRefreshTokenClaims>(
     oldRefreshToken,
     jweSecret,
@@ -331,6 +322,30 @@ export async function oAuthRefreshToken(
     );
     throw new Error("[OAuth] Invalid refresh token");
   });
+
+  // Scope rules (OAuth 2.1): if scope is omitted, reuse original; if present, MUST be a subset of originally granted scope
+  const originalScope = payload.scope || options.defaultScope || "";
+  if (!originalScope) {
+    console.error(
+      `[OAuth] Missing original scope in refresh token.\n\tclient_id: ${client_id}`,
+    );
+    throw new Error("[OAuth] Missing scope");
+  }
+  const requestedScope = args.scope || originalScope;
+  const isSubset = (a: string, b: string) => {
+    const setB = new Set(b.split(/\s+/g).filter(Boolean));
+    return a
+      .split(/\s+/g)
+      .filter(Boolean)
+      .every((s) => setB.has(s));
+  };
+  if (args.scope && !isSubset(requestedScope, originalScope)) {
+    console.error(
+      `[OAuth] Invalid scope on refresh.\n\trequested: ${requestedScope}\n\toriginal: ${originalScope}`,
+    );
+    throw new Error("[OAuth] Invalid scope");
+  }
+  const scope = requestedScope;
 
   const cbResult = cb
     ? await cb(payload, options)
@@ -369,6 +384,9 @@ export async function oAuthRefreshToken(
   };
 }
 
+/**
+ * PKCE verification helper shared with authorize.ts semantics
+ */
 async function validatePKCE(
   codeVerifier: string,
   codeChallenge: string,
