@@ -38,8 +38,8 @@
     "unoidc": "link:."
   },
   "dependencies": {
-    "unjwt": "^0.5.12",
-    "unsecure": "^0.0.3"
+    "unjwt": "^0.5.13",
+    "unsecure": "^0.0.4"
   },
   "devDependencies": {
     "@types/node": "^22",
