@@ -32,18 +32,22 @@ export function normalizeScope(
   fallback: string | undefined,
   available?: string[],
 ): string {
-  const scope = (requested || fallback || "").trim();
-  if (!scope) {
+  const raw = (requested || fallback || "").trim();
+  if (!raw) {
     throw new Error("[OAuth] Missing scope");
   }
-  if (!available || available.length === 0) return scope;
-  const requestedSet = new Set(scope.split(/\s+/g).filter(Boolean));
-  for (const s of requestedSet) {
-    if (!available.includes(s)) {
-      throw new Error(`[OAuth] Invalid scope: ${s}`);
+
+  const tokens = raw.split(/\s+/g).filter(Boolean);
+  const deduped = [...new Set(tokens)];
+  if (available && available.length > 0) {
+    for (const s of deduped) {
+      if (!available.includes(s)) {
+        throw new Error(`[OAuth] Invalid scope: ${s}`);
+      }
     }
   }
-  return [...requestedSet].join(" ");
+
+  return deduped.join(" ");
 }
 
 export function isScopeSubset(requested: string, original: string): boolean {
