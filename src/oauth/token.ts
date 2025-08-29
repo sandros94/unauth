@@ -10,6 +10,15 @@ import type {
 } from "unjwt";
 
 import type { MaybePromise } from "../types/index";
+import type {
+  OAuthRefreshTokenClaims,
+  OAuthAuthorizationCodeClaims,
+} from "./index";
+
+/**
+ * OAuth 2.1 Token Endpoint utilities
+ * These helpers validate the token request, issue access tokens, and handle token revocation.
+ */
 
 export interface _OAuthServerConfig {
   issuer: string;
@@ -103,49 +112,6 @@ export interface OAuthTokenResponse {
    * The refresh token, which can be used to obtain new access tokens based on the grant passed in the corresponding token request.
    */
   refresh_token?: string;
-}
-
-export interface OAuthRefreshTokenClaims extends JWTClaims {
-  /**
-   * The client identifier (client_id) from either public and confidential clients.
-   */
-  sub: string;
-  /**
-   * The issuer identifier.
-   */
-  iss: Exclude<JWTClaims["iss"], undefined>;
-  /**
-   * The issued at time.
-   */
-  iat: Exclude<JWTClaims["iat"], undefined>;
-  /**
-   * The expiration time.
-   */
-  exp: Exclude<JWTClaims["exp"], undefined>;
-  /**
-   * The unique identifier for the token.
-   */
-  jti: Exclude<JWTClaims["jti"], undefined>;
-  /**
-   * The scope of the access request.
-   */
-  scope?: string;
-}
-
-export interface OAuthAuthorizationCodeClaims extends OAuthRefreshTokenClaims {
-  /**
-   * The hash of the code verifier.
-   */
-  code_challenge: string;
-  /**
-   * The method used to hash the code verifier.
-   * @default "plain"
-   */
-  code_challenge_method?: "plain" | "S256";
-  /**
-   * The scope of the access request.
-   */
-  scope?: string;
 }
 
 export interface OAuthTokenOptions {
