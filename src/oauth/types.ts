@@ -39,4 +39,19 @@ export interface OAuthAuthorizationCodeClaims extends OAuthRefreshTokenClaims {
   // Note: redirect_uri may be added at runtime; the base JWTClaims is open for additional fields.
 }
 
+export interface OAuthAccessTokenClaims extends JWTClaims {
+  /** The client identifier (client_id) from either public and confidential clients. */
+  sub: string;
+  /** The issuer identifier. */
+  iss: Exclude<JWTClaims["iss"], undefined>;
+  /** The issued at time. */
+  iat: Exclude<JWTClaims["iat"], undefined>;
+  /** The expiration time. */
+  exp: Exclude<JWTClaims["exp"], undefined>;
+  /** The unique identifier for the token. */
+  jti: Exclude<JWTClaims["jti"], undefined>;
+  /** The scope of the access request. */
+  scope: string;
+}
+
 export type { JWK, JWTClaims } from "unjwt";

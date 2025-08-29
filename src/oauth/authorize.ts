@@ -19,7 +19,7 @@ export interface OAuthAuthorizeRequestRequired {
   response_type: OAuthResponseType;
   client_id: string;
   /**
-   * MUST be present in OAuth 2.1 (no discovery here)
+   * MUST be present in OAuth 2.1 (no discovery)
    */
   redirect_uri: string;
 }

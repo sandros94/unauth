@@ -6,6 +6,7 @@ import type {
   JWEDecryptOptions,
   JWEEncryptOptions,
   JWSSignOptions,
+  JWSVerifyOptions,
 } from "unjwt";
 
 import type { MaybePromise } from "../types/index";
@@ -126,6 +127,10 @@ export interface OAuthTokenOptions {
    */
   signOptions: JWSSignOptions & { expiresIn: number };
   /**
+   * Options for verifying the access token.
+   */
+  verifyOptions: JWSVerifyOptions;
+  /**
    * A function to generate a unique identifier for the token.
    */
   randomJti?: () => string;
@@ -166,6 +171,49 @@ export function isOAuthAuthorizationCodeRequest(
     "grant_type" in request &&
     request.grant_type === "authorization_code"
   );
+}
+
+export async function oAuthClientCredentials(
+  args: Extract<OAuthTokenRequest, { grant_type: "client_credentials" }>,
+  options: OAuthTokenOptions,
+  cb?: (
+    opts: OAuthTokenOptions,
+  ) => MaybePromise<JWTClaims & { scope: string }>,
+): Promise<OAuthTokenResponse> {
+  if (!isOAuthCredentialRequest(args)) {
+    throw new Error("[OAuth] Invalid client credentials request");
+  }
+
+  const { scope: requestedScope } = args;
+  const {
+    issuer,
+    jwsKey,
+    randomJti = crypto.randomUUID,
+    signOptions,
+  } = options;
+
+  const scope = requestedScope || options.defaultScope;
+  if (!scope) {
+    throw new Error("[OAuth] Missing scope");
+  }
+
+  const extraClaims = cb ? await cb(options) : {};
+
+  const accessTokenClaims: JWTClaims & { scope: string } = {
+    jti: randomJti(),
+    ...extraClaims,
+    iss: issuer,
+    scope,
+  };
+
+  const access_token = await sign(accessTokenClaims, jwsKey, signOptions);
+
+  return {
+    access_token,
+    token_type: "Bearer",
+    expires_in: signOptions?.expiresIn,
+    scope,
+  };
 }
 
 export async function oAuthAuthorizationCode(
