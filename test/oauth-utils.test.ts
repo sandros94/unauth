@@ -40,7 +40,10 @@ describe("oauth/utils", () => {
 
   describe("normalizeScope", () => {
     it("dedupes regardless of available list", () => {
-      const out1 = normalizeScope("read write read", undefined, ["read", "write"]);
+      const out1 = normalizeScope("read write read", undefined, [
+        "read",
+        "write",
+      ]);
       const out2 = normalizeScope("read write read", undefined, undefined);
       expect(out1).toBe("read write");
       expect(out2).toBe("read write");

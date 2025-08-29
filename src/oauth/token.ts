@@ -14,7 +14,12 @@ import type {
   OAuthRefreshTokenClaims,
   OAuthAuthorizationCodeClaims,
 } from "./types";
-import { validatePKCE } from "./utils";
+import { isScopeSubset, normalizeScope, validatePKCE } from "./utils";
+import {
+  type ResolvedTokenOptions,
+  DEFAULTS,
+  withTokenDefaults,
+} from "./defaults";
 
 /**
  * OAuth 2.1 Token Endpoint utilities
@@ -85,7 +90,7 @@ export interface OAuthTokenResponse {
   /**
    * The type of the access token issued. Value is case insensitive.
    */
-  token_type: string;
+  token_type: "Bearer";
   /**
    * The lifetime in seconds of the access token.
    * @default 3600
@@ -138,6 +143,10 @@ export interface OAuthTokenOptions {
    * The default authorization scope.
    */
   defaultScope?: string;
+  /**
+   * Allowed scopes configuration (optional). If provided, membership will be validated.
+   */
+  availableScopes?: string[];
 }
 
 export function isOAuthCredentialRequest(
@@ -176,26 +185,25 @@ export function isOAuthAuthorizationCodeRequest(
 export async function oAuthClientCredentials(
   args: Extract<OAuthTokenRequest, { grant_type: "client_credentials" }>,
   options: OAuthTokenOptions,
-  cb?: (opts: OAuthTokenOptions) => MaybePromise<JWTClaims & { scope: string }>,
+  cb?: (
+    opts: ResolvedTokenOptions,
+  ) => MaybePromise<JWTClaims & { scope: string }>,
 ): Promise<OAuthTokenResponse> {
   if (!isOAuthCredentialRequest(args)) {
     throw new Error("[OAuth] Invalid client credentials request");
   }
 
-  const { scope: requestedScope } = args;
+  const resolved = withTokenDefaults(options);
   const {
     issuer,
     jwsKey,
-    randomJti = crypto.randomUUID,
+    randomJti,
     signOptions,
-  } = options;
-
-  const scope = requestedScope || options.defaultScope;
-  if (!scope) {
-    throw new Error("[OAuth] Missing scope");
-  }
-
-  const extraClaims = cb ? await cb(options) : {};
+    defaultScope,
+    availableScopes,
+  } = resolved;
+  const scope = normalizeScope(args.scope, defaultScope, availableScopes);
+  const extraClaims = cb ? await cb(resolved) : {};
 
   const accessTokenClaims: JWTClaims & { scope: string } = {
     jti: randomJti(),
@@ -208,7 +216,7 @@ export async function oAuthClientCredentials(
 
   return {
     access_token,
-    token_type: "Bearer",
+    token_type: DEFAULTS.tokenType,
     expires_in: signOptions?.expiresIn,
     scope,
   };
@@ -219,7 +227,7 @@ export async function oAuthAuthorizationCode(
   options: OAuthTokenOptions,
   cb?: (
     claims: OAuthAuthorizationCodeClaims,
-    opts: OAuthTokenOptions,
+    opts: ResolvedTokenOptions,
   ) => MaybePromise<{
     accessTokenClaims: JWTClaims & { scope?: string };
     refreshTokenClaims: JWTClaims & { scope?: string };
@@ -230,15 +238,18 @@ export async function oAuthAuthorizationCode(
   }
 
   const { client_id, code, code_verifier, redirect_uri } = args;
+  const resolved = withTokenDefaults(options);
   const {
     issuer,
     jweSecret,
     jwsKey,
-    randomJti = crypto.randomUUID,
+    randomJti,
     decryptOptions,
     encryptOptions,
     signOptions,
-  } = options;
+    defaultScope,
+    availableScopes,
+  } = resolved;
 
   const { payload } = await decrypt<OAuthAuthorizationCodeClaims>(
     code,
@@ -256,13 +267,7 @@ export async function oAuthAuthorizationCode(
   });
 
   // Scope comes from the authorization code (preferred) with optional default fallback
-  const scope = payload.scope || options.defaultScope;
-  if (!scope) {
-    console.error(
-      `[OAuth] Missing scope.\n\t${client_id} tried to exchange code with: ${code}`,
-    );
-    throw new Error("[OAuth] Missing scope");
-  }
+  const scope = normalizeScope(payload.scope, defaultScope, availableScopes);
 
   // Optional: if redirect_uri was present in both the token request and the code, enforce equality
   if (
@@ -292,7 +297,7 @@ export async function oAuthAuthorizationCode(
   }
 
   const cbResult = cb
-    ? await cb(payload, options)
+    ? await cb(payload, resolved)
     : {
         accessTokenClaims: {},
         refreshTokenClaims: {},
@@ -321,7 +326,7 @@ export async function oAuthAuthorizationCode(
 
   return {
     access_token,
-    token_type: "Bearer",
+    token_type: DEFAULTS.tokenType,
     expires_in: signOptions?.expiresIn,
     scope,
     refresh_token,
@@ -333,7 +338,7 @@ export async function oAuthRefreshToken(
   options: OAuthTokenOptions,
   cb?: (
     claims: OAuthRefreshTokenClaims,
-    opts: OAuthTokenOptions,
+    opts: ResolvedTokenOptions,
   ) => MaybePromise<{
     accessTokenClaims: JWTClaims & { scope?: string };
     refreshTokenClaims: JWTClaims & { scope?: string };
@@ -344,15 +349,18 @@ export async function oAuthRefreshToken(
   }
 
   const { refresh_token: oldRefreshToken, client_id } = args;
+  const resolved = withTokenDefaults(options);
   const {
     issuer,
     jweSecret,
     jwsKey,
-    randomJti = crypto.randomUUID,
+    randomJti,
     decryptOptions,
     encryptOptions,
     signOptions,
-  } = options;
+    defaultScope,
+    availableScopes,
+  } = resolved;
 
   const { payload } = await decrypt<OAuthRefreshTokenClaims>(
     oldRefreshToken,
@@ -370,22 +378,17 @@ export async function oAuthRefreshToken(
   });
 
   // Scope rules (OAuth 2.1): if scope is omitted, reuse original; if present, MUST be a subset of originally granted scope
-  const originalScope = payload.scope || options.defaultScope || "";
-  if (!originalScope) {
-    console.error(
-      `[OAuth] Missing original scope in refresh token.\n\tclient_id: ${client_id}`,
-    );
-    throw new Error("[OAuth] Missing scope");
-  }
-  const requestedScope = args.scope || originalScope;
-  const isSubset = (a: string, b: string) => {
-    const setB = new Set(b.split(/\s+/g).filter(Boolean));
-    return a
-      .split(/\s+/g)
-      .filter(Boolean)
-      .every((s) => setB.has(s));
-  };
-  if (args.scope && !isSubset(requestedScope, originalScope)) {
+  const originalScope = normalizeScope(
+    payload.scope,
+    defaultScope,
+    availableScopes,
+  );
+  const requestedScope = normalizeScope(
+    args.scope || originalScope,
+    originalScope,
+    availableScopes,
+  );
+  if (args.scope && !isScopeSubset(requestedScope, originalScope)) {
     console.error(
       `[OAuth] Invalid scope on refresh.\n\trequested: ${requestedScope}\n\toriginal: ${originalScope}`,
     );
@@ -394,7 +397,7 @@ export async function oAuthRefreshToken(
   const scope = requestedScope;
 
   const cbResult = cb
-    ? await cb(payload, options)
+    ? await cb(payload, resolved)
     : {
         accessTokenClaims: {},
         refreshTokenClaims: {},
@@ -423,7 +426,7 @@ export async function oAuthRefreshToken(
 
   return {
     access_token,
-    token_type: "Bearer",
+    token_type: DEFAULTS.tokenType,
     expires_in: signOptions?.expiresIn,
     scope,
     refresh_token,

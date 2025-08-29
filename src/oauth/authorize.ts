@@ -4,6 +4,11 @@ import type { JWK, JWEEncryptOptions, JWTClaims } from "unjwt";
 import type { MaybePromise } from "../types/index";
 import type { OAuthAuthorizationCodeClaims } from "./types";
 import { normalizeScope } from "./utils";
+import {
+  type ResolvedAuthorizeOptions,
+  DEFAULTS,
+  withAuthorizeDefaults,
+} from "./defaults";
 
 /**
  * OAuth 2.1 Authorization Endpoint utilities
@@ -134,20 +139,21 @@ export async function buildAuthorizationCode(
   options: OAuthAuthorizeOptions,
   cb?: (
     req: OAuthAuthorizeRequest,
-    opts: OAuthAuthorizeOptions,
+    opts: ResolvedAuthorizeOptions,
   ) => MaybePromise<Partial<JWTClaims> & { scope?: string }>,
 ): Promise<OAuthAuthorizeSuccess> {
   assertAuthorizeRequest(req);
   validateResponseType(req.response_type);
 
+  const resolved = withAuthorizeDefaults(options);
   const {
     issuer,
     jweSecret,
     encryptOptions,
-    randomJti = crypto.randomUUID,
+    randomJti,
     defaultScope,
     availableScopes,
-  } = options;
+  } = resolved;
 
   // Scope
   const scope = normalizeScope(req.scope, defaultScope, availableScopes);
@@ -159,7 +165,7 @@ export async function buildAuthorizationCode(
       "Missing code_challenge (PKCE)",
     );
   }
-  const m = req.code_challenge_method || "plain";
+  const m = req.code_challenge_method || DEFAULTS.codeChallengeMethod;
   if (m !== "plain" && m !== "S256") {
     throw new OAuthAuthorizeException(
       "invalid_request",
@@ -167,7 +173,7 @@ export async function buildAuthorizationCode(
     );
   }
 
-  const extraClaims = cb ? await cb(req, options) : {};
+  const extraClaims = cb ? await cb(req, resolved) : {};
 
   const claims: OAuthAuthorizationCodeClaims = {
     jti: randomJti(),
