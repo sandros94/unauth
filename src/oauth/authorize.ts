@@ -194,18 +194,10 @@ export async function buildAuthorizationCode(
  * Build redirect URI with either ?code= or ?error= fragment/query params as per OAuth 2.1
  * Note: OAuth 2.1 uses query component for authorization code; we preserve given state.
  */
-export function buildAuthorizeRedirect(
-  redirectUri: string,
+export function buildAuthorizeRedirect<T extends string | URL>(
+  redirectUri: T,
   result: OAuthAuthorizeSuccess | OAuthAuthorizeError,
-): string;
-export function buildAuthorizeRedirect(
-  redirectUri: URL,
-  result: OAuthAuthorizeSuccess | OAuthAuthorizeError,
-): URL;
-export function buildAuthorizeRedirect(
-  redirectUri: string | URL,
-  result: OAuthAuthorizeSuccess | OAuthAuthorizeError,
-): string | URL {
+): T {
   const url = redirectUri instanceof URL ? redirectUri : new URL(redirectUri);
   const params = url.searchParams;
   if ("code" in result) {
@@ -218,7 +210,7 @@ export function buildAuthorizeRedirect(
     if (result.state) params.set("state", result.state);
   }
   url.search = params.toString();
-  return redirectUri instanceof URL ? url : url.toString();
+  return (redirectUri instanceof URL ? url : url.toString()) as T;
 }
 
 /** Helper for creating a standardized error payload, preserving state when present */
