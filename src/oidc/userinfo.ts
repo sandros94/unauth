@@ -33,27 +33,27 @@ export function buildUserInfo<T extends Record<string, unknown>>(
     "phone_number",
   ] as const;
   for (const key of stringClaims) {
-    const v = (profile as any)[key];
+    const v = (profile)[key];
     if (typeof v === "string" && v) {
-      (out as any)[key] = v;
+      (out)[key] = v;
     }
   }
 
   // Standard boolean claims
   const booleanClaims = ["email_verified", "phone_number_verified"] as const;
   for (const key of booleanClaims) {
-    const v = (profile as any)[key];
+    const v = (profile)[key];
     if (typeof v === "boolean") {
-      (out as any)[key] = v;
+      (out)[key] = v;
     }
   }
 
   // Optional: address (object) and updated_at (number)
-  const addr = (profile as any).address;
+  const addr = (profile).address;
   if (addr && typeof addr === "object" && !Array.isArray(addr)) {
     out.address = addr as Record<string, unknown>;
   }
-  const updatedAt = (profile as any).updated_at;
+  const updatedAt = (profile).updated_at;
   if (typeof updatedAt === "number") {
     out.updated_at = updatedAt;
   }
@@ -72,7 +72,7 @@ export function buildUserInfo<T extends Record<string, unknown>>(
       continue;
     }
     if (v === undefined || typeof v === "function") continue;
-    (out as any)[k] = v as unknown;
+    (out)[k] = v as unknown;
   }
 
   return out as OIDCUserInfoProfile & T;

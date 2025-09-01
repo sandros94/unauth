@@ -91,9 +91,9 @@ describe("oidc/id-token > build & verify", () => {
   it("applies default ID Token lifetime when expiresIn omitted", async () => {
     const token = await buildIdToken(
       { subject: "u1", audience: "c1" },
-      { issuer, jwsKey: key, signOptions: { alg: "HS256" } as any },
+      { issuer, jwsKey: key, signOptions: { alg: "HS256" } },
     );
-    const { payload } = await verify<any>(token, key);
+    const { payload } = await verify<{ exp: number, iat: number }>(token, key);
     expect(payload.exp - payload.iat).toBeGreaterThanOrEqual(3600);
   });
 });
@@ -108,8 +108,8 @@ describe("oidc/discovery", () => {
       jwks_uri: "https://i/jwks",
     });
     expect(doc.issuer).toBe("https://i");
-    expect((doc as any).authorization_endpoint).toContain("/auth");
-    expect((doc as any).response_types_supported).toContain("code");
+    expect((doc).authorization_endpoint).toContain("/auth");
+    expect((doc).response_types_supported).toContain("code");
   });
 });
 
@@ -121,7 +121,7 @@ describe("oidc/authorize validation (OAuth 2.1)", () => {
         client_id: "c",
         redirect_uri: "https://cb",
         scope: "profile email",
-      } as any),
+      }),
     ).toThrow();
   });
 
@@ -142,7 +142,7 @@ describe("oidc/authorize validation (OAuth 2.1)", () => {
         redirect_uri: "https://cb",
         scope: "openid",
         response_mode: "form_post",
-      } as any),
+      }),
     ).toThrow();
   });
 
@@ -154,7 +154,7 @@ describe("oidc/authorize validation (OAuth 2.1)", () => {
         redirect_uri: "https://cb",
         scope: "openid profile",
         response_mode: "query",
-      } as any),
+      }),
     ).not.toThrow();
   });
 });
