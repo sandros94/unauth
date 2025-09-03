@@ -38,7 +38,7 @@
     "unoidc": "link:."
   },
   "dependencies": {
-    "unjwt": "^0.5.13",
+    "unjwt": "^0.5.14",
     "unsecure": "^0.0.4"
   },
   "devDependencies": {
