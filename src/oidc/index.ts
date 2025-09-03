@@ -4,3 +4,4 @@ export * from "./discovery";
 export * from "./userinfo";
 export * from "./authorize";
 export * from "./defaults";
+export * from "./service";
