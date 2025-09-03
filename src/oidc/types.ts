@@ -60,16 +60,3 @@ export interface OIDCUserInfoProfile extends JWTClaims {
   address?: Record<string, unknown>;
   updated_at?: number;
 }
-
-export interface OIDCDiscoveryOptions {
-  issuer: string;
-  authorization_endpoint: string;
-  token_endpoint: string;
-  userinfo_endpoint: string;
-  jwks_uri: string;
-  response_types_supported?: string[];
-  subject_types_supported?: string[];
-  id_token_signing_alg_values_supported?: string[];
-  scopes_supported?: string[];
-  claims_supported?: string[];
-}

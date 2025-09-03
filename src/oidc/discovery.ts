@@ -1,25 +1,38 @@
-import type { OIDCDiscoveryOptions } from "./types";
+import {
+  type OAuthDiscoveryOptions,
+  buildDiscoveryDocument as buildOAuthDD,
+} from "../oauth/discovery";
+import type { ParseType } from "../types";
+
+export interface OIDCDiscoveryOptions extends OAuthDiscoveryOptions {
+  userinfo_endpoint?: string;
+  subject_types_supported?: string[];
+  claims_supported?: string[];
+}
+
+export type OIDCDiscoveryDocument = ParseType<
+  Required<Omit<OIDCDiscoveryOptions, "default_scope">> & {
+    default_scope?: string;
+  }
+>;
 
 /**
  * Build a minimal OpenID Provider Configuration (discovery) document.
  */
 export function buildDiscoveryDocument(
   opts: OIDCDiscoveryOptions,
-): Record<string, unknown> {
+): OIDCDiscoveryDocument {
+  const issuer = opts.issuer.replace(/\/+$/, "");
+  const oauthDocument = buildOAuthDD({ ...opts, issuer });
   return {
-    issuer: opts.issuer,
-    authorization_endpoint: opts.authorization_endpoint,
-    token_endpoint: opts.token_endpoint,
-    userinfo_endpoint: opts.userinfo_endpoint,
-    jwks_uri: opts.jwks_uri,
+    ...oauthDocument,
+    userinfo_endpoint: opts.userinfo_endpoint || `${issuer}/userinfo`,
     response_types_supported: opts.response_types_supported ?? [
       "code",
       "id_token",
       "code id_token",
     ],
     subject_types_supported: opts.subject_types_supported ?? ["public"],
-    id_token_signing_alg_values_supported:
-      opts.id_token_signing_alg_values_supported ?? ["RS256"],
     scopes_supported: opts.scopes_supported ?? [
       "openid",
       "profile",

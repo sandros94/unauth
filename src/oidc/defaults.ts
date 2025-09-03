@@ -1,16 +1,16 @@
 import type { JWSSignOptions } from "unjwt";
 import type { OIDCIdTokenOptions } from "./types";
 
+import type { Require } from "../types";
+
 export const OIDC_DEFAULTS = Object.freeze({
   idTokenExpiresIn: 3600, // 1 hour
 });
 
-export type ResolvedOIDCIdTokenOptions = Omit<
+export type ResolvedOIDCIdTokenOptions = Require<
   OIDCIdTokenOptions,
-  "signOptions"
-> & {
-  signOptions: JWSSignOptions & { expiresIn: number };
-};
+  "signOptions.expiresIn"
+>;
 
 export function withIdTokenDefaults(
   opts: OIDCIdTokenOptions,
