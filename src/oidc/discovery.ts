@@ -27,11 +27,6 @@ export function buildDiscoveryDocument(
   return {
     ...oauthDocument,
     userinfo_endpoint: opts.userinfo_endpoint || `${issuer}/userinfo`,
-    response_types_supported: opts.response_types_supported ?? [
-      "code",
-      "id_token",
-      "code id_token",
-    ],
     subject_types_supported: opts.subject_types_supported ?? ["public"],
     scopes_supported: opts.scopes_supported ?? [
       "openid",

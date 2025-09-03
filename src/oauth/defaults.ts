@@ -10,13 +10,13 @@ export const DEFAULTS = Object.freeze({
   authorizationCodeExpiresIn: 600, // 10 minutes
   accessTokenExpiresIn: 3600, // 1 hour
   refreshTokenExpiresIn: 60 * 60 * 24 * 30, // 30 days
-  codeChallengeMethod: "plain" as const,
+  codeChallengeMethod: "S256" as const,
   randomJti: () => crypto.randomUUID(),
 });
 
 export type ResolvedAuthorizeOptions = Require<
   OAuthAuthorizeOptions,
-  "randomJti" | "encryptOptions.expiresIn" | "signOptions.expiresIn"
+  "randomJti" | "encryptOptions.expiresIn"
 >;
 
 export type ResolvedTokenOptions = Require<
