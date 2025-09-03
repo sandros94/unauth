@@ -4,11 +4,11 @@ import type {
   JWK,
   JWTClaims,
   JWEDecryptOptions,
-  JWEEncryptOptions,
   JWSSignOptions,
   JWSVerifyOptions,
 } from "unjwt";
 
+import type { OAuthAuthorizeOptions } from "./authorize";
 import type { MaybePromise } from "../types/index";
 import type {
   OAuthRefreshTokenClaims,
@@ -108,47 +108,23 @@ export interface OAuthTokenResponse {
   refresh_token?: string;
 }
 
-export interface OAuthTokenOptions {
-  /**
-   * The issuer identifier.
-   */
-  issuer: string;
-  /**
-   * The secret or private key to sign the refresh token.
-   */
-  jweSecret: string | JWK;
+export interface OAuthTokenOptions extends OAuthAuthorizeOptions {
   /**
    * The private key used to sign the access token.
    */
-  jwsKey: JWK;
+  jwsPrivateKey: JWK;
   /**
    * Options for decrypting the refresh token.
    */
   decryptOptions?: JWEDecryptOptions;
   /**
-   * Options for encrypting the refresh token.
-   */
-  encryptOptions: JWEEncryptOptions & { expiresIn: number };
-  /**
    * Options for signing the access token.
    */
-  signOptions: JWSSignOptions & { expiresIn: number };
+  signOptions?: JWSSignOptions;
   /**
    * Options for verifying the access token.
    */
   verifyOptions?: JWSVerifyOptions;
-  /**
-   * A function to generate a unique identifier for tokens.
-   */
-  randomJti?: () => string;
-  /**
-   * The default authorization scope.
-   */
-  defaultScope?: string;
-  /**
-   * Allowed scopes configuration (optional). If provided, membership will be validated.
-   */
-  availableScopes?: string[];
 }
 
 export function isOAuthCredentialRequest(
@@ -198,7 +174,7 @@ export async function oAuthClientCredentials(
   const resolved = withTokenDefaults(options);
   const {
     issuer,
-    jwsKey,
+    jwsPrivateKey,
     randomJti,
     signOptions,
     defaultScope,
@@ -214,7 +190,7 @@ export async function oAuthClientCredentials(
     scope,
   };
 
-  const access_token = await sign(accessTokenClaims, jwsKey, signOptions);
+  const access_token = await sign(accessTokenClaims, jwsPrivateKey, signOptions);
 
   return {
     access_token,
@@ -244,7 +220,7 @@ export async function oAuthAuthorizationCode(
   const {
     issuer,
     jweSecret,
-    jwsKey,
+    jwsPrivateKey,
     randomJti,
     decryptOptions,
     encryptOptions,
@@ -322,7 +298,7 @@ export async function oAuthAuthorizationCode(
   };
 
   const [access_token, refresh_token] = await Promise.all([
-    sign(newAccessTokenClaims, jwsKey, signOptions),
+    sign(newAccessTokenClaims, jwsPrivateKey, signOptions),
     encrypt(newRefreshTokenClaims, jweSecret, encryptOptions),
   ]);
 
@@ -355,7 +331,7 @@ export async function oAuthRefreshToken(
   const {
     issuer,
     jweSecret,
-    jwsKey,
+    jwsPrivateKey,
     randomJti,
     decryptOptions,
     encryptOptions,
@@ -422,7 +398,7 @@ export async function oAuthRefreshToken(
   };
 
   const [access_token, refresh_token] = await Promise.all([
-    sign(newAccessTokenClaims, jwsKey, signOptions),
+    sign(newAccessTokenClaims, jwsPrivateKey, signOptions),
     encrypt(newRefreshTokenClaims, jweSecret, encryptOptions),
   ]);
 

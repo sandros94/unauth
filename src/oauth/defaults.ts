@@ -1,8 +1,6 @@
 import type {
-  JWK,
   JWEEncryptOptions,
   JWSSignOptions,
-  JWSVerifyOptions,
 } from "unjwt";
 
 import type { OAuthTokenOptions } from "./token";
@@ -19,25 +17,15 @@ export const DEFAULTS = Object.freeze({
   randomJti: () => crypto.randomUUID(),
 });
 
-export type ResolvedAuthorizeOptions = Require<
-  OAuthAuthorizeOptions,
-  "randomJti"
->;
+export type ResolvedAuthorizeOptions = Require<OAuthAuthorizeOptions, "randomJti" | "encryptOptions.expiresIn" | "signOptions.expiresIn">;
 
-export type ResolvedTokenOptions = Require<OAuthTokenOptions, "randomJti">;
+export type ResolvedTokenOptions = Require<OAuthTokenOptions, "randomJti" | "encryptOptions.expiresIn" | "signOptions.expiresIn">;
 
 /**
  * Apply defaults for the Authorization endpoint helpers.
  */
 export function withAuthorizeDefaults<
-  T extends {
-    issuer: string;
-    jweSecret: string | JWK;
-    encryptOptions?: JWEEncryptOptions & { expiresIn?: number };
-    randomJti?: () => string;
-    defaultScope?: string;
-    availableScopes?: string[];
-  },
+  T extends OAuthAuthorizeOptions,
 >(opts: T): ResolvedAuthorizeOptions {
   const encryptOptions: JWEEncryptOptions & { expiresIn: number } =
     opts.encryptOptions
@@ -65,18 +53,7 @@ export function withAuthorizeDefaults<
  * Apply defaults for the Token endpoint helpers.
  */
 export function withTokenDefaults<
-  T extends {
-    issuer: string;
-    jweSecret: string | JWK;
-    jwsKey: JWK;
-    decryptOptions?: any;
-    encryptOptions?: JWEEncryptOptions & { expiresIn?: number };
-    signOptions?: JWSSignOptions & { expiresIn?: number };
-    verifyOptions?: JWSVerifyOptions;
-    randomJti?: () => string;
-    defaultScope?: string;
-    availableScopes?: string[];
-  },
+  T extends OAuthTokenOptions,
 >(opts: T): ResolvedTokenOptions {
   const encryptOptions: JWEEncryptOptions & { expiresIn: number } =
     opts.encryptOptions
@@ -101,7 +78,7 @@ export function withTokenDefaults<
   return {
     issuer: opts.issuer,
     jweSecret: opts.jweSecret,
-    jwsKey: opts.jwsKey,
+    jwsPrivateKey: opts.jwsPrivateKey,
     decryptOptions: opts.decryptOptions,
     encryptOptions,
     signOptions,

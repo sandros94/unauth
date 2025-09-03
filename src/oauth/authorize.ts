@@ -54,10 +54,25 @@ export type OAuthAuthorizeRequest = OAuthAuthorizeRequestRequired &
   Record<string, unknown>;
 
 export interface OAuthAuthorizeOptions {
+  /**
+   * The issuer identifier.
+   */
   issuer: string;
+  /**
+   * The secret or private key to sign the refresh token.
+   */
   jweSecret: string | JWK;
-  encryptOptions: JWEEncryptOptions & { expiresIn: number };
+  /**
+   * Options for encrypting the refresh token.
+   */
+  encryptOptions?: JWEEncryptOptions;
+  /**
+   * A function to generate a unique identifier for tokens.
+   */
   randomJti?: () => string;
+  /**
+   * The default authorization scope.
+   */
   defaultScope?: string;
   /**
    * Allowed scopes configuration (optional). If provided, membership will be validated.
