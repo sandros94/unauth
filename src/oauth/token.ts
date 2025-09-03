@@ -136,7 +136,7 @@ export interface OAuthTokenOptions {
   /**
    * Options for verifying the access token.
    */
-  verifyOptions: JWSVerifyOptions;
+  verifyOptions?: JWSVerifyOptions;
   /**
    * A function to generate a unique identifier for tokens.
    */

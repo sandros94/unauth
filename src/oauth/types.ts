@@ -1,18 +1,4 @@
-import type { JWK, JWTClaims } from "unjwt";
-
-export interface OAuthServerConfig {
-  issuer: string;
-  privateKey: JWK;
-  publicKey: JWK;
-  accessTokenLifetime?: number; // Default: 3600
-  refreshTokenLifetime?: number; // Default: 1209600 (30 days)
-  authorizationCodeLifetime?: number; // Default: 600
-  scopes?: {
-    available?: string[];
-    default?: string[];
-  };
-  jweSecret?: string | JWK;
-}
+import type { JWTClaims } from "unjwt";
 
 export interface OAuthRefreshTokenClaims extends JWTClaims {
   /** The client identifier (client_id) from either public and confidential clients. */
