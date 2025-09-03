@@ -75,7 +75,7 @@ export function buildAuthorizeErrorParams(
  */
 export async function introspectToken<T extends OAuthAccessTokenClaims>(
   token: string,
-  opts: Pick<OAuthTokenOptions, "issuer" | "jwsKey" | "verifyOptions">,
+  opts: Pick<OAuthTokenOptions, "issuer" | "jwsPrivateKey" | "verifyOptions">,
 ): Promise<{ active: boolean; claims?: T }>;
 export async function introspectToken<
   T extends OAuthRefreshTokenClaims | OAuthAuthorizationCodeClaims,
@@ -92,11 +92,11 @@ export async function introspectToken<
   token: string,
   opts:
     | Pick<OAuthTokenOptions, "issuer" | "jweSecret" | "decryptOptions">
-    | Pick<OAuthTokenOptions, "issuer" | "jwsKey" | "verifyOptions">,
+    | Pick<OAuthTokenOptions, "issuer" | "jwsPrivateKey" | "verifyOptions">,
 ): Promise<{ active: boolean; claims?: T }> {
   try {
-    if ("jwsKey" in opts) {
-      const { payload } = await verify<T>(token, opts.jwsKey, {
+    if ("jwsPrivateKey" in opts) {
+      const { payload } = await verify<T>(token, opts.jwsPrivateKey, {
         issuer: opts.issuer,
         ...opts.verifyOptions,
       });
