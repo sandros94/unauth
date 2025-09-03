@@ -1,5 +1,5 @@
 {
-  "name": "unoidc-playground",
+  "name": "unauth-playground",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
@@ -9,6 +9,6 @@
   },
   "devDependencies": {
     "h3": "2.0.0-beta.3",
-    "unoidc": "latest"
+    "unauth": "latest"
   }
 }

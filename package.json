@@ -1,8 +1,8 @@
 {
-  "name": "unoidc",
-  "version": "0.0.0",
+  "name": "unauth",
+  "version": "0.0.1",
   "description": "Low-level OIDC utilities",
-  "repository": "sandros94/unoidc",
+  "repository": "sandros94/unauth",
   "license": "MIT",
   "sideEffects": false,
   "type": "module",
@@ -35,7 +35,7 @@
     "bench": "vitest bench --run"
   },
   "resolutions": {
-    "unoidc": "link:."
+    "unauth": "link:."
   },
   "dependencies": {
     "unjwt": "^0.5.14",

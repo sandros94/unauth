@@ -1,4 +1,4 @@
-# unoidc
+# unauth
 
 <!-- automd:badges bundlephobia style="flat" color="FFDC3B" -->
 
@@ -8,7 +8,7 @@
 
 <!-- /automd -->
 
-`unoidc` Low-level OIDC utilities
+`unauth` Low-level OIDC utilities
 
 ## Usage
 
@@ -16,7 +16,7 @@ Install the package:
 
 ```sh
 # ✨ Auto-detect (supports npm, yarn, pnpm, deno and bun)
-npx nypm install unoidc
+npx nypm install unauth
 ```
 
 Import:
@@ -25,14 +25,14 @@ Import:
 
 ```js
 // Main functions
-import {} from "unoidc";
+import {} from "unauth";
 ```
 
 **CDN** (Deno, Bun and Browsers)
 
 ```js
 // Main functions
-import {} from "https://esm.sh/unoidc";
+import {} from "https://esm.sh/unauth";
 ```
 
 ## Development
@@ -48,6 +48,10 @@ import {} from "https://esm.sh/unoidc";
 - Run interactive tests using `pnpm dev`
 
 </details>
+
+## Credits
+
+- Thanks to [Vidbase, Inc.](https://github.com/vidbase) (in particular to [Van Nguyen](https://github.com/thegoleffect)) for the npm package name donation
 
 ## License
 
