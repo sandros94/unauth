@@ -93,7 +93,7 @@ describe("oidc/id-token > build & verify", () => {
       { subject: "u1", audience: "c1" },
       { issuer, jwsKey: key, signOptions: { alg: "HS256" } },
     );
-    const { payload } = await verify<{ exp: number, iat: number }>(token, key);
+    const { payload } = await verify<{ exp: number; iat: number }>(token, key);
     expect(payload.exp - payload.iat).toBeGreaterThanOrEqual(3600);
   });
 });
@@ -108,8 +108,8 @@ describe("oidc/discovery", () => {
       jwks_uri: "https://i/jwks",
     });
     expect(doc.issuer).toBe("https://i");
-    expect((doc).authorization_endpoint).toContain("/auth");
-    expect((doc).response_types_supported).toContain("code");
+    expect(doc.authorization_endpoint).toContain("/auth");
+    expect(doc.response_types_supported).toContain("code");
   });
 });
 
