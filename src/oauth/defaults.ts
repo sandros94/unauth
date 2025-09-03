@@ -5,16 +5,10 @@ import type {
   JWSVerifyOptions,
 } from "unjwt";
 
-import type {
-  OAuthTokenOptions
-} from './token'
-import type {
-  OAuthAuthorizeOptions
-} from './authorize'
+import type { OAuthTokenOptions } from "./token";
+import type { OAuthAuthorizeOptions } from "./authorize";
 
-import type {
-  Require
-} from "../types"
+import type { Require } from "../types";
 
 export const DEFAULTS = Object.freeze({
   tokenType: "Bearer" as const,
@@ -25,9 +19,12 @@ export const DEFAULTS = Object.freeze({
   randomJti: () => crypto.randomUUID(),
 });
 
-export type ResolvedAuthorizeOptions = Require<OAuthAuthorizeOptions, 'randomJti'>;
+export type ResolvedAuthorizeOptions = Require<
+  OAuthAuthorizeOptions,
+  "randomJti"
+>;
 
-export type ResolvedTokenOptions = Require<OAuthTokenOptions, 'randomJti'>;
+export type ResolvedTokenOptions = Require<OAuthTokenOptions, "randomJti">;
 
 /**
  * Apply defaults for the Authorization endpoint helpers.
