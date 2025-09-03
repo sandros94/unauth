@@ -1,7 +1,4 @@
-import type {
-  JWEEncryptOptions,
-  JWSSignOptions,
-} from "unjwt";
+import type { JWEEncryptOptions, JWSSignOptions } from "unjwt";
 
 import type { OAuthTokenOptions } from "./token";
 import type { OAuthAuthorizeOptions } from "./authorize";
@@ -17,16 +14,22 @@ export const DEFAULTS = Object.freeze({
   randomJti: () => crypto.randomUUID(),
 });
 
-export type ResolvedAuthorizeOptions = Require<OAuthAuthorizeOptions, "randomJti" | "encryptOptions.expiresIn" | "signOptions.expiresIn">;
+export type ResolvedAuthorizeOptions = Require<
+  OAuthAuthorizeOptions,
+  "randomJti" | "encryptOptions.expiresIn" | "signOptions.expiresIn"
+>;
 
-export type ResolvedTokenOptions = Require<OAuthTokenOptions, "randomJti" | "encryptOptions.expiresIn" | "signOptions.expiresIn">;
+export type ResolvedTokenOptions = Require<
+  OAuthTokenOptions,
+  "randomJti" | "encryptOptions.expiresIn" | "signOptions.expiresIn"
+>;
 
 /**
  * Apply defaults for the Authorization endpoint helpers.
  */
-export function withAuthorizeDefaults<
-  T extends OAuthAuthorizeOptions,
->(opts: T): ResolvedAuthorizeOptions {
+export function withAuthorizeDefaults<T extends OAuthAuthorizeOptions>(
+  opts: T,
+): ResolvedAuthorizeOptions {
   const encryptOptions: JWEEncryptOptions & { expiresIn: number } =
     opts.encryptOptions
       ? ({
@@ -52,9 +55,9 @@ export function withAuthorizeDefaults<
 /**
  * Apply defaults for the Token endpoint helpers.
  */
-export function withTokenDefaults<
-  T extends OAuthTokenOptions,
->(opts: T): ResolvedTokenOptions {
+export function withTokenDefaults<T extends OAuthTokenOptions>(
+  opts: T,
+): ResolvedTokenOptions {
   const encryptOptions: JWEEncryptOptions & { expiresIn: number } =
     opts.encryptOptions
       ? ({

@@ -190,7 +190,11 @@ export async function oAuthClientCredentials(
     scope,
   };
 
-  const access_token = await sign(accessTokenClaims, jwsPrivateKey, signOptions);
+  const access_token = await sign(
+    accessTokenClaims,
+    jwsPrivateKey,
+    signOptions,
+  );
 
   return {
     access_token,

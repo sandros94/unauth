@@ -2,9 +2,9 @@
 
 <!-- automd:badges bundlephobia style="flat" color="FFDC3B" -->
 
-[![npm version](https://img.shields.io/npm/v/unoidc?color=FFDC3B)](https://npmjs.com/package/unoidc)
-[![npm downloads](https://img.shields.io/npm/dm/unoidc?color=FFDC3B)](https://npm.chart.dev/unoidc)
-[![bundle size](https://img.shields.io/bundlephobia/minzip/unoidc?color=FFDC3B)](https://bundlephobia.com/package/unoidc)
+[![npm version](https://img.shields.io/npm/v/unauth?color=FFDC3B)](https://npmjs.com/package/unauth)
+[![npm downloads](https://img.shields.io/npm/dm/unauth?color=FFDC3B)](https://npm.chart.dev/unauth)
+[![bundle size](https://img.shields.io/bundlephobia/minzip/unauth?color=FFDC3B)](https://bundlephobia.com/package/unauth)
 
 <!-- /automd -->
 
@@ -57,11 +57,11 @@ import {} from "https://esm.sh/unauth";
 
 <!-- automd:contributors license=MIT -->
 
-Published under the [MIT](https://github.com/sandros94/unoidc/blob/main/LICENSE) license.
-Made by [community](https://github.com/sandros94/unoidc/graphs/contributors) 💛
+Published under the [MIT](https://github.com/sandros94/unauth/blob/main/LICENSE) license.
+Made by [community](https://github.com/sandros94/unauth/graphs/contributors) 💛
 <br><br>
-<a href="https://github.com/sandros94/unoidc/graphs/contributors">
-<img src="https://contrib.rocks/image?repo=sandros94/unoidc" />
+<a href="https://github.com/sandros94/unauth/graphs/contributors">
+<img src="https://contrib.rocks/image?repo=sandros94/unauth" />
 </a>
 
 <!-- /automd -->
