@@ -533,25 +533,47 @@ export async function revokeToken(
   token: string,
   kind: "access" | "refresh" | "code",
   options: OAuthTokenOptions,
-  cb: { onRevoke: (claims: { jti: string, iat: number, exp: number }) => MaybePromise<void> },
+  cb: {
+    onRevoke: (claims: {
+      jti: string;
+      iat: number;
+      exp: number;
+    }) => MaybePromise<void>;
+  },
 ): Promise<void> {
   const { jweSecret, jwsPrivateKey, decryptOptions, verifyOptions, issuer } =
     options;
   try {
     if (kind === "access") {
-      const { payload } = await verify<{ jti: string, iat: number, exp: number }>(token, jwsPrivateKey, {
+      const { payload } = await verify<{
+        jti: string;
+        iat: number;
+        exp: number;
+      }>(token, jwsPrivateKey, {
         issuer,
         typ: "at+jwt",
         ...verifyOptions,
       });
-      await cb.onRevoke({ jti: payload.jti, iat: payload.iat, exp: payload.exp });
+      await cb.onRevoke({
+        jti: payload.jti,
+        iat: payload.iat,
+        exp: payload.exp,
+      });
     } else {
-      const { payload } = await decrypt<{ jti: string, iat: number, exp: number }>(token, jweSecret, {
+      const { payload } = await decrypt<{
+        jti: string;
+        iat: number;
+        exp: number;
+      }>(token, jweSecret, {
         issuer,
         typ: "at+jwt",
         ...decryptOptions,
       });
-      await cb.onRevoke({ jti: payload.jti, iat: payload.iat, exp: payload.exp });
+      await cb.onRevoke({
+        jti: payload.jti,
+        iat: payload.iat,
+        exp: payload.exp,
+      });
     }
   } catch {
     // Spec: revocation should be idempotent; no token details should be logged
