@@ -3,7 +3,24 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 export default defineBuildConfig({
-  entries: ["./src/index"],
+  entries: [
+    "./src/index",
+    {
+      input: "./src/oauth",
+      outDir: "./dist/oauth",
+      name: "oauth",
+    },
+    {
+      input: "./src/oidc",
+      outDir: "./dist/oidc",
+      name: "oidc",
+    },
+    {
+      input: "./src/utils",
+      outDir: "./dist/utils",
+      name: "utils",
+    },
+  ],
   declaration: true,
   hooks: {
     async "build:done"() {

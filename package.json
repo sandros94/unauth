@@ -14,6 +14,18 @@
     ".": {
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
+    },
+    "./oauth": {
+      "types": "./dist/oauth.d.mts",
+      "default": "./dist/oauth.mjs"
+    },
+    "./oidc": {
+      "types": "./dist/oidc.d.mts",
+      "default": "./dist/oidc.mjs"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.mts",
+      "default": "./dist/utils.mjs"
     }
   },
   "main": "./dist/index.mjs",
