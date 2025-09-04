@@ -47,8 +47,8 @@ export class OIDCProvider extends OAuthProvider {
         "[OIDC] Provided JWKS does not include the active signing key kid",
       );
     }
-    const oauthKeys = super.getPublicJwks()?.keys || [];
-    this._oidcJwks = [...oauthKeys, ...clean];
+    // Store only OIDC keys; OAuth keys are managed by the parent and merged on read.
+    this._oidcJwks = clean;
   }
 
   /**
@@ -56,8 +56,14 @@ export class OIDCProvider extends OAuthProvider {
    */
   override getPublicJwks(): { keys: JWK[] } | undefined {
     const oauthKeys = super.getPublicJwks()?.keys || [];
-    const keys = this._oidcJwks;
-    return keys ? { keys: [...oauthKeys, ...keys] } : undefined;
+    const oidcKeys = this._oidcJwks || [];
+    if (oauthKeys.length === 0 && oidcKeys.length === 0) return undefined;
+    // Merge by kid to avoid duplicates
+    const byKid = new Map<string | undefined, JWK>();
+    for (const k of [...oauthKeys, ...oidcKeys]) {
+      byKid.set(k.kid, k);
+    }
+    return { keys: [...byKid.values()] };
   }
 
   /**
@@ -72,9 +78,7 @@ export class OIDCProvider extends OAuthProvider {
       throw new Error("[OIDC] Invalid signing key");
     }
     if (!newKey.kid) {
-      throw new Error(
-        "[OIDC] New signing key must include a kid for rotation",
-      );
+      throw new Error("[OIDC] New signing key must include a kid for rotation");
     }
     if (newJwks) {
       if (!newJwks.some((k) => k.kid === newKey.kid)) {
@@ -103,11 +107,13 @@ export class OIDCProvider extends OAuthProvider {
     cb?: (
       req: OIDCAuthorizeRequest,
       opts: ResolvedAuthorizeOptions,
-    ) => MaybePromise<Partial<JWTClaims> & {
-      sub: string;
-      scope?: string | undefined;
-      client_id?: string | undefined;
-    }>,
+    ) => MaybePromise<
+      Partial<JWTClaims> & {
+        sub: string;
+        scope?: string | undefined;
+        client_id?: string | undefined;
+      }
+    >,
   ): Promise<OAuthAuthorizeSuccess> {
     validateOIDCAuthorizeRequest(req);
     return super.authorize(req, cb);
