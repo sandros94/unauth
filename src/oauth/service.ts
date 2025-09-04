@@ -309,7 +309,7 @@ export class OAuthProvider {
   async revoke(
     token: string,
     kind: "access" | "refresh" | "code",
-    cb: { onRevoke: (claims: { jti: string }) => MaybePromise<void> },
+    cb: { onRevoke: (claims: { jti: string, iat: number, exp: number }) => MaybePromise<void> },
   ): Promise<void> {
     await revokeToken(token, kind, this.tokenOptions, cb);
   }
