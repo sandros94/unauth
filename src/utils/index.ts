@@ -7,6 +7,8 @@ import type {
 } from "unjwt";
 import { generateKey } from "unjwt/jwk";
 
+export { importJWKFromPEM } from "unjwt/jwk";
+
 export interface GenerateJWKOptions extends Omit<GenerateKeyOptions, "toJWK"> {
   params?: Omit<JWKParameters, "alg" | "kty" | "key_ops" | "ext">;
 }
