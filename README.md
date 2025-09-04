@@ -56,9 +56,9 @@ const refreshKey = "a-strong-secret"; // can also be a JWK
 
 const oidc = new OIDCProvider({
   issuer: "https://auth.example.com",
-  accessToken: { privateKey: accessKey },
+  accessToken: { privateKey: accessKey.privateKey },
   refreshToken: { privateKey: refreshKey },
-  idToken: { privateKey: idKey },
+  idToken: { privateKey: idKey.privateKey },
   defaultScope: "openid profile email",
   availableScopes: ["openid", "profile", "email"],
 });
