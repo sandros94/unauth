@@ -1,5 +1,5 @@
 import { encrypt, decrypt } from "unjwt/jwe";
-import { sign } from "unjwt/jws";
+import { sign, verify } from "unjwt/jws";
 import type {
   JWK,
   JWTClaims,
@@ -14,7 +14,13 @@ import type {
   OAuthRefreshTokenClaims,
   OAuthAuthorizationCodeClaims,
 } from "./types";
-import { isScopeSubset, normalizeScope, validatePKCE } from "./utils";
+import {
+  isScopeSubset,
+  normalizeScope,
+  validatePKCE,
+  normalizeAudience,
+  redactToken,
+} from "./utils";
 import {
   type ResolvedTokenOptions,
   DEFAULTS,
@@ -55,6 +61,10 @@ export type OAuthTokenRequest =
        * The scope of the access request.
        */
       scope?: string;
+      /** Optional audience for JWT access token (RFC 9068). */
+      aud?: string | string[];
+      /** Optional client identifier if the caller wishes to pass it explicitly. */
+      client_id?: string;
     }
   | {
       /**
@@ -163,12 +173,17 @@ export function isOAuthAuthorizationCodeRequest(
 export async function oAuthClientCredentials(
   args: Extract<OAuthTokenRequest, { grant_type: "client_credentials" }>,
   options: OAuthTokenOptions,
-  cb?: (
+  cb: (
     opts: ResolvedTokenOptions,
   ) => MaybePromise<JWTClaims & { scope: string }>,
 ): Promise<OAuthTokenResponse> {
   if (!isOAuthCredentialRequest(args)) {
     throw new Error("[OAuth] Invalid client credentials request");
+  }
+  if (!cb) {
+    throw new Error(
+      "[OAuth] Client authentication required for client_credentials",
+    );
   }
 
   const resolved = withTokenDefaults(options);
@@ -181,12 +196,15 @@ export async function oAuthClientCredentials(
     availableScopes,
   } = resolved;
   const scope = normalizeScope(args.scope, defaultScope, availableScopes);
-  const extraClaims = cb ? await cb(resolved) : {};
+  // Allow the callback to act as client authentication gate and to provide audience
+  const extraClaims = await cb(resolved);
+  const aud = normalizeAudience(extraClaims.aud ?? args.aud);
 
   const accessTokenClaims: JWTClaims & { scope: string } = {
     jti: randomJti(),
     ...extraClaims,
     iss: issuer,
+    aud,
     scope,
   };
 
@@ -213,6 +231,7 @@ export async function oAuthAuthorizationCode(
   ) => MaybePromise<{
     accessTokenClaims: JWTClaims & { scope?: string };
     refreshTokenClaims: JWTClaims & { scope?: string };
+    onCodeUsed?: (jti: string) => MaybePromise<void>;
   }>,
 ): Promise<OAuthTokenResponse> {
   if (!isOAuthAuthorizationCodeRequest(args)) {
@@ -238,12 +257,11 @@ export async function oAuthAuthorizationCode(
     jweSecret,
     {
       issuer,
-      subject: client_id,
       ...decryptOptions,
     },
   ).catch(() => {
     console.error(
-      `[OAuth] Invalid authorization code.\n\t${client_id} tried to exchange code with: ${code}`,
+      `[OAuth] Invalid authorization code.\n\tclient=${client_id} code=${redactToken(code)}`,
     );
     throw new Error("[OAuth] Invalid authorization code");
   });
@@ -251,14 +269,17 @@ export async function oAuthAuthorizationCode(
   // Scope comes from the authorization code (preferred) with optional default fallback
   const scope = normalizeScope(payload.scope, defaultScope, availableScopes);
 
-  // Optional: if redirect_uri was present in both the token request and the code, enforce equality
-  if (
-    redirect_uri &&
-    payload.redirect_uri &&
-    redirect_uri !== payload.redirect_uri
-  ) {
+  // Enforce redirect_uri presence and match per OAuth 2.1
+  if (payload.redirect_uri) {
+    if (!redirect_uri || redirect_uri !== payload.redirect_uri) {
+      console.error(
+        `[OAuth] redirect_uri mismatch.\n\tclient=${client_id} sent=${redirect_uri} code=${payload.redirect_uri}`,
+      );
+      throw new Error("[OAuth] Invalid redirect_uri");
+    }
+  } else if (redirect_uri) {
     console.error(
-      `[OAuth] redirect_uri mismatch.\n\t${client_id} sent ${redirect_uri}, code has ${payload.redirect_uri}`,
+      `[OAuth] Unexpected redirect_uri in token request without one in code. client=${client_id}`,
     );
     throw new Error("[OAuth] Invalid redirect_uri");
   }
@@ -273,7 +294,7 @@ export async function oAuthAuthorizationCode(
     ))
   ) {
     console.error(
-      `[OAuth] Invalid PKCE.\n\t${client_id} tried to exchange code with: ${code}`,
+      `[OAuth] Invalid PKCE. client=${client_id} code=${redactToken(code)}`,
     );
     throw new Error("[OAuth] Invalid PKCE");
   }
@@ -285,26 +306,42 @@ export async function oAuthAuthorizationCode(
         refreshTokenClaims: {},
       };
 
+  const aud = normalizeAudience(cbResult.accessTokenClaims.aud);
+  const endUserSub = cbResult.accessTokenClaims.sub || payload.sub;
+  if (!endUserSub) {
+    throw new Error("[OAuth] Missing subject (sub) for access token");
+  }
+
   const newRefreshTokenClaims = {
     jti: randomJti(),
     ...cbResult.refreshTokenClaims,
     iss: issuer,
     scope,
-    sub: client_id,
+    sub: cbResult.refreshTokenClaims.sub || endUserSub,
   };
 
   const newAccessTokenClaims = {
     jti: randomJti(),
     ...cbResult.accessTokenClaims,
     iss: issuer,
+    aud,
     scope,
-    sub: client_id,
+    sub: endUserSub,
+    azp: client_id,
   };
 
   const [access_token, refresh_token] = await Promise.all([
     sign(newAccessTokenClaims, jwsPrivateKey, signOptions),
     encrypt(newRefreshTokenClaims, jweSecret, encryptOptions),
   ]);
+
+  if (cbResult.onCodeUsed) {
+    try {
+      await cbResult.onCodeUsed(payload.jti);
+    } catch (error_) {
+      console.error("[OAuth] onCodeUsed hook failed", error_);
+    }
+  }
 
   return {
     access_token,
@@ -324,6 +361,7 @@ export async function oAuthRefreshToken(
   ) => MaybePromise<{
     accessTokenClaims: JWTClaims & { scope?: string };
     refreshTokenClaims: JWTClaims & { scope?: string };
+    onRefreshUsed?: (jti: string) => MaybePromise<void>;
   }>,
 ): Promise<OAuthTokenResponse> {
   if (!isOAuthRefreshTokenRequest(args)) {
@@ -349,12 +387,11 @@ export async function oAuthRefreshToken(
     jweSecret,
     {
       issuer,
-      subject: client_id,
       ...decryptOptions,
     },
   ).catch(() => {
     console.error(
-      `[OAuth] Invalid refresh token.\n\t${client_id} tried to refresh token with: ${oldRefreshToken}`,
+      `[OAuth] Invalid refresh token. client=${client_id} refresh=${redactToken(oldRefreshToken)}`,
     );
     throw new Error("[OAuth] Invalid refresh token");
   });
@@ -372,7 +409,7 @@ export async function oAuthRefreshToken(
   );
   if (args.scope && !isScopeSubset(requestedScope, originalScope)) {
     console.error(
-      `[OAuth] Invalid scope on refresh.\n\trequested: ${requestedScope}\n\toriginal: ${originalScope}`,
+      `[OAuth] Invalid scope on refresh. requested=${requestedScope} original=${originalScope}`,
     );
     throw new Error("[OAuth] Invalid scope");
   }
@@ -385,26 +422,42 @@ export async function oAuthRefreshToken(
         refreshTokenClaims: {},
       };
 
+  const aud = normalizeAudience(cbResult.accessTokenClaims.aud);
+  const endUserSub = cbResult.accessTokenClaims.sub || payload.sub;
+  if (!endUserSub) {
+    throw new Error("[OAuth] Missing subject (sub) for access token");
+  }
+
   const newRefreshTokenClaims = {
     jti: randomJti(),
     ...cbResult.refreshTokenClaims,
     iss: issuer,
     scope,
-    sub: client_id,
+    sub: cbResult.refreshTokenClaims.sub || endUserSub,
   };
 
   const newAccessTokenClaims = {
     jti: randomJti(),
     ...cbResult.accessTokenClaims,
     iss: issuer,
+    aud,
     scope,
-    sub: client_id,
+    sub: endUserSub,
+    azp: client_id,
   };
 
   const [access_token, refresh_token] = await Promise.all([
     sign(newAccessTokenClaims, jwsPrivateKey, signOptions),
     encrypt(newRefreshTokenClaims, jweSecret, encryptOptions),
   ]);
+
+  if (cbResult.onRefreshUsed) {
+    try {
+      await cbResult.onRefreshUsed(payload.jti);
+    } catch (error_) {
+      console.error("[OAuth] onRefreshUsed hook failed", error_);
+    }
+  }
 
   return {
     access_token,
@@ -413,4 +466,35 @@ export async function oAuthRefreshToken(
     scope,
     refresh_token,
   };
+}
+
+/**
+ * Minimal token revocation helper: decrypts/verifies token to obtain its jti, then invokes onRevoke hook.
+ */
+export async function revokeToken(
+  token: string,
+  kind: "access" | "refresh" | "code",
+  options: OAuthTokenOptions,
+  cb: { onRevoke: (claims: { jti: string }) => MaybePromise<void> },
+): Promise<void> {
+  const { jweSecret, jwsPrivateKey, decryptOptions, verifyOptions, issuer } =
+    options;
+  try {
+    if (kind === "access") {
+      const { payload } = await verify<{ jti: string }>(token, jwsPrivateKey, {
+        issuer,
+        ...verifyOptions,
+      });
+      await cb.onRevoke({ jti: payload.jti });
+    } else {
+      const { payload } = await decrypt<{ jti: string }>(token, jweSecret, {
+        issuer,
+        ...decryptOptions,
+      });
+      await cb.onRevoke({ jti: payload.jti });
+    }
+  } catch {
+    // Spec: revocation should be idempotent; no token details should be logged
+    return;
+  }
 }

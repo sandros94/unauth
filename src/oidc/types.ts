@@ -20,6 +20,11 @@ export interface OIDCIdTokenOptions {
   issuer: string;
   jwsKey: JWK;
   signOptions?: JWSSignOptions;
+  /**
+   * For EdDSA algorithms, specify which hash to use for at_hash/c_hash computation.
+   * Default is "SHA-256". For HS/RS/ES/PS alg families the hash is derived from alg bit length.
+   */
+  eddsaHashAlgorithm?: "SHA-256" | "SHA-384" | "SHA-512";
 }
 
 export interface OIDCBuildIdTokenArgs {

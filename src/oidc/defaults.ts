@@ -22,5 +22,10 @@ export function withIdTokenDefaults(
     expiresIn: signOptions?.expiresIn ?? OIDC_DEFAULTS.idTokenExpiresIn,
   };
 
-  return { issuer, jwsKey, signOptions: resolvedSign };
+  return {
+    issuer,
+    jwsKey,
+    signOptions: resolvedSign,
+    eddsaHashAlgorithm: opts.eddsaHashAlgorithm,
+  };
 }

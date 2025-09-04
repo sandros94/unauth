@@ -44,6 +44,7 @@ import {
   buildDiscoveryDocument,
 } from "./discovery";
 import { introspectToken } from "./utils";
+import { revokeToken } from "./token";
 
 /**
  * Configuration for the OAuth service wrapper.
@@ -202,7 +203,13 @@ export class OAuthProvider {
     cb?: (
       req: OAuthAuthorizeRequest,
       opts: ResolvedAuthorizeOptions,
-    ) => MaybePromise<Partial<JWTClaims> & { scope?: string }>,
+    ) => MaybePromise<
+      Partial<JWTClaims> & {
+        sub: string;
+        scope?: string;
+        client_id?: string;
+      }
+    >,
   ): Promise<OAuthAuthorizeSuccess> {
     return buildAuthorizationCode(req, this.authorizeOptions, cb);
   }
@@ -225,7 +232,7 @@ export class OAuthProvider {
   // Token endpoint helpers
   async tokenClientCredentials(
     req: Extract<OAuthTokenRequest, { grant_type: "client_credentials" }>,
-    cb?: (
+    cb: (
       opts: ResolvedTokenOptions,
     ) => MaybePromise<JWTClaims & { scope: string }>,
   ): Promise<OAuthTokenResponse> {
@@ -240,6 +247,7 @@ export class OAuthProvider {
     ) => MaybePromise<{
       accessTokenClaims: JWTClaims & { scope?: string };
       refreshTokenClaims: JWTClaims & { scope?: string };
+      onCodeUsed?: (jti: string) => MaybePromise<void>;
     }>,
   ): Promise<OAuthTokenResponse> {
     return oAuthAuthorizationCode(req, this.tokenOptions, cb);
@@ -253,6 +261,7 @@ export class OAuthProvider {
     ) => MaybePromise<{
       accessTokenClaims: JWTClaims & { scope?: string };
       refreshTokenClaims: JWTClaims & { scope?: string };
+      onRefreshUsed?: (jti: string) => MaybePromise<void>;
     }>,
   ): Promise<OAuthTokenResponse> {
     return oAuthRefreshToken(req, this.tokenOptions, cb);
@@ -274,6 +283,17 @@ export class OAuthProvider {
       jweSecret: this.activePrivateRefreshKey,
       decryptOptions: this.config.refreshToken?.decryptOptions,
     });
+  }
+
+  /**
+   * Minimal token revocation helper. Extracts jti and calls provided hook.
+   */
+  async revoke(
+    token: string,
+    kind: "access" | "refresh" | "code",
+    cb: { onRevoke: (claims: { jti: string }) => MaybePromise<void> },
+  ): Promise<void> {
+    await revokeToken(token, kind, this.tokenOptions, cb);
   }
 
   /**

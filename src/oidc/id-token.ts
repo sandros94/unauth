@@ -20,6 +20,7 @@ import {
 export async function computeTokenHash(
   value: string,
   jwsAlg: string,
+  eddsaHashAlgorithm: "SHA-256" | "SHA-384" | "SHA-512" = "SHA-512",
 ): Promise<string> {
   if (!jwsAlg) {
     throw new Error("[OIDC] jwsAlg is required to compute token hash");
@@ -40,8 +41,8 @@ export async function computeTokenHash(
     RS512: "SHA-512",
     ES512: "SHA-512",
     PS512: "SHA-512",
-    Ed25519: "SHA-512",
-    EdDSA: "SHA-512",
+    Ed25519: eddsaHashAlgorithm,
+    EdDSA: eddsaHashAlgorithm,
   } satisfies Record<JWSAlgorithm, "SHA-256" | "SHA-384" | "SHA-512">;
   const algorithm = map[alg];
   if (!algorithm) {
@@ -85,6 +86,7 @@ export async function buildIdToken(
     additionalClaims,
   } = args;
   const { issuer, jwsKey, signOptions } = withIdTokenDefaults(options);
+  const eddsaHashAlgorithm = options.eddsaHashAlgorithm || "SHA-512";
   const alg = jwsKey.alg || signOptions.alg;
 
   const extraClaims = cb ? await cb(args, { issuer, jwsKey, signOptions }) : {};
@@ -110,8 +112,10 @@ export async function buildIdToken(
   };
 
   const [at_hash, c_hash] = await Promise.all([
-    alg && access_token ? computeTokenHash(access_token, alg) : undefined,
-    alg && code ? computeTokenHash(code, alg) : undefined,
+    alg && access_token
+      ? computeTokenHash(access_token, alg, eddsaHashAlgorithm)
+      : undefined,
+    alg && code ? computeTokenHash(code, alg, eddsaHashAlgorithm) : undefined,
   ]);
   if (!("at_hash" in claims) && at_hash) {
     claims.at_hash = at_hash;

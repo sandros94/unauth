@@ -155,7 +155,13 @@ export async function buildAuthorizationCode(
   cb?: (
     req: OAuthAuthorizeRequest,
     opts: ResolvedAuthorizeOptions,
-  ) => MaybePromise<Partial<JWTClaims> & { scope?: string }>,
+  ) => MaybePromise<
+    Partial<JWTClaims> & {
+      sub: string;
+      scope?: string;
+      client_id?: string;
+    }
+  >,
 ): Promise<OAuthAuthorizeSuccess> {
   assertAuthorizeRequest(req);
   validateResponseType(req.response_type);
@@ -188,13 +194,24 @@ export async function buildAuthorizationCode(
     );
   }
 
-  const extraClaims = cb ? await cb(req, resolved) : {};
+  const extraClaims = cb
+    ? await cb(req, resolved)
+    : ({} as Partial<JWTClaims> & { sub: string });
+  if (
+    !("sub" in extraClaims) ||
+    typeof extraClaims.sub !== "string" ||
+    !extraClaims.sub
+  ) {
+    throw new OAuthAuthorizeException(
+      "invalid_request",
+      "Missing subject (sub) for end-user in authorization",
+    );
+  }
 
   const claims: Omit<OAuthAuthorizationCodeClaims, "iat"> = {
     jti: randomJti(),
     ...extraClaims,
     iss: issuer,
-    sub: req.client_id,
     scope,
     code_challenge: req.code_challenge,
     code_challenge_method: m,
