@@ -124,7 +124,10 @@ export async function buildIdToken(
     claims.c_hash = c_hash;
   }
 
-  return sign(claims, jwsKey, signOptions);
+  return sign(claims, jwsKey, {
+    protectedHeader: { typ: "at+jwt", ...signOptions.protectedHeader },
+    ...signOptions,
+  });
 }
 
 /**

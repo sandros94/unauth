@@ -344,8 +344,14 @@ export async function oAuthAuthorizationCode(
   };
 
   const [access_token, refresh_token] = await Promise.all([
-    sign(newAccessTokenClaims, jwsPrivateKey, signOptions),
-    encrypt(newRefreshTokenClaims, jweSecret, encryptOptions),
+    sign(newAccessTokenClaims, jwsPrivateKey, {
+      protectedHeader: { typ: "at+jwt", ...signOptions.protectedHeader },
+      ...signOptions,
+    }),
+    encrypt(newRefreshTokenClaims, jweSecret, {
+      protectedHeader: { typ: "at+jwt", ...encryptOptions.protectedHeader },
+      ...encryptOptions,
+    }),
   ]);
 
   if (cbResult.onCodeUsed) {
@@ -472,8 +478,14 @@ export async function oAuthRefreshToken(
   };
 
   const [access_token, refresh_token] = await Promise.all([
-    sign(newAccessTokenClaims, jwsPrivateKey, signOptions),
-    encrypt(newRefreshTokenClaims, jweSecret, encryptOptions),
+    sign(newAccessTokenClaims, jwsPrivateKey, {
+      protectedHeader: { typ: "at+jwt", ...signOptions.protectedHeader },
+      ...signOptions,
+    }),
+    encrypt(newRefreshTokenClaims, jweSecret, {
+      protectedHeader: { typ: "at+jwt", ...encryptOptions.protectedHeader },
+      ...encryptOptions,
+    }),
   ]);
 
   if (cbResult.onRefreshUsed) {
