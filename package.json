@@ -53,5 +53,10 @@
     "unbuild": "^3.6.1",
     "vitest": "^3.2.4"
   },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "@parcel/watcher"
+    ]
+  },
   "packageManager": "pnpm@10.15.0"
 }
