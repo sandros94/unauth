@@ -34,6 +34,10 @@ import type {
   ResolvedAuthorizeOptions,
   ResolvedTokenOptions,
 } from "./defaults";
+import {
+  withAuthorizeDefaults,
+  withTokenDefaults,
+} from "./defaults";
 import type {
   OAuthAccessTokenClaims,
   OAuthAuthorizationCodeClaims,
@@ -77,6 +81,10 @@ export interface OAuthProviderConfig
     encryptOptions?: JWEEncryptOptions;
     decryptOptions?: JWEDecryptOptions;
   };
+}
+
+export interface IntrospectOptions {
+  audience?: string | string[];
 }
 
 export class OAuthProvider {
@@ -268,20 +276,30 @@ export class OAuthProvider {
   }
 
   // Utility to introspect access tokens while validating their claims
-  async introspectAccessToken(token: string) {
+  async introspectAccessToken(token: string, options?: IntrospectOptions) {
+    const { expiresIn } = withTokenDefaults(this.tokenOptions).signOptions;
     return introspectToken<OAuthAccessTokenClaims>(token, {
       issuer: this.config.issuer,
       jwsPrivateKey: this.activePrivateAccessKey,
-      verifyOptions: this.config.accessToken?.verifyOptions,
+      verifyOptions: {
+        maxTokenAge: expiresIn,
+        ...this.config.accessToken?.verifyOptions,
+        ...options,
+      },
     });
   }
 
   // Utility to introspect refresh tokens while validating their claims
-  async introspectRefreshToken(token: string) {
+  async introspectRefreshToken(token: string, options?: IntrospectOptions) {
+    const { expiresIn } = withAuthorizeDefaults(this.tokenOptions).encryptOptions;
     return introspectToken<OAuthRefreshTokenClaims>(token, {
       issuer: this.config.issuer,
       jweSecret: this.activePrivateRefreshKey,
-      decryptOptions: this.config.refreshToken?.decryptOptions,
+      decryptOptions: {
+        maxTokenAge: expiresIn,
+        ...this.config.refreshToken?.decryptOptions,
+        ...options,
+      },
     });
   }
 

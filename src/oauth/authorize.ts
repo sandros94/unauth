@@ -212,6 +212,7 @@ export async function buildAuthorizationCode(
     jti: randomJti(),
     ...extraClaims,
     iss: issuer,
+    client_id: req.client_id,
     scope,
     code_challenge: req.code_challenge,
     code_challenge_method: m,

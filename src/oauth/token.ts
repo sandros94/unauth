@@ -206,6 +206,7 @@ export async function oAuthClientCredentials(
     iss: issuer,
     aud,
     scope,
+    ...(args.client_id ? { client_id: args.client_id } : {}),
   };
 
   const access_token = await sign(
@@ -232,6 +233,7 @@ export async function oAuthAuthorizationCode(
     accessTokenClaims: JWTClaims & { scope?: string };
     refreshTokenClaims: JWTClaims & { scope?: string };
     onCodeUsed?: (jti: string) => MaybePromise<void>;
+    onAuthenticateClient?: (client_id: string) => MaybePromise<void>;
   }>,
 ): Promise<OAuthTokenResponse> {
   if (!isOAuthAuthorizationCodeRequest(args)) {
@@ -268,6 +270,11 @@ export async function oAuthAuthorizationCode(
 
   // Scope comes from the authorization code (preferred) with optional default fallback
   const scope = normalizeScope(payload.scope, defaultScope, availableScopes);
+
+  // Enforce client_id match if present in code
+  if (payload.client_id && payload.client_id !== client_id) {
+    throw new Error("[OAuth] Invalid client_id for authorization code");
+  }
 
   // Enforce redirect_uri presence and match per OAuth 2.1
   if (payload.redirect_uri) {
@@ -306,6 +313,10 @@ export async function oAuthAuthorizationCode(
         refreshTokenClaims: {},
       };
 
+  if (cbResult.onAuthenticateClient) {
+    await cbResult.onAuthenticateClient(client_id);
+  }
+
   const aud = normalizeAudience(cbResult.accessTokenClaims.aud);
   const endUserSub = cbResult.accessTokenClaims.sub || payload.sub;
   if (!endUserSub) {
@@ -318,6 +329,7 @@ export async function oAuthAuthorizationCode(
     iss: issuer,
     scope,
     sub: cbResult.refreshTokenClaims.sub || endUserSub,
+    client_id,
   };
 
   const newAccessTokenClaims = {
@@ -328,6 +340,7 @@ export async function oAuthAuthorizationCode(
     scope,
     sub: endUserSub,
     azp: client_id,
+    client_id,
   };
 
   const [access_token, refresh_token] = await Promise.all([
@@ -362,6 +375,7 @@ export async function oAuthRefreshToken(
     accessTokenClaims: JWTClaims & { scope?: string };
     refreshTokenClaims: JWTClaims & { scope?: string };
     onRefreshUsed?: (jti: string) => MaybePromise<void>;
+    onAuthenticateClient?: (client_id: string) => MaybePromise<void>;
   }>,
 ): Promise<OAuthTokenResponse> {
   if (!isOAuthRefreshTokenRequest(args)) {
@@ -422,10 +436,19 @@ export async function oAuthRefreshToken(
         refreshTokenClaims: {},
       };
 
+  if (cbResult.onAuthenticateClient) {
+    await cbResult.onAuthenticateClient(client_id);
+  }
+
   const aud = normalizeAudience(cbResult.accessTokenClaims.aud);
   const endUserSub = cbResult.accessTokenClaims.sub || payload.sub;
   if (!endUserSub) {
     throw new Error("[OAuth] Missing subject (sub) for access token");
+  }
+
+  // Enforce client_id match if present in refresh token
+  if (payload.client_id && payload.client_id !== client_id) {
+    throw new Error("[OAuth] Invalid client_id for refresh token");
   }
 
   const newRefreshTokenClaims = {
@@ -434,6 +457,7 @@ export async function oAuthRefreshToken(
     iss: issuer,
     scope,
     sub: cbResult.refreshTokenClaims.sub || endUserSub,
+    client_id,
   };
 
   const newAccessTokenClaims = {
@@ -444,6 +468,7 @@ export async function oAuthRefreshToken(
     scope,
     sub: endUserSub,
     azp: client_id,
+    client_id,
   };
 
   const [access_token, refresh_token] = await Promise.all([
@@ -466,6 +491,39 @@ export async function oAuthRefreshToken(
     scope,
     refresh_token,
   };
+}
+
+/** Map JWT claims to an RFC 7662 introspection response shape */
+export function mapIntrospectionResponse(
+  claims: JWTClaims,
+  extras?: Partial<{ token_type: string }>,
+): JWTClaims & {
+  active: boolean;
+  token_type: string;
+} {
+  const { iss, sub, aud, exp, nbf, iat, jti, scope, client_id, ...rest } =
+    claims;
+  const out: JWTClaims & {
+    active: boolean;
+    token_type: string;
+  } = {
+    active: true,
+    iss,
+    sub,
+    aud,
+    exp,
+    nbf,
+    iat,
+    jti,
+    scope,
+    client_id,
+    token_type: extras?.token_type || DEFAULTS.tokenType,
+  };
+  for (const [k, v] of Object.entries(rest)) {
+    if (v === undefined) continue;
+    out[k] = v;
+  }
+  return out;
 }
 
 /**

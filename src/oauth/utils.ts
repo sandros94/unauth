@@ -117,12 +117,14 @@ export async function introspectToken<
     if ("jwsPrivateKey" in opts) {
       const { payload } = await verify<T>(token, opts.jwsPrivateKey, {
         issuer: opts.issuer,
+        typ: "at+jwt",
         ...opts.verifyOptions,
       });
       return { active: true, claims: payload };
     } else if ("jweSecret" in opts) {
       const { payload } = await decrypt<T>(token, opts.jweSecret, {
         issuer: opts.issuer,
+        typ: "at+jwt",
         ...opts.decryptOptions,
       });
       return { active: true, claims: payload };
