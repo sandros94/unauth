@@ -21,10 +21,10 @@ export type GenerateJWKReturn<Alg extends GenerateKeyAlgorithm> =
       }
     : JWK;
 
-export function generateJwk(
-  alg: GenerateKeyAlgorithm,
+export function generateJwk<Alg extends GenerateKeyAlgorithm>(
+  alg: Alg,
   options: GenerateJWKOptions = {},
-): Promise<GenerateJWKReturn<typeof alg>> {
+): Promise<GenerateJWKReturn<Alg>> {
   const {
     // @ts-expect-error destructuring just to avoid passing it down
     toJWK: _,
