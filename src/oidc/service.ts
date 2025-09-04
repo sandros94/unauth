@@ -11,6 +11,7 @@ import { validateOIDCAuthorizeRequest } from "./authorize";
 import { buildIdToken } from "./id-token";
 import type { OIDCBuildIdTokenArgs, OIDCIdTokenClaims } from "./types";
 import { type OIDCDiscoveryOptions, buildDiscoveryDocument } from "./discovery";
+import { type OIDCUserInfoProfile, buildUserInfo } from "./userinfo";
 
 export interface OIDCProviderConfig extends OAuthProviderConfig {
   /**
@@ -166,6 +167,15 @@ export class OIDCProvider extends OAuthProvider {
       ...options,
       issuer: this.issuer,
     });
+  }
+
+  /**
+   * Build a compliant UserInfo response by picking allowed standard claims from a provided profile.
+   */
+  buildUserInfo<T extends Record<string, unknown>>(
+    profile: OIDCUserInfoProfile,
+  ): OIDCUserInfoProfile & T {
+    return buildUserInfo(profile);
   }
 }
 
