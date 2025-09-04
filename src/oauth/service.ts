@@ -222,8 +222,9 @@ export class OAuthProvider {
   buildAuthorizeRedirect<T extends string | URL>(
     redirectUri: T,
     result: OAuthAuthorizeSuccess | OAuthAuthorizeError,
+    options?: { iss?: string },
   ): T {
-    return _buildAuthorizeRedirect<T>(redirectUri, result);
+    return _buildAuthorizeRedirect<T>(redirectUri, result, options);
   }
 
   authorizeError(

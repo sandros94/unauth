@@ -124,7 +124,6 @@ export async function introspectToken<
     } else if ("jweSecret" in opts) {
       const { payload } = await decrypt<T>(token, opts.jweSecret, {
         issuer: opts.issuer,
-        typ: "at+jwt",
         ...opts.decryptOptions,
       });
       return { active: true, claims: payload };

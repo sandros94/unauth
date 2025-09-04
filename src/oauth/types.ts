@@ -15,6 +15,8 @@ export interface OAuthRefreshTokenClaims extends JWTClaims {
   jti: Exclude<JWTClaims["jti"], undefined>;
   /** The scope of the access request. */
   scope?: string;
+  /** Resource Indicators per RFC 8707 as captured during the grant. */
+  resource?: string | string[];
 }
 
 export interface OAuthAuthorizationCodeClaims extends OAuthRefreshTokenClaims {

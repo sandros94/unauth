@@ -34,6 +34,11 @@ export interface OAuthAuthorizeRequestOptional {
    * The requested scope, space-delimited.
    */
   scope?: string;
+  /**
+   * Resource Indicators (RFC 8707). Can be provided multiple times or as a space-delimited list by clients; here we accept string or array.
+   * These will be mapped to the Access Token audience (aud) during token issuance.
+   */
+  resource?: string | string[];
   state?: string;
   /**
    * The code challenge for PKCE.
@@ -217,6 +222,8 @@ export async function buildAuthorizationCode(
     code_challenge: req.code_challenge,
     code_challenge_method: m,
     redirect_uri: req.redirect_uri,
+    // Persist resource indicators so the token endpoint can translate them to aud
+    ...(req.resource ? { resource: req.resource } : {}),
   };
 
   const code = await encrypt(claims, jweSecret, encryptOptions);
@@ -230,17 +237,20 @@ export async function buildAuthorizationCode(
 export function buildAuthorizeRedirect<T extends string | URL>(
   redirectUri: T,
   result: OAuthAuthorizeSuccess | OAuthAuthorizeError,
+  options?: { iss?: string },
 ): T {
   const url = redirectUri instanceof URL ? redirectUri : new URL(redirectUri);
   const params = url.searchParams;
   if ("code" in result) {
     params.set("code", result.code);
     if (result.state) params.set("state", result.state);
+    if (options?.iss) params.set("iss", options.iss);
   } else {
     params.set("error", result.error);
     if (result.error_description)
       params.set("error_description", result.error_description);
     if (result.state) params.set("state", result.state);
+    if (options?.iss) params.set("iss", options.iss);
   }
   url.search = params.toString();
   return (redirectUri instanceof URL ? url : url.toString()) as T;

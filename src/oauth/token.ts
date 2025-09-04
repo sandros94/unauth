@@ -51,6 +51,8 @@ export type OAuthTokenRequest =
        * The scope of the access request.
        */
       scope?: string;
+      /** Optional resource indicator (RFC 8707). If supplied, maps to access token aud. */
+      resource?: string | string[];
     }
   | {
       /**
@@ -63,6 +65,8 @@ export type OAuthTokenRequest =
       scope?: string;
       /** Optional audience for JWT access token (RFC 9068). */
       aud?: string | string[];
+      /** Optional resource indicator (RFC 8707). If supplied and aud is missing, maps to aud. */
+      resource?: string | string[];
       /** Optional client identifier if the caller wishes to pass it explicitly. */
       client_id?: string;
     }
@@ -91,6 +95,8 @@ export type OAuthTokenRequest =
        * @deprecated use `code_challenge` instead.
        */
       redirect_uri?: string;
+      /** Optional resource indicator (RFC 8707). If supplied, maps to access token aud. */
+      resource?: string | string[];
     };
 
 export interface OAuthTokenResponse {
@@ -198,7 +204,7 @@ export async function oAuthClientCredentials(
   const scope = normalizeScope(args.scope, defaultScope, availableScopes);
   // Allow the callback to act as client authentication gate and to provide audience
   const extraClaims = await cb(resolved);
-  const aud = normalizeAudience(extraClaims.aud ?? args.aud);
+  const aud = normalizeAudience(extraClaims.aud ?? args.aud ?? args.resource);
 
   const accessTokenClaims: JWTClaims & { scope: string } = {
     jti: randomJti(),
@@ -317,7 +323,10 @@ export async function oAuthAuthorizationCode(
     await cbResult.onAuthenticateClient(client_id);
   }
 
-  const aud = normalizeAudience(cbResult.accessTokenClaims.aud);
+  // RFC 8707: if aud not provided by callback, use resource from token request or code payload
+  const audSource =
+    cbResult.accessTokenClaims.aud ?? args.resource ?? payload.resource;
+  const aud = normalizeAudience(audSource);
   const endUserSub = cbResult.accessTokenClaims.sub || payload.sub;
   if (!endUserSub) {
     throw new Error("[OAuth] Missing subject (sub) for access token");
@@ -348,10 +357,7 @@ export async function oAuthAuthorizationCode(
       protectedHeader: { typ: "at+jwt", ...signOptions.protectedHeader },
       ...signOptions,
     }),
-    encrypt(newRefreshTokenClaims, jweSecret, {
-      protectedHeader: { typ: "at+jwt", ...encryptOptions.protectedHeader },
-      ...encryptOptions,
-    }),
+    encrypt(newRefreshTokenClaims, jweSecret, encryptOptions),
   ]);
 
   if (cbResult.onCodeUsed) {
@@ -446,7 +452,10 @@ export async function oAuthRefreshToken(
     await cbResult.onAuthenticateClient(client_id);
   }
 
-  const aud = normalizeAudience(cbResult.accessTokenClaims.aud);
+  // RFC 8707: Use callback aud, otherwise resource from refresh request or original token payload
+  const audSource =
+    cbResult.accessTokenClaims.aud ?? args.resource ?? payload.resource;
+  const aud = normalizeAudience(audSource);
   const endUserSub = cbResult.accessTokenClaims.sub || payload.sub;
   if (!endUserSub) {
     throw new Error("[OAuth] Missing subject (sub) for access token");
@@ -464,6 +473,11 @@ export async function oAuthRefreshToken(
     scope,
     sub: cbResult.refreshTokenClaims.sub || endUserSub,
     client_id,
+    ...(args.resource
+      ? { resource: args.resource }
+      : payload.resource
+        ? { resource: payload.resource }
+        : {}),
   };
 
   const newAccessTokenClaims = {
@@ -482,10 +496,7 @@ export async function oAuthRefreshToken(
       protectedHeader: { typ: "at+jwt", ...signOptions.protectedHeader },
       ...signOptions,
     }),
-    encrypt(newRefreshTokenClaims, jweSecret, {
-      protectedHeader: { typ: "at+jwt", ...encryptOptions.protectedHeader },
-      ...encryptOptions,
-    }),
+    encrypt(newRefreshTokenClaims, jweSecret, encryptOptions),
   ]);
 
   if (cbResult.onRefreshUsed) {
@@ -578,7 +589,6 @@ export async function revokeToken(
         exp: number;
       }>(token, jweSecret, {
         issuer,
-        typ: "at+jwt",
         ...decryptOptions,
       });
       await cb.onRevoke({
