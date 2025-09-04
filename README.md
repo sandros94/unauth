@@ -61,6 +61,7 @@ const oidc = new OIDCProvider({
   idToken: { privateKey: idKey.privateKey },
   defaultScope: "openid profile email",
   availableScopes: ["openid", "profile", "email"],
+  jwks: [accessKey.publicKey, idKey.publicKey],
 });
 
 // 1) Authorization endpoint (PKCE required)
