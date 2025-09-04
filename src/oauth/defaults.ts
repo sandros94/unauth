@@ -10,7 +10,8 @@ export const DEFAULTS = Object.freeze({
   authorizationCodeExpiresIn: 600, // 10 minutes
   accessTokenExpiresIn: 3600, // 1 hour
   refreshTokenExpiresIn: 60 * 60 * 24 * 30, // 30 days
-  codeChallengeMethod: "S256" as const,
+  // OAuth 2.1: if code_challenge_method is omitted, default is "plain"
+  codeChallengeMethod: "plain" as const,
   randomJti: () => crypto.randomUUID(),
 });
 

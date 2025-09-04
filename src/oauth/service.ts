@@ -34,7 +34,7 @@ import type {
   ResolvedAuthorizeOptions,
   ResolvedTokenOptions,
 } from "./defaults";
-import { withAuthorizeDefaults, withTokenDefaults } from "./defaults";
+import { withTokenDefaults } from "./defaults";
 import type {
   OAuthAccessTokenClaims,
   OAuthAuthorizationCodeClaims,
@@ -288,9 +288,7 @@ export class OAuthProvider {
 
   // Utility to introspect refresh tokens while validating their claims
   async introspectRefreshToken(token: string, options?: IntrospectOptions) {
-    const { expiresIn } = withAuthorizeDefaults(
-      this.tokenOptions,
-    ).encryptOptions;
+    const { expiresIn } = withTokenDefaults(this.tokenOptions).encryptOptions;
     return introspectToken<OAuthRefreshTokenClaims>(token, {
       issuer: this.config.issuer,
       jweSecret: this.activePrivateRefreshKey,
