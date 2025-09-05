@@ -1,4 +1,4 @@
-import { H3, HTTPError, serve } from "h3";
+import { H3, HTTPError, serve, readBody } from "h3";
 import { OIDCProvider, generateJwk } from "unauth";
 
 // In a real app, load keys from secure storage and rotate periodically.
@@ -97,15 +97,20 @@ app.get("/authorize", async (event) => {
 // Token endpoint (POST)
 // Supports authorization_code, refresh_token, and client_credentials
 app.post("/token", async (event) => {
-  const body = await event.req
-    .formData()
-    .then((f) => Object.fromEntries(f.entries()))
-    .catch(() => undefined);
+  const b = await readBody<{
+    grant_type?: string;
+    code?: string;
+    redirect_uri?: string;
+    client_id?: string;
+    code_verifier?: string;
+    refresh_token?: string;
+    scope?: string;
+    resource?: string | string[];
+    aud?: string | string[];
+  }>(event).catch(() => undefined);
 
-  const b = (body || (await event.req.json().catch(() => ({})))) as Record<
-    string,
-    any
-  >;
+  if (!b) throw HTTPError.status(400, "Invalid or missing request body");
+
   const grantType = b.grant_type as string | undefined;
   if (!grantType) throw HTTPError.status(400, "Missing grant_type");
 
