@@ -7,6 +7,8 @@ import type {
   JWTClaims,
 } from "unjwt";
 import { isPublicJWK, isJWK } from "unjwt/utils";
+import { decrypt } from "unjwt/jwe";
+import { verify } from "unjwt/jws";
 
 import type { MaybePromise } from "../types";
 import type {
@@ -44,7 +46,6 @@ import {
   type OAuthDiscoveryOptions,
   buildDiscoveryDocument,
 } from "./discovery";
-import { introspectToken } from "./utils";
 import { revokeToken } from "./token";
 
 /**
@@ -273,32 +274,33 @@ export class OAuthProvider {
     return oAuthRefreshToken(req, this.tokenOptions, cb);
   }
 
-  // Utility to introspect access tokens while validating their claims
-  async introspectAccessToken(token: string, options?: IntrospectOptions) {
-    const { expiresIn } = withTokenDefaults(this.tokenOptions).signOptions;
-    return introspectToken<OAuthAccessTokenClaims>(token, {
-      issuer: this.config.issuer,
-      jwsPrivateKey: this.activePrivateAccessKey,
-      verifyOptions: {
-        maxTokenAge: expiresIn,
-        ...this.config.accessToken?.verifyOptions,
-        ...options,
-      },
-    });
-  }
-
   // Utility to introspect refresh tokens while validating their claims
   async introspectRefreshToken(token: string, options?: IntrospectOptions) {
     const { expiresIn } = withTokenDefaults(this.tokenOptions).encryptOptions;
-    return introspectToken<OAuthRefreshTokenClaims>(token, {
+
+    const { payload } = await decrypt<OAuthRefreshTokenClaims>(token, this.activePrivateRefreshKey, {
       issuer: this.config.issuer,
-      jweSecret: this.activePrivateRefreshKey,
-      decryptOptions: {
-        maxTokenAge: expiresIn,
-        ...this.config.refreshToken?.decryptOptions,
-        ...options,
-      },
+      maxTokenAge: expiresIn,
+      ...this.config.refreshToken?.decryptOptions,
+      ...options,
     });
+
+    return { active: true, claims: payload };
+  }
+
+  // Utility to introspect access tokens while validating their claims
+  async introspectAccessToken(token: string, options?: IntrospectOptions) {
+    const { expiresIn } = withTokenDefaults(this.tokenOptions).signOptions;
+
+    const { payload } = await verify<OAuthAccessTokenClaims>(token, this.getPublicJwks() || this.activePrivateAccessKey, {
+      issuer: this.config.issuer,
+      typ: "at+jwt",
+      maxTokenAge: expiresIn,
+      ...this.config.accessToken?.verifyOptions,
+      ...options,
+    });
+
+    return { active: true, claims: payload };
   }
 
   /**

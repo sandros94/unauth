@@ -1,13 +1,4 @@
 import { hash, secureCompare } from "unsecure";
-import { decrypt } from "unjwt/jwe";
-import { verify } from "unjwt/jws";
-
-import type {
-  OAuthRefreshTokenClaims,
-  OAuthAuthorizationCodeClaims,
-  OAuthAccessTokenClaims,
-} from "./types";
-import type { OAuthTokenOptions } from "./token";
 
 /**
  * PKCE verification helper shared with authorize.ts semantics
@@ -86,53 +77,6 @@ export function buildAuthorizeErrorParams(
   if (description) params.push(["error_description", description]);
   if (state) params.push(["state", state]);
   return params;
-}
-
-/**
- * Utility to introspect tokens.
- * For authorization code and refresh tokens (JWE), decrypts it; for access tokens (JWS), verifies it.
- */
-export async function introspectToken<T extends OAuthAccessTokenClaims>(
-  token: string,
-  opts: Pick<OAuthTokenOptions, "issuer" | "jwsPrivateKey" | "verifyOptions">,
-): Promise<{ active: boolean; claims?: T }>;
-export async function introspectToken<
-  T extends OAuthRefreshTokenClaims | OAuthAuthorizationCodeClaims,
->(
-  token: string,
-  opts: Pick<OAuthTokenOptions, "issuer" | "jweSecret" | "decryptOptions">,
-): Promise<{ active: boolean; claims?: T }>;
-export async function introspectToken<
-  T extends
-    | OAuthRefreshTokenClaims
-    | OAuthAuthorizationCodeClaims
-    | OAuthAccessTokenClaims,
->(
-  token: string,
-  opts:
-    | Pick<OAuthTokenOptions, "issuer" | "jweSecret" | "decryptOptions">
-    | Pick<OAuthTokenOptions, "issuer" | "jwsPrivateKey" | "verifyOptions">,
-): Promise<{ active: boolean; claims?: T }> {
-  try {
-    if ("jwsPrivateKey" in opts) {
-      const { payload } = await verify<T>(token, opts.jwsPrivateKey, {
-        issuer: opts.issuer,
-        typ: "at+jwt",
-        ...opts.verifyOptions,
-      });
-      return { active: true, claims: payload };
-    } else if ("jweSecret" in opts) {
-      const { payload } = await decrypt<T>(token, opts.jweSecret, {
-        issuer: opts.issuer,
-        ...opts.decryptOptions,
-      });
-      return { active: true, claims: payload };
-    } else {
-      throw new Error("[OAuth] Unsupported token type");
-    }
-  } catch {
-    return { active: false, claims: undefined };
-  }
 }
 
 /**
