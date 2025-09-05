@@ -26,7 +26,6 @@ export async function computeTokenHash(
     throw new Error("[OIDC] jwsAlg is required to compute token hash");
   }
 
-  const alg = jwsAlg.toUpperCase();
   // Map JOSE alg to underlying hash algorithm length
   const map: Record<string, "SHA-256" | "SHA-384" | "SHA-512"> = {
     HS256: "SHA-256",
@@ -44,7 +43,7 @@ export async function computeTokenHash(
     Ed25519: eddsaHashAlgorithm,
     EdDSA: eddsaHashAlgorithm,
   } satisfies Record<JWSAlgorithm, "SHA-256" | "SHA-384" | "SHA-512">;
-  const algorithm = map[alg];
+  const algorithm = map[jwsAlg];
   if (!algorithm) {
     throw new Error(`[OIDC] Unsupported JWS alg for *_hash: ${jwsAlg}`);
   }
