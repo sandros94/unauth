@@ -4,7 +4,7 @@ import { OIDCProvider, generateJwk } from "unauth";
 // In a real app, load keys from secure storage and rotate periodically.
 const [accessKey, idKey] = await Promise.all([
   generateJwk("Ed25519", { params: { kid: "at-1" } }),
-  generateJwk("Ed25519", { params: { kid: "id-1" } }),
+  generateJwk("RS256", { params: { kid: "id-1" } }),
 ]);
 const refreshKey = "a-strong-secret"; // can also be a JWK
 
@@ -33,6 +33,14 @@ app.get("/.well-known/openid-configuration", () => {
 
 // JWKS (public keys)
 app.get("/.well-known/jwks.json", () => oidc.getPublicJwks());
+
+// Simple callback endpoint for manual testing; not used by the scripted test (which intercepts the Location header)
+app.get("/callback", (event) => {
+  const q = event.url.searchParams;
+  const code = q.get("code");
+  const state = q.get("state");
+  return `Callback received. code=${code ?? "<none>"} state=${state ?? "<none>"}`;
+});
 
 // Authorization endpoint (GET)
 // Validates OIDC request (requires scope=openid and PKCE), issues code, and redirects back to client.
@@ -89,6 +97,7 @@ app.get("/authorize", async (event) => {
     }
     throw new HTTPError("Invalid authorization request", {
       status: 400,
+      statusText: error_?.message,
       cause: error_,
     });
   }
@@ -191,6 +200,7 @@ app.post("/token", async (event) => {
   } catch (error_) {
     throw new HTTPError("Invalid token request", {
       status: 400,
+      statusText: error_?.message,
       cause: error_,
     });
   }
