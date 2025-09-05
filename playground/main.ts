@@ -24,11 +24,7 @@ const oidc = new OIDCProvider({
 
 // OpenID Provider Configuration (Discovery)
 app.get("/.well-known/openid-configuration", () => {
-  return oidc.getDiscoveryDocument({
-    authorization_endpoint: `${issuer}/authorize`,
-    token_endpoint: `${issuer}/token`,
-    userinfo_endpoint: `${issuer}/userinfo`,
-  });
+  return oidc.getDiscoveryDocument();
 });
 
 // JWKS (public keys)

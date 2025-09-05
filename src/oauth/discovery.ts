@@ -20,13 +20,13 @@ export type OAuthDiscoveryDocument = ParseType<
 export function buildDiscoveryDocument(
   opts: OAuthDiscoveryOptions,
 ): OAuthDiscoveryDocument {
-  const base = opts.issuer.replace(/\/+$/, "");
+  const issuer = opts.issuer.replace(/\/+$/, "");
   return {
-    issuer: opts.issuer,
-    jwks_uri: opts.jwks_uri || `${base}/.well-known/jwks.json`,
-    authorization_endpoint: opts.authorization_endpoint || `${base}/authorize`,
-    token_endpoint: opts.token_endpoint || `${base}/token`,
-    introspection_endpoint: opts.introspection_endpoint || `${base}/introspect`,
+    issuer,
+    jwks_uri: opts.jwks_uri || `${issuer}/.well-known/jwks.json`,
+    authorization_endpoint: opts.authorization_endpoint || `${issuer}/authorize`,
+    token_endpoint: opts.token_endpoint || `${issuer}/token`,
+    introspection_endpoint: opts.introspection_endpoint || `${issuer}/introspect`,
     response_types_supported: opts.response_types_supported ?? ["code"],
     scopes_supported: opts.scopes_supported ?? [],
     default_scope: opts.default_scope,
