@@ -1,7 +1,7 @@
 import type { JWSSignOptions } from "unjwt";
-import type { OIDCIdTokenOptions } from "./types";
+import type { Require } from "../../types";
 
-import type { Require } from "../types";
+import type { OIDCIdTokenOptions } from "../types";
 
 export const OIDC_DEFAULTS = Object.freeze({
   idTokenExpiresIn: 3600, // 1 hour

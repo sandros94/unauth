@@ -78,13 +78,3 @@ export function buildAuthorizeErrorParams(
   if (state) params.push(["state", state]);
   return params;
 }
-
-/**
- * Redact a sensitive token for logging: keep prefix and last 4 characters.
- */
-export function redactToken(token: string, prefixLen = 6): string {
-  if (!token) return "<empty>";
-  const start = token.slice(0, Math.max(0, prefixLen));
-  const end = token.slice(-4);
-  return `${start}…${end}`;
-}

@@ -2,16 +2,25 @@ import type { JWK, JWSSignOptions, JWSVerifyOptions, JWTClaims } from "unjwt";
 import { verify } from "unjwt/jws";
 import { isJWK, isPublicJWK } from "unjwt/utils";
 
-import { type OAuthProviderConfig, OAuthProvider } from "../oauth/service";
 import type { MaybePromise } from "../types";
-import type { OAuthAuthorizeSuccess } from "../oauth/authorize";
-import type { ResolvedAuthorizeOptions } from "../oauth/defaults";
-import type { OIDCAuthorizeRequest } from "./authorize";
-import { validateOIDCAuthorizeRequest } from "./authorize";
-import { buildIdToken } from "./id-token";
+
+import { type OAuthProviderConfig, OAuthProvider } from "../oauth";
+import type {
+  OAuthAuthorizeSuccess,
+  ResolvedAuthorizeOptions,
+} from "../oauth/internal";
+import type {
+  OIDCAuthorizeRequest,
+  OIDCDiscoveryOptions,
+  OIDCUserInfoProfile,
+} from "./internal";
+import {
+  buildIdToken,
+  buildOIDCDiscoveryDocument,
+  buildUserInfo,
+  validateOIDCAuthorizeRequest,
+} from "./internal";
 import type { OIDCBuildIdTokenArgs, OIDCIdTokenClaims } from "./types";
-import { type OIDCDiscoveryOptions, buildDiscoveryDocument } from "./discovery";
-import { type OIDCUserInfoProfile, buildUserInfo } from "./userinfo";
 
 export interface OIDCProviderConfig extends OAuthProviderConfig {
   /**
@@ -163,7 +172,7 @@ export class OIDCProvider extends OAuthProvider {
   override getDiscoveryDocument(
     options?: Omit<OIDCDiscoveryOptions, "issuer">,
   ) {
-    return buildDiscoveryDocument({
+    return buildOIDCDiscoveryDocument({
       ...options,
       issuer: this.issuer,
     });

@@ -3,7 +3,7 @@ import {
   validatePKCE,
   normalizeScope,
   isScopeSubset,
-} from "../src/oauth/utils";
+} from "../src/oauth/internal";
 import { hash } from "unsecure";
 
 describe("oauth/utils", () => {

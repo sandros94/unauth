@@ -37,3 +37,17 @@ export function generateJwk<Alg extends GenerateKeyAlgorithm>(
     toJWK: (params as object) || true,
   });
 }
+
+/**
+ * Redact a sensitive token for logging: keep prefix and last 4 characters.
+ */
+export function redactToken(
+  token: string,
+  options: { prefixLen?: number; suffixLen?: number } = {},
+): string {
+  const { prefixLen = 6, suffixLen = 4 } = options;
+  if (!token) return "<empty>";
+  const start = token.slice(0, Math.max(0, prefixLen));
+  const end = token.slice(Math.max(0, token.length - suffixLen));
+  return `${start}…${end}`;
+}

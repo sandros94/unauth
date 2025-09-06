@@ -3,13 +3,13 @@ import { hash } from "unsecure";
 import { verify } from "unjwt/jws";
 
 import {
-  computeTokenHash,
   buildIdToken,
+  buildOIDCDiscoveryDocument,
+  buildUserInfo,
+  computeTokenHash,
+  validateOIDCAuthorizeRequest,
   verifyIdTokenHashes,
-} from "../src/oidc/id-token";
-import { buildDiscoveryDocument } from "../src/oidc/discovery";
-import { validateOIDCAuthorizeRequest } from "../src/oidc/authorize";
-import { buildUserInfo } from "../src/oidc/userinfo";
+} from "../src/oidc/internal";
 
 import type { JWK } from "unjwt";
 
@@ -100,7 +100,7 @@ describe("oidc/id-token > build & verify", () => {
 
 describe("oidc/discovery", () => {
   it("builds a discovery document with defaults", () => {
-    const doc = buildDiscoveryDocument({
+    const doc = buildOIDCDiscoveryDocument({
       issuer: "https://i",
       authorization_endpoint: "https://i/auth",
       token_endpoint: "https://i/token",

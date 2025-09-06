@@ -16,37 +16,29 @@ import type {
   OAuthAuthorizeRequest,
   OAuthAuthorizeSuccess,
   OAuthAuthorizeError,
-} from "./authorize";
+  OAuthDiscoveryOptions,
+  OAuthTokenOptions,
+  OAuthTokenRequest,
+  OAuthTokenResponse,
+  ResolvedAuthorizeOptions,
+  ResolvedTokenOptions,
+} from "./internal";
 import {
   authorizeError as _authorizeError,
   buildAuthorizationCode,
   buildAuthorizeRedirect as _buildAuthorizeRedirect,
-} from "./authorize";
-import {
   oAuthAuthorizationCode,
   oAuthClientCredentials,
   oAuthRefreshToken,
-} from "./token";
-import type {
-  OAuthTokenOptions,
-  OAuthTokenRequest,
-  OAuthTokenResponse,
-} from "./token";
-import type {
-  ResolvedAuthorizeOptions,
-  ResolvedTokenOptions,
-} from "./defaults";
-import { withTokenDefaults } from "./defaults";
+  withTokenDefaults,
+  buildOAuthDiscoveryDocument,
+  revokeToken,
+} from "./internal";
 import type {
   OAuthAccessTokenClaims,
   OAuthAuthorizationCodeClaims,
   OAuthRefreshTokenClaims,
 } from "./types";
-import {
-  type OAuthDiscoveryOptions,
-  buildDiscoveryDocument,
-} from "./discovery";
-import { revokeToken } from "./token";
 
 /**
  * Configuration for the OAuth service wrapper.
@@ -336,7 +328,7 @@ export class OAuthProvider {
    * Minimal discovery document suitable for .well-known/oauth-configuration.
    */
   getDiscoveryDocument(options?: Omit<OAuthDiscoveryOptions, "issuer">) {
-    return buildDiscoveryDocument({
+    return buildOAuthDiscoveryDocument({
       ...options,
       issuer: this.issuer,
     });

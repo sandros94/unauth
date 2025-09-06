@@ -1,4 +1,4 @@
-import type { OAuthAuthorizeRequest } from "../oauth/authorize";
+import type { OAuthAuthorizeRequest } from "../../oauth/internal";
 
 /**
  * Extend OAuth authorize request with OIDC parameters.

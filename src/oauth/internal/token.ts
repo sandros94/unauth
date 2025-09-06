@@ -9,17 +9,17 @@ import type {
 } from "unjwt";
 
 import type { OAuthAuthorizeOptions } from "./authorize";
-import type { MaybePromise } from "../types/index";
+import type { MaybePromise } from "../../types";
+import { redactToken } from "../../utils";
 import type {
   OAuthRefreshTokenClaims,
   OAuthAuthorizationCodeClaims,
-} from "./types";
+} from "../types";
 import {
   isScopeSubset,
   normalizeScope,
   validatePKCE,
   normalizeAudience,
-  redactToken,
 } from "./utils";
 import {
   type ResolvedTokenOptions,

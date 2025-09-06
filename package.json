@@ -19,9 +19,17 @@
       "types": "./dist/oauth.d.mts",
       "default": "./dist/oauth.mjs"
     },
+    "./oauth/internal": {
+      "types": "./dist/oauth/internal.d.mts",
+      "default": "./dist/oauth/internal.mjs"
+    },
     "./oidc": {
       "types": "./dist/oidc.d.mts",
       "default": "./dist/oidc.mjs"
+    },
+    "./oidc/internal": {
+      "types": "./dist/oidc/internal.d.mts",
+      "default": "./dist/oidc/internal.mjs"
     },
     "./utils": {
       "types": "./dist/utils.d.mts",

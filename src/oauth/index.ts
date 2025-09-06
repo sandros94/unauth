@@ -1,7 +1,4 @@
+export type * from "./internal";
 export type * from "./types";
 
-export * from "./authorize";
-export * from "./token";
-export * from "./utils";
-export * from "./defaults";
-export * from "./service";
+export * from "./provider";

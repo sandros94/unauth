@@ -1,8 +1,8 @@
 import { encrypt } from "unjwt/jwe";
 import type { JWK, JWEEncryptOptions, JWTClaims } from "unjwt";
 
-import type { MaybePromise } from "../types/index";
-import type { OAuthAuthorizationCodeClaims } from "./types";
+import type { MaybePromise } from "../../types";
+import type { OAuthAuthorizationCodeClaims } from "../types";
 import { normalizeScope } from "./utils";
 import {
   type ResolvedAuthorizeOptions,

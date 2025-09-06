@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateKey } from "unjwt/jwk";
 import { type JWTClaims, verify } from "unjwt/jws";
 
-import { OIDCProvider } from "../src/oidc/service";
+import { OIDCProvider } from "../src/oidc";
 
 describe("OIDCProvider", async () => {
   const issuer = "https://op.example";

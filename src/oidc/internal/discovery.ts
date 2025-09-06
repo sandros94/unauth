@@ -1,8 +1,8 @@
+import type { ParseType } from "../../types";
 import {
   type OAuthDiscoveryOptions,
-  buildDiscoveryDocument as buildOAuthDD,
-} from "../oauth/discovery";
-import type { ParseType } from "../types";
+  buildOAuthDiscoveryDocument,
+} from "../../oauth/internal";
 
 export interface OIDCDiscoveryOptions extends OAuthDiscoveryOptions {
   userinfo_endpoint?: string;
@@ -19,11 +19,11 @@ export type OIDCDiscoveryDocument = ParseType<
 /**
  * Build a minimal OpenID Provider Configuration (discovery) document.
  */
-export function buildDiscoveryDocument(
+export function buildOIDCDiscoveryDocument(
   opts: OIDCDiscoveryOptions,
 ): OIDCDiscoveryDocument {
   const issuer = opts.issuer.replace(/\/+$/, "");
-  const oauthDocument = buildOAuthDD({ ...opts, issuer });
+  const oauthDocument = buildOAuthDiscoveryDocument({ ...opts, issuer });
   return {
     ...oauthDocument,
     userinfo_endpoint: opts.userinfo_endpoint || `${issuer}/userinfo`,

@@ -1,4 +1,4 @@
-import type { ParseType } from "../types";
+import type { ParseType } from "../../types";
 
 export interface OAuthDiscoveryOptions {
   issuer: string;
@@ -17,16 +17,18 @@ export type OAuthDiscoveryDocument = ParseType<
   }
 >;
 
-export function buildDiscoveryDocument(
+export function buildOAuthDiscoveryDocument(
   opts: OAuthDiscoveryOptions,
 ): OAuthDiscoveryDocument {
   const issuer = opts.issuer.replace(/\/+$/, "");
   return {
     issuer,
     jwks_uri: opts.jwks_uri || `${issuer}/.well-known/jwks.json`,
-    authorization_endpoint: opts.authorization_endpoint || `${issuer}/authorize`,
+    authorization_endpoint:
+      opts.authorization_endpoint || `${issuer}/authorize`,
     token_endpoint: opts.token_endpoint || `${issuer}/token`,
-    introspection_endpoint: opts.introspection_endpoint || `${issuer}/introspect`,
+    introspection_endpoint:
+      opts.introspection_endpoint || `${issuer}/introspect`,
     response_types_supported: opts.response_types_supported ?? ["code"],
     scopes_supported: opts.scopes_supported ?? [],
     default_scope: opts.default_scope,

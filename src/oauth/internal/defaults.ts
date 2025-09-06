@@ -3,7 +3,7 @@ import type { JWEEncryptOptions, JWSSignOptions } from "unjwt";
 import type { OAuthTokenOptions } from "./token";
 import type { OAuthAuthorizeOptions } from "./authorize";
 
-import type { Require } from "../types";
+import type { Require } from "../../types";
 
 export const DEFAULTS = Object.freeze({
   tokenType: "Bearer" as const,

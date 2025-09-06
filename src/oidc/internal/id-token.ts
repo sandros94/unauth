@@ -1,13 +1,14 @@
-import { type JWSAlgorithm, sign } from "unjwt/jws";
+import type { JWSAlgorithm, JWTClaims } from "unjwt";
 import { hash, secureCompare } from "unsecure";
+import { sign } from "unjwt/jws";
 
-import type { JWTClaims } from "unjwt";
-import type { MaybePromise } from "../types/index";
+import type { MaybePromise } from "../../types";
+
 import type {
   OIDCBuildIdTokenArgs,
   OIDCIdTokenClaims,
   OIDCIdTokenOptions,
-} from "./types";
+} from "../types";
 import {
   type ResolvedOIDCIdTokenOptions,
   withIdTokenDefaults,

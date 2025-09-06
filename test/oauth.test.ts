@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { generateKey } from "unjwt/jwk";
 import { type JWTClaims, verify } from "unjwt/jws";
 
-import { OAuthProvider } from "../src/oauth/service";
+import { OAuthProvider } from "../src/oauth";
 
 describe("OAuthProvider", async () => {
   const issuer = "https://as.example";
