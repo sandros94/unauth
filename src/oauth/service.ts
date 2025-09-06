@@ -278,29 +278,41 @@ export class OAuthProvider {
   async introspectAccessToken(token: string, options?: IntrospectOptions) {
     const { expiresIn } = withTokenDefaults(this.tokenOptions).signOptions;
 
-    const { payload } = await verify<OAuthAccessTokenClaims>(token, this.getPublicJwks() || this.activePrivateAccessKey, {
-      issuer: this.config.issuer,
-      typ: "at+jwt",
-      maxTokenAge: expiresIn,
-      ...this.config.accessToken?.verifyOptions,
-      ...options,
-    });
+    const at = await verify<OAuthAccessTokenClaims>(
+      token,
+      this.getPublicJwks() || this.activePrivateAccessKey,
+      {
+        issuer: this.config.issuer,
+        typ: "at+jwt",
+        maxTokenAge: expiresIn,
+        ...this.config.accessToken?.verifyOptions,
+        ...options,
+      },
+    ).catch(() => undefined);
 
-    return { active: true, claims: payload };
+    if (!at?.payload) return { active: false };
+
+    return { active: true, claims: at.payload };
   }
 
   // Utility to introspect refresh tokens while validating their claims
   async introspectRefreshToken(token: string, options?: IntrospectOptions) {
     const { expiresIn } = withTokenDefaults(this.tokenOptions).encryptOptions;
 
-    const { payload } = await decrypt<OAuthRefreshTokenClaims>(token, this.activePrivateRefreshKey, {
-      issuer: this.config.issuer,
-      maxTokenAge: expiresIn,
-      ...this.config.refreshToken?.decryptOptions,
-      ...options,
-    });
+    const rt = await decrypt<OAuthRefreshTokenClaims>(
+      token,
+      this.activePrivateRefreshKey,
+      {
+        issuer: this.config.issuer,
+        maxTokenAge: expiresIn,
+        ...this.config.refreshToken?.decryptOptions,
+        ...options,
+      },
+    ).catch(() => undefined);
 
-    return { active: true, claims: payload };
+    if (!rt?.payload) return { active: false };
+
+    return { active: true, claims: rt.payload };
   }
 
   /**
