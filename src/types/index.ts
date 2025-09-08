@@ -1,5 +1,9 @@
 export type MaybePromise<T> = T | Promise<T>;
 
+export type PartialDeep<T> = ParseType<{
+  [K in keyof T]?: ParseType<PartialDeep<T[K]>>;
+}>;
+
 export type ParseType<T> = {
   [K in keyof T]: T[K];
 } & {};

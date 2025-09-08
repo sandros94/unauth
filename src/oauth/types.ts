@@ -26,6 +26,8 @@ export interface OAuthAuthorizationCodeClaims extends OAuthRefreshTokenClaims {
   code_challenge_method?: "plain" | "S256";
   /** The scope of the access request. */
   scope?: string;
+  /** The redirect URI used in the authorization request, if any. */
+  redirect_uri?: string;
   // Note: redirect_uri may be added at runtime; the base JWTClaims is open for additional fields.
 }
 

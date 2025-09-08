@@ -18,31 +18,8 @@ export async function validatePKCE(
   return secureCompare(codeChallenge, hashedVerifier);
 }
 
-export function normalizeScope(
-  requested: string | undefined,
-  fallback: string | undefined,
-  available?: string[],
-): string {
-  const raw = (requested || fallback || "").trim();
-  if (!raw) {
-    throw new Error("[OAuth] Missing scope");
-  }
-
-  const tokens = raw.split(/\s+/g).filter(Boolean);
-  const deduped = [...new Set(tokens)];
-  if (available && available.length > 0) {
-    for (const s of deduped) {
-      if (!available.includes(s)) {
-        throw new Error(`[OAuth] Invalid scope: ${s}`);
-      }
-    }
-  }
-
-  return deduped.join(" ");
-}
-
-export function isScopeSubset(requested: string, original: string): boolean {
-  const set = new Set(original.split(/\s+/g).filter(Boolean));
+export function isScopeSubset(requested: string, available: string[]): boolean {
+  const set = new Set(available);
   return requested
     .split(/\s+/g)
     .filter(Boolean)

@@ -1,94 +1,237 @@
-import type { JWEEncryptOptions, JWSSignOptions } from "unjwt";
-
-import type { OAuthTokenOptions } from "./token";
-import type { OAuthAuthorizeOptions } from "./authorize";
+import type {
+  JWK,
+  JWEEncryptOptions,
+  JWEDecryptOptions,
+  JWSSignOptions,
+  JWSVerifyOptions,
+} from "unjwt";
 
 import type { Require } from "../../types";
+import { mergeArrays } from "../../utils";
 
-export const DEFAULTS = Object.freeze({
+export const DEFAULTS_OPTIONS = Object.freeze({
   tokenType: "Bearer" as const,
-  authorizationCodeExpiresIn: 600, // 10 minutes
-  accessTokenExpiresIn: 3600, // 1 hour
-  refreshTokenExpiresIn: 60 * 60 * 24 * 30, // 30 days
+  randomJti: () => crypto.randomUUID(),
+  currentDate: new Date(),
   // OAuth 2.1: if code_challenge_method is omitted, default is "plain"
   codeChallengeMethod: "plain" as const,
-  randomJti: () => crypto.randomUUID(),
+  authorizationCode: {
+    expiresIn: 60 * 10, // 10 minutes
+  },
+  refreshToken: {
+    expiresIn: 60 * 60 * 24 * 30, // 30 days
+  },
+  accessToken: {
+    expiresIn: 60 * 60, // 1 hour
+  },
 });
 
-export type ResolvedAuthorizeOptions = Require<
-  OAuthAuthorizeOptions,
-  "randomJti" | "encryptOptions.expiresIn"
+export interface AuthorizationCodeOptions {
+  /**
+   * The secret or private key to sign the authorization code token.
+   */
+  privateKey: string | JWK;
+  /**
+   * Options for encrypting the authorization code token.
+   */
+  encryptOptions?: JWEEncryptOptions;
+  /**
+   * Options for decrypting the authorization code token.
+   */
+  decryptOptions?: JWEDecryptOptions;
+}
+
+export type RefreshTokenOptions = AuthorizationCodeOptions;
+
+export interface AuthorizationCodeOptions {
+  /**
+   * The secret or private key to sign the authorization code token.
+   */
+  privateKey: string | JWK;
+  /**
+   * Options for encrypting the authorization code token.
+   */
+  encryptOptions?: JWEEncryptOptions;
+  /**
+   * Options for decrypting the authorization code token.
+   */
+  decryptOptions?: JWEDecryptOptions;
+}
+
+export interface AccessTokenOptions {
+  /**
+   * The private key to sign the access token.
+   */
+  privateKey: JWK;
+  /**
+   * Options for signing the access token.
+   */
+  signOptions?: JWSSignOptions;
+  /**
+   * Options for verifying the access token.
+   */
+  verifyOptions?: JWSVerifyOptions;
+}
+
+export interface OAuthOptions {
+  /**
+   * The issuer identifier.
+   */
+  issuer: string;
+  /**
+   * A function to generate a unique identifier for tokens.
+   */
+  randomJti?: () => string;
+  /**
+   * The current date to use for issued at (iat) claims. Defaults to `new Date()`.
+   */
+  currentDate?: Date;
+  /**
+   * The default code_challenge_method if not provided in the request (OAuth 2.1 suggests "S256", but specifies "plain" as default).
+   */
+  defaultCodeChallengeMethod?: "plain" | "S256";
+  /**
+   * The default authorization scope.
+   */
+  defaultScope?: string;
+  /**
+   * Allowed scopes configuration (optional). If provided, membership will be validated.
+   */
+  availableScopes?: string[];
+  /**
+   * Authorization Code options.
+   */
+  authorizationCode: AuthorizationCodeOptions;
+  /**
+   * Refresh Token options.
+   */
+  refreshToken: RefreshTokenOptions;
+  /**
+   * Access Token options.
+   */
+  accessToken: AccessTokenOptions;
+}
+
+export type ResolvedAuthorizationCodeOptions = Require<
+  AuthorizationCodeOptions,
+  "encryptOptions.expiresIn" | "encryptOptions.currentDate"
 >;
 
-export type ResolvedTokenOptions = Require<
-  OAuthTokenOptions,
-  "randomJti" | "encryptOptions.expiresIn" | "signOptions.expiresIn"
+export type ResolvedRefreshTokenOptions = ResolvedAuthorizationCodeOptions;
+
+export type ResolvedAccessTokenOptions = Require<
+  AccessTokenOptions,
+  "signOptions.expiresIn" | "signOptions.currentDate"
 >;
+
+export type ResolvedOAuthOptions = Require<
+  Omit<OAuthOptions, "authorizationCode" | "refreshToken" | "accessToken">,
+  "randomJti" | "currentDate" | "defaultCodeChallengeMethod"
+> & {
+  authorizationCode: ResolvedAuthorizationCodeOptions;
+  refreshToken: ResolvedRefreshTokenOptions;
+  accessToken: ResolvedAccessTokenOptions;
+};
 
 /**
- * Apply defaults for the Authorization endpoint helpers.
+ * Apply defaults for the Authorization Code helpers.
  */
-export function withAuthorizeDefaults<T extends OAuthAuthorizeOptions>(
+export function authorizationCodeDefaults<T extends AuthorizationCodeOptions>(
   opts: T,
-): ResolvedAuthorizeOptions {
-  const encryptOptions: JWEEncryptOptions & { expiresIn: number } =
-    opts.encryptOptions
-      ? ({
-          ...opts.encryptOptions,
-          expiresIn:
-            opts.encryptOptions.expiresIn ??
-            DEFAULTS.authorizationCodeExpiresIn,
-        } as JWEEncryptOptions & { expiresIn: number })
-      : ({
-          expiresIn: DEFAULTS.authorizationCodeExpiresIn,
-        } as JWEEncryptOptions & { expiresIn: number });
-
+): ResolvedAuthorizationCodeOptions {
   return {
-    issuer: opts.issuer,
-    jweSecret: opts.jweSecret,
-    encryptOptions,
-    randomJti: opts.randomJti || DEFAULTS.randomJti,
-    defaultScope: opts.defaultScope,
-    availableScopes: opts.availableScopes,
+    privateKey: opts.privateKey,
+    decryptOptions: opts.decryptOptions,
+    encryptOptions: {
+      ...opts?.encryptOptions,
+      currentDate:
+        opts?.encryptOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
+      expiresIn:
+        opts?.encryptOptions?.expiresIn ??
+        DEFAULTS_OPTIONS.authorizationCode.expiresIn,
+    },
   };
 }
 
 /**
- * Apply defaults for the Token endpoint helpers.
+ * Apply defaults for the Refresh Token helpers.
  */
-export function withTokenDefaults<T extends OAuthTokenOptions>(
+export function refreshTokenDefaults<T extends RefreshTokenOptions>(
   opts: T,
-): ResolvedTokenOptions {
-  const encryptOptions: JWEEncryptOptions & { expiresIn: number } =
-    opts.encryptOptions
-      ? ({
-          ...opts.encryptOptions,
-          expiresIn:
-            opts.encryptOptions.expiresIn ?? DEFAULTS.refreshTokenExpiresIn,
-        } as JWEEncryptOptions & { expiresIn: number })
-      : ({ expiresIn: DEFAULTS.refreshTokenExpiresIn } as JWEEncryptOptions & {
-          expiresIn: number;
-        });
+): ResolvedRefreshTokenOptions {
+  return {
+    privateKey: opts.privateKey,
+    decryptOptions: opts.decryptOptions,
+    encryptOptions: {
+      ...opts?.encryptOptions,
+      currentDate:
+        opts?.encryptOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
+      expiresIn:
+        opts?.encryptOptions?.expiresIn ??
+        DEFAULTS_OPTIONS.refreshToken.expiresIn,
+    },
+  };
+}
 
-  const signOptions: JWSSignOptions & { expiresIn: number } = opts.signOptions
-    ? ({
-        ...opts.signOptions,
-        expiresIn: opts.signOptions.expiresIn ?? DEFAULTS.accessTokenExpiresIn,
-      } as JWSSignOptions & { expiresIn: number })
-    : ({ expiresIn: DEFAULTS.accessTokenExpiresIn } as JWSSignOptions & {
-        expiresIn: number;
-      });
+/**
+ * Apply defaults for the Access Token helpers.
+ */
+export function accessTokenDefaults<T extends AccessTokenOptions>(
+  opts: T,
+): ResolvedAccessTokenOptions {
+  return {
+    privateKey: opts.privateKey,
+    verifyOptions: opts.verifyOptions,
+    signOptions: {
+      ...opts?.signOptions,
+      currentDate:
+        opts?.signOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
+      expiresIn:
+        opts?.signOptions?.expiresIn ?? DEFAULTS_OPTIONS.accessToken.expiresIn,
+    },
+  };
+}
+
+export function oauthOptionsDefaults<T extends OAuthOptions>(
+  opts: T,
+): ResolvedOAuthOptions {
+  const authorizationCode = authorizationCodeDefaults({
+    ...opts.authorizationCode,
+    encryptOptions: {
+      ...opts.authorizationCode?.encryptOptions,
+      currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
+    },
+  });
+  const refreshToken = refreshTokenDefaults({
+    ...opts.refreshToken,
+    encryptOptions: {
+      ...opts.refreshToken?.encryptOptions,
+      currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
+    },
+  });
+  const accessToken = accessTokenDefaults({
+    ...opts.accessToken,
+    signOptions: {
+      ...opts.accessToken?.signOptions,
+      currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
+    },
+  });
+
+  const availableScopes = mergeArrays(
+    opts.availableScopes || [],
+    opts.defaultScope?.split(" ") || [],
+  );
 
   return {
     issuer: opts.issuer,
-    jweSecret: opts.jweSecret,
-    jwsPrivateKey: opts.jwsPrivateKey,
-    decryptOptions: opts.decryptOptions,
-    encryptOptions,
-    signOptions,
-    verifyOptions: opts.verifyOptions,
-    randomJti: opts.randomJti || DEFAULTS.randomJti,
+    randomJti: opts.randomJti || DEFAULTS_OPTIONS.randomJti,
+    currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
     defaultScope: opts.defaultScope,
-    availableScopes: opts.availableScopes,
+    defaultCodeChallengeMethod:
+      opts.defaultCodeChallengeMethod || DEFAULTS_OPTIONS.codeChallengeMethod,
+    availableScopes,
+    authorizationCode,
+    refreshToken,
+    accessToken,
   };
 }

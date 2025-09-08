@@ -1,14 +1,11 @@
+import type { JWTClaims } from "unjwt";
 import { encrypt } from "unjwt/jwe";
-import type { JWK, JWEEncryptOptions, JWTClaims } from "unjwt";
 
 import type { MaybePromise } from "../../types";
 import type { OAuthAuthorizationCodeClaims } from "../types";
-import { normalizeScope } from "./utils";
-import {
-  type ResolvedAuthorizeOptions,
-  DEFAULTS,
-  withAuthorizeDefaults,
-} from "./defaults";
+
+import { type AuthorizationErrorResponse, OAuthError } from "./error";
+import type { ResolvedOAuthOptions } from "./defaults";
 
 /**
  * OAuth 2.1 Authorization Endpoint utilities
@@ -17,19 +14,24 @@ import {
 
 export type OAuthResponseType = "code";
 
-export interface OAuthAuthorizeRequestRequired {
-  /**
-   * only "code" (implicit removed by OAuth 2.1)
-   */
-  response_type: OAuthResponseType;
+export interface AuthorizationCodeRequest {
   client_id: string;
   /**
-   * MUST be present in OAuth 2.1 (no discovery)
+   * only "code" (implicit removed by OAuth 2.1), other may be added by extensions (unordered, space delimited)
    */
-  redirect_uri: string;
-}
-
-export interface OAuthAuthorizeRequestOptional {
+  response_type: OAuthResponseType | (string & {});
+  /**
+   * The code challenge for PKCE.
+   */
+  code_challenge: string;
+  /**
+   * An opaque value used by the client to maintain state between the request and callback. The authorization server includes this value when redirecting the user agent back to the client.
+   */
+  state?: string;
+  /**
+   * OPTIONAL if only one redirect URI is registered for this client. REQUIRED if multiple redirect URIs are registered for this client.
+   */
+  redirect_uri?: string;
   /**
    * The requested scope, space-delimited.
    */
@@ -39,11 +41,6 @@ export interface OAuthAuthorizeRequestOptional {
    * These will be mapped to the Access Token audience (aud) during token issuance.
    */
   resource?: string | string[];
-  state?: string;
-  /**
-   * The code challenge for PKCE.
-   */
-  code_challenge?: string;
   /**
    * The code challenge method for PKCE.
    * Must be either "S256" or "plain".
@@ -51,216 +48,203 @@ export interface OAuthAuthorizeRequestOptional {
    * @default "plain"
    */
   code_challenge_method?: "S256" | "plain";
+  [key: string]: unknown;
   // TODO: OIDC prompt/login_hint etc are out-of-scope for plain OAuth 2.1, but could be added by callers
 }
 
-export type OAuthAuthorizeRequest = OAuthAuthorizeRequestRequired &
-  OAuthAuthorizeRequestOptional &
-  Record<string, unknown>;
+export type OAuthAuthorizationCallback = (
+  opts: Pick<
+    ResolvedOAuthOptions,
+    "issuer" | "defaultCodeChallengeMethod" | "authorizationCode"
+  >,
+) => MaybePromise<
+  AuthorizationCodeRequest & { claims: JWTClaims & { sub: string } }
+>;
 
-export interface OAuthAuthorizeOptions {
-  /**
-   * The issuer identifier.
-   */
-  issuer: string;
-  /**
-   * The secret or private key to sign the refresh token.
-   */
-  jweSecret: string | JWK;
-  /**
-   * Options for encrypting the refresh token.
-   */
-  encryptOptions?: JWEEncryptOptions;
-  /**
-   * A function to generate a unique identifier for tokens.
-   */
-  randomJti?: () => string;
-  /**
-   * The default authorization scope.
-   */
-  defaultScope?: string;
-  /**
-   * Allowed scopes configuration (optional). If provided, membership will be validated.
-   */
-  availableScopes?: string[];
-}
-
-export interface OAuthAuthorizeSuccess {
+export interface AuthorizationCodeResponse {
   /**
    * The authorization code (JWE) to be returned to the client.
    */
   code: string;
+  /**
+   * An opaque value used by the client to maintain state between the request and callback. The authorization server includes this value when redirecting the user agent back to the client.
+   */
   state?: string;
+  /**
+   * The identifier of the authorization server which the client can use to prevent mix-up attacks, if the client interacts with more than one authorization server.
+   */
+  iss?: string;
 }
 
-export type OAuthAuthorizeErrorCode =
-  | "invalid_request"
-  | "unauthorized_client"
-  | "access_denied"
-  | "unsupported_response_type"
-  | "invalid_scope"
-  | "server_error"
-  | "temporarily_unavailable";
-
-export interface OAuthAuthorizeError {
-  error: OAuthAuthorizeErrorCode;
-  error_description?: string;
-  state?: string;
+export interface AuthorizationCodeReturn extends AuthorizationCodeResponse {
+  iss: Exclude<AuthorizationCodeResponse["iss"], undefined>;
+  claims: OAuthAuthorizationCodeClaims;
 }
 
-export function isOAuthAuthorizeRequest(
+export function isAuthorizationCodeRequest(
   value: unknown,
-): value is OAuthAuthorizeRequest {
+): value is AuthorizationCodeRequest {
   if (typeof value !== "object" || value == null) return false;
   const v = value as Record<string, unknown>;
   return (
-    typeof v.response_type === "string" &&
     typeof v.client_id === "string" &&
-    typeof v.redirect_uri === "string"
+    typeof v.response_type === "string" &&
+    typeof v.code_challenge === "string" &&
+    (v.redirect_uri === undefined || typeof v.redirect_uri === "string") &&
+    (v.state === undefined || typeof v.state === "string") &&
+    (v.scope === undefined || typeof v.scope === "string")
   );
 }
 
-export function assertAuthorizeRequest(
-  req: unknown,
-): asserts req is OAuthAuthorizeRequest {
-  if (!isOAuthAuthorizeRequest(req)) {
-    throw new OAuthAuthorizeException(
-      "invalid_request",
-      "Invalid authorize request",
-    );
+export function validateAuthorizationCodeRequest<
+  T extends AuthorizationCodeRequest,
+>(
+  oauthReq: T,
+  options: Pick<ResolvedOAuthOptions, "issuer" | "defaultCodeChallengeMethod">,
+): T {
+  const { issuer: iss, defaultCodeChallengeMethod } = options;
+  const state = oauthReq.state;
+
+  if (!isAuthorizationCodeRequest(oauthReq)) {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Invalid authorize request",
+      state,
+      iss,
+    });
   }
-}
 
-export class OAuthAuthorizeException extends Error {
-  constructor(
-    public readonly error: OAuthAuthorizeErrorCode,
-    message?: string,
-  ) {
-    super(message || error);
-    this.name = "OAuthAuthorizeException";
+  if (oauthReq.response_type !== "code") {
+    throw new OAuthError({
+      error: "unsupported_response_type",
+      error_description: `Unsupported response_type: ${oauthReq.response_type}`,
+      state,
+      iss,
+    });
+    // TODO: allow custom response_type extensions?
   }
-}
-
-/** Enforce supported response_type=code only (OAuth 2.1) */
-export function validateResponseType(rt: string): asserts rt is "code" {
-  if (rt !== "code") {
-    throw new OAuthAuthorizeException(
-      "unsupported_response_type",
-      `Unsupported response_type: ${rt}`,
-    );
-  }
-}
-
-/**
- * Create the authorization code (JWE) from request + cb-provided custom claims
- */
-export async function buildAuthorizationCode(
-  req: OAuthAuthorizeRequest,
-  options: OAuthAuthorizeOptions,
-  cb?: (
-    req: OAuthAuthorizeRequest,
-    opts: ResolvedAuthorizeOptions,
-  ) => MaybePromise<
-    Partial<JWTClaims> & {
-      sub: string;
-      scope?: string;
-      client_id?: string;
-    }
-  >,
-): Promise<OAuthAuthorizeSuccess> {
-  assertAuthorizeRequest(req);
-  validateResponseType(req.response_type);
-
-  const resolved = withAuthorizeDefaults(options);
-  const {
-    issuer,
-    jweSecret,
-    encryptOptions,
-    randomJti,
-    defaultScope,
-    availableScopes,
-  } = resolved;
-
-  // Scope
-  const scope = normalizeScope(req.scope, defaultScope, availableScopes);
 
   // PKCE: Required for code flow
-  if (!req.code_challenge) {
-    throw new OAuthAuthorizeException(
-      "invalid_request",
-      "Missing code_challenge (PKCE)",
-    );
-  }
-  const m = req.code_challenge_method || DEFAULTS.codeChallengeMethod;
-  if (m !== "plain" && m !== "S256") {
-    throw new OAuthAuthorizeException(
-      "invalid_request",
-      "Unsupported code_challenge_method",
-    );
+  if (!oauthReq.code_challenge) {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing code_challenge (PKCE)",
+      state,
+      iss,
+    });
   }
 
-  const extraClaims = cb
-    ? await cb(req, resolved)
-    : ({} as Partial<JWTClaims> & { sub: string });
+  const m = oauthReq.code_challenge_method || defaultCodeChallengeMethod;
+  if (m !== "plain" && m !== "S256") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Unsupported code_challenge_method",
+      state,
+      iss,
+    });
+  }
+
+  return oauthReq;
+}
+
+export async function buildAuthorizationCode(
+  options: ResolvedOAuthOptions,
+  cb: OAuthAuthorizationCallback,
+): Promise<AuthorizationCodeReturn | AuthorizationErrorResponse> {
+  const {
+    issuer: iss,
+    randomJti,
+    defaultCodeChallengeMethod,
+    authorizationCode,
+  } = options;
+
+  let extraClaims: JWTClaims & { sub: string };
+  let oauthReq: AuthorizationCodeRequest;
+
+  try {
+    const result = await cb({
+      issuer: iss,
+      defaultCodeChallengeMethod,
+      authorizationCode,
+    });
+    const { claims, ...rest } = result;
+    extraClaims = claims;
+    oauthReq = rest as AuthorizationCodeRequest;
+  } catch (error_: unknown) {
+    if (error_ instanceof OAuthError) return error_.toJSON();
+    throw new OAuthError({
+      error: "server_error",
+      error_description: "Error in authorization callback",
+      state: (error_ as OAuthError)?.state || undefined,
+      iss,
+      cause: error_,
+    });
+  }
+
+  const state = oauthReq.state;
   if (
     !("sub" in extraClaims) ||
     typeof extraClaims.sub !== "string" ||
     !extraClaims.sub
   ) {
-    throw new OAuthAuthorizeException(
-      "invalid_request",
-      "Missing subject (sub) for end-user in authorization",
-    );
+    return new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing subject (sub) for end-user in authorization",
+      state,
+      iss,
+    }).toJSON();
   }
 
-  const claims: Omit<OAuthAuthorizationCodeClaims, "iat"> = {
+  // Code challenge method
+  const m = oauthReq.code_challenge_method || defaultCodeChallengeMethod;
+
+  const iat = Math.floor(
+    authorizationCode.encryptOptions.currentDate.getTime() / 1000,
+  );
+  const claims: OAuthAuthorizationCodeClaims = {
     jti: randomJti(),
+    ...(oauthReq.redirect_uri ? { redirect_uri: oauthReq.redirect_uri } : {}),
     ...extraClaims,
-    iss: issuer,
-    client_id: req.client_id,
-    scope,
-    code_challenge: req.code_challenge,
+    iss,
+    iat,
+    exp: iat + authorizationCode.encryptOptions.expiresIn,
+    client_id: oauthReq.client_id,
+    code_challenge: oauthReq.code_challenge,
     code_challenge_method: m,
-    redirect_uri: req.redirect_uri,
     // Persist resource indicators so the token endpoint can translate them to aud
-    ...(req.resource ? { resource: req.resource } : {}),
+    ...(oauthReq.resource ? { resource: oauthReq.resource } : {}),
+    ...(oauthReq.scope ? { scope: oauthReq.scope } : {}),
   };
 
-  const code = await encrypt(claims, jweSecret, encryptOptions);
-  return { code, state: req.state };
+  const code = await encrypt(
+    claims,
+    authorizationCode.privateKey,
+    authorizationCode.encryptOptions,
+  );
+  return { code, state, iss, claims };
 }
 
 /**
  * Build redirect URI with either ?code= or ?error= fragment/query params as per OAuth 2.1
  * Note: OAuth 2.1 uses query component for authorization code; we preserve given state.
  */
-export function buildAuthorizeRedirect<T extends string | URL>(
+export function buildAuthorizationRedirect<T extends string | URL>(
+  iss: string,
   redirectUri: T,
-  result: OAuthAuthorizeSuccess | OAuthAuthorizeError,
-  options?: { iss?: string },
+  result: AuthorizationCodeResponse | AuthorizationErrorResponse,
 ): T {
   const url = redirectUri instanceof URL ? redirectUri : new URL(redirectUri);
   const params = url.searchParams;
+  params.set("iss", iss);
   if ("code" in result) {
     params.set("code", result.code);
-    if (result.state) params.set("state", result.state);
-    if (options?.iss) params.set("iss", options.iss);
+    if (result.state) params.set("state", result.state); // TODO: URI encode?
   } else {
     params.set("error", result.error);
     if (result.error_description)
-      params.set("error_description", result.error_description);
+      params.set("error_description", result.error_description); // TODO: URI encode?
     if (result.state) params.set("state", result.state);
-    if (options?.iss) params.set("iss", options.iss);
   }
   url.search = params.toString();
   return (redirectUri instanceof URL ? url : url.toString()) as T;
-}
-
-/** Helper for creating a standardized error payload, preserving state when present */
-export function authorizeError(
-  error: OAuthAuthorizeErrorCode,
-  description?: string,
-  state?: string,
-): OAuthAuthorizeError {
-  return { error, error_description: description, state };
 }
