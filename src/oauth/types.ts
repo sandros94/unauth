@@ -1,10 +1,10 @@
 import type { JWTClaims } from "unjwt";
 
-export interface OAuthRefreshTokenClaims extends JWTClaims {
+export interface RefreshTokenClaims extends JWTClaims {
   /** The client identifier (client_id) from either public and confidential clients. */
   sub: string;
   /** The client application identifier to which the token is bound. */
-  client_id?: string;
+  client_id: string;
   /** The issuer identifier. */
   iss: Exclude<JWTClaims["iss"], undefined>;
   /** The issued at time. */
@@ -19,7 +19,7 @@ export interface OAuthRefreshTokenClaims extends JWTClaims {
   resource?: string | string[];
 }
 
-export interface OAuthAuthorizationCodeClaims extends OAuthRefreshTokenClaims {
+export interface AuthorizationCodeClaims extends RefreshTokenClaims {
   /** The PKCE code challenge corresponding to the verifier. */
   code_challenge: string;
   /** The PKCE method used for the challenge. @default "plain" */
@@ -31,7 +31,7 @@ export interface OAuthAuthorizationCodeClaims extends OAuthRefreshTokenClaims {
   // Note: redirect_uri may be added at runtime; the base JWTClaims is open for additional fields.
 }
 
-export interface OAuthAccessTokenClaims extends JWTClaims {
+export interface AccessTokenClaims extends JWTClaims {
   /** The client identifier (client_id) from either public and confidential clients. */
   sub: string;
   /** The client application identifier (RFC 9068). */
@@ -44,8 +44,8 @@ export interface OAuthAccessTokenClaims extends JWTClaims {
   exp: Exclude<JWTClaims["exp"], undefined>;
   /** The unique identifier for the token. */
   jti: Exclude<JWTClaims["jti"], undefined>;
-  /** The scope of the access request. */
-  scope: string;
   /** Audience (resource indicators) per RFC 9068. */
   aud: Exclude<JWTClaims["aud"], undefined>;
+  /** The scope of the access request. */
+  scope?: string;
 }

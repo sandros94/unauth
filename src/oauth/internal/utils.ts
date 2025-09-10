@@ -18,12 +18,18 @@ export async function validatePKCE(
   return secureCompare(codeChallenge, hashedVerifier);
 }
 
-export function isScopeSubset(requested: string, available: string[]): boolean {
-  const set = new Set(available);
-  return requested
-    .split(/\s+/g)
-    .filter(Boolean)
-    .every((s) => set.has(s));
+/**
+ * Helper to check if a requested scope is a subset of an allowed scope.
+ */
+export function isScopeSubset(requested: string, allowed: string): boolean {
+  const requestedSet = new Set(requested.split(" "));
+  const allowedSet = new Set(allowed.split(" "));
+  for (const s of requestedSet) {
+    if (!allowedSet.has(s)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

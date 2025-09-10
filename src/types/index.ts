@@ -1,12 +1,38 @@
 export type MaybePromise<T> = T | Promise<T>;
 
-export type PartialDeep<T> = ParseType<{
-  [K in keyof T]?: ParseType<PartialDeep<T[K]>>;
-}>;
-
 export type ParseType<T> = {
   [K in keyof T]: T[K];
 } & {};
+
+export type PartialDeep<T> = ParseType<{
+  [K in keyof T]?: PartialDeep<T[K]>;
+}>;
+
+export type RequiredDeep<T> = ParseType<{
+  [K in keyof T]-?: RequiredDeep<T[K]>;
+}>;
+
+export type DotPathKeys<T> =
+  T extends Array<any>
+    ? never
+    : T extends object
+      ? {
+          [K in keyof T & string]: NonNullable<T[K]> extends Record<string, any>
+            ? K | `${K}.${DotPathKeys<T[K]>}`
+            : K;
+        }[keyof T & string]
+      : never;
+
+export type DotPathValue<
+  T,
+  P extends DotPathKeys<T> | (string & {}),
+> = P extends `${infer K}.${infer Rest}`
+  ? K extends keyof T
+    ? DotPathValue<NonNullable<T[K]>, Rest>
+    : never
+  : P extends keyof T
+    ? T[P]
+    : never;
 
 type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
   k: infer I,
@@ -14,29 +40,39 @@ type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
   ? I
   : never;
 
-type RequirePath<T, P extends string> = P extends `${infer Head}.${infer Rest}`
+type PathToObject<
+  Path extends string,
+  V,
+  Optional extends boolean = false,
+> = Path extends `${infer Head}.${infer Tail}`
+  ? Optional extends true
+    ? ParseType<{ [K in Head]?: PathToObject<Tail, V, Optional> }>
+    : ParseType<{
+        [K in Head]: Exclude<PathToObject<Tail, V, Optional>, undefined>;
+      }>
+  : Optional extends true
+    ? { [K in Path]?: V }
+    : { [K in Path]: Exclude<V, undefined> };
+
+type RemoveAtPath<
+  T extends object,
+  P extends string,
+> = P extends `${infer Head}.${infer Tail}`
   ? Head extends keyof T
-    ? Omit<T, Head> & {
-        [K in Head]-?: RequirePath<
-          NonNullable<T[Head]> extends object ? NonNullable<T[Head]> : T[Head],
-          Rest
-        >;
-      }
+    ? ParseType<{
+        [K in keyof T]: K extends Head ? RemoveAtPath<T[K] & {}, Tail> : T[K];
+      }>
     : T
   : P extends keyof T
-    ? ParseType<T & Required<Pick<T, P>>>
+    ? ParseType<Omit<T, P>>
     : T;
 
-/**
- * Require<T, K>
- * - K may be a single key or a union of keys
- * - Keys may use dot-notation to indicate nested properties, e.g. "a.b.c"
- */
-export type Require<
-  T extends object,
-  K extends keyof T | (string & {}),
-> = ParseType<
+export type Require<T extends object, P extends DotPathKeys<T>> = ParseType<
+  UnionToIntersection<PathToObject<P, DotPathValue<T, P>> & T>
+>;
+
+export type Optional<T extends object, P extends DotPathKeys<T>> = ParseType<
   UnionToIntersection<
-    K extends any ? RequirePath<T, Extract<K, string>> : never
+    RemoveAtPath<T, P> & PathToObject<P, DotPathValue<T, P>, true>
   >
 >;

@@ -9,6 +9,8 @@ import type {
 import type { Require } from "../../types";
 import { mergeArrays } from "../../utils";
 
+import type { OAuthProviderHooks } from "../hooks";
+
 export const DEFAULTS_OPTIONS = Object.freeze({
   tokenType: "Bearer" as const,
   randomJti: () => crypto.randomUUID(),
@@ -95,6 +97,10 @@ export interface OAuthOptions {
    */
   defaultScope?: string;
   /**
+   * The default audience (aud) claim.
+   */
+  defaultAudience?: string;
+  /**
    * Allowed scopes configuration (optional). If provided, membership will be validated.
    */
   availableScopes?: string[];
@@ -110,6 +116,7 @@ export interface OAuthOptions {
    * Access Token options.
    */
   accessToken: AccessTokenOptions;
+  hooks?: OAuthProviderHooks;
 }
 
 export type ResolvedAuthorizationCodeOptions = Require<

@@ -118,7 +118,6 @@ export interface IntrospectionErrorResponse {
 // #region OAuth Error
 
 export type OAuthErrorDetails =
-  | (Error & { cause?: unknown })
   | AuthorizationErrorResponse
   | TokenErrorResponse
   | TokenRevocationErrorResponse
@@ -172,11 +171,17 @@ export class OAuthError extends Error {
    */
   override readonly cause?: unknown;
 
-  constructor(error: string, details?: OAuthErrorDetails);
-  constructor(details: OAuthErrorDetails);
-  constructor(arg1: string | OAuthErrorDetails, arg2?: OAuthErrorDetails) {
+  constructor(
+    error: string,
+    details?: OAuthErrorDetails | (Error & { cause?: unknown }),
+  );
+  constructor(details: OAuthErrorDetails | (Error & { cause?: unknown }));
+  constructor(
+    arg1: string | OAuthErrorDetails | (Error & { cause?: unknown }),
+    arg2?: OAuthErrorDetails | (Error & { cause?: unknown }),
+  ) {
     let errorInput: string | undefined;
-    let details: OAuthErrorDetails | undefined;
+    let details: OAuthErrorDetails | (Error & { cause?: unknown }) | undefined;
     if (typeof arg1 === "string") {
       errorInput = arg1;
       details = arg2;
@@ -185,15 +190,14 @@ export class OAuthError extends Error {
     }
 
     const errorCode =
-      (details as Exclude<OAuthErrorDetails, Error>)?.error ||
-      ((details as Error)?.cause as Exclude<OAuthErrorDetails, Error>)?.error ||
+      (details as OAuthErrorDetails)?.error ||
+      ((details as Error)?.cause as OAuthErrorDetails)?.error ||
       "invalid_request";
 
     const errorDescription =
       errorInput ||
-      (details as Exclude<OAuthErrorDetails, Error>)?.error_description ||
-      ((details as Error)?.cause as Exclude<OAuthErrorDetails, Error>)
-        ?.error_description;
+      (details as OAuthErrorDetails)?.error_description ||
+      ((details as Error)?.cause as OAuthErrorDetails)?.error_description;
 
     const error: string = ["OAuthError", errorCode, errorDescription]
       .filter(Boolean)
@@ -221,8 +225,8 @@ export class OAuthError extends Error {
    * Serialize to the OAuth error response shape appropriate for endpoints.
    * Only includes properties that are present.
    */
-  toJSON(): Exclude<OAuthErrorDetails, Error> {
-    const out: Exclude<OAuthErrorDetails, Error> = { error: this.error };
+  toJSON(): OAuthErrorDetails {
+    const out: OAuthErrorDetails = { error: this.error };
     if (this.error_description) out.error_description = this.error_description;
     if (this.error_uri)
       (

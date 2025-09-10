@@ -1,8 +1,7 @@
-import type { JWTClaims } from "unjwt";
 import { encrypt } from "unjwt/jwe";
 
-import type { MaybePromise } from "../../types";
-import type { OAuthAuthorizationCodeClaims } from "../types";
+import type { AuthorizationCodeClaims } from "../types";
+import type { OnAuthorizationCodeReqReturn } from "../hooks";
 
 import { type AuthorizationErrorResponse, OAuthError } from "./error";
 import type { ResolvedOAuthOptions } from "./defaults";
@@ -25,13 +24,13 @@ export interface AuthorizationCodeRequest {
    */
   code_challenge: string;
   /**
+   * If multiple redirect_uris are registered for the client, the original request must contain a valid redirect_uri. Otherwise, if only one is registered, the client's default can be used.
+   */
+  redirect_uri: string;
+  /**
    * An opaque value used by the client to maintain state between the request and callback. The authorization server includes this value when redirecting the user agent back to the client.
    */
   state?: string;
-  /**
-   * OPTIONAL if only one redirect URI is registered for this client. REQUIRED if multiple redirect URIs are registered for this client.
-   */
-  redirect_uri?: string;
   /**
    * The requested scope, space-delimited.
    */
@@ -52,15 +51,6 @@ export interface AuthorizationCodeRequest {
   // TODO: OIDC prompt/login_hint etc are out-of-scope for plain OAuth 2.1, but could be added by callers
 }
 
-export type OAuthAuthorizationCallback = (
-  opts: Pick<
-    ResolvedOAuthOptions,
-    "issuer" | "defaultCodeChallengeMethod" | "authorizationCode"
-  >,
-) => MaybePromise<
-  AuthorizationCodeRequest & { claims: JWTClaims & { sub: string } }
->;
-
 export interface AuthorizationCodeResponse {
   /**
    * The authorization code (JWE) to be returned to the client.
@@ -78,7 +68,7 @@ export interface AuthorizationCodeResponse {
 
 export interface AuthorizationCodeReturn extends AuthorizationCodeResponse {
   iss: Exclude<AuthorizationCodeResponse["iss"], undefined>;
-  claims: OAuthAuthorizationCodeClaims;
+  claims: AuthorizationCodeClaims;
 }
 
 export function isAuthorizationCodeRequest(
@@ -96,60 +86,58 @@ export function isAuthorizationCodeRequest(
   );
 }
 
-export function validateAuthorizationCodeRequest<
-  T extends AuthorizationCodeRequest,
->(
-  oauthReq: T,
+export function validateAuthorizationCodeRequest(
+  oauthReq: AuthorizationCodeRequest,
   options: Pick<ResolvedOAuthOptions, "issuer" | "defaultCodeChallengeMethod">,
-): T {
+): AuthorizationErrorResponse | undefined {
   const { issuer: iss, defaultCodeChallengeMethod } = options;
   const state = oauthReq.state;
 
   if (!isAuthorizationCodeRequest(oauthReq)) {
-    throw new OAuthError({
+    return new OAuthError({
       error: "invalid_request",
       error_description: "Invalid authorize request",
       state,
       iss,
-    });
+    }).toJSON();
   }
 
   if (oauthReq.response_type !== "code") {
-    throw new OAuthError({
+    return new OAuthError({
       error: "unsupported_response_type",
       error_description: `Unsupported response_type: ${oauthReq.response_type}`,
       state,
       iss,
-    });
+    }).toJSON();
     // TODO: allow custom response_type extensions?
   }
 
   // PKCE: Required for code flow
   if (!oauthReq.code_challenge) {
-    throw new OAuthError({
+    return new OAuthError({
       error: "invalid_request",
       error_description: "Missing code_challenge (PKCE)",
       state,
       iss,
-    });
+    }).toJSON();
   }
 
   const m = oauthReq.code_challenge_method || defaultCodeChallengeMethod;
   if (m !== "plain" && m !== "S256") {
-    throw new OAuthError({
+    return new OAuthError({
       error: "invalid_request",
       error_description: "Unsupported code_challenge_method",
       state,
       iss,
-    });
+    }).toJSON();
   }
 
-  return oauthReq;
+  return undefined;
 }
 
 export async function buildAuthorizationCode(
+  onAuthCodeReturn: OnAuthorizationCodeReqReturn,
   options: ResolvedOAuthOptions,
-  cb: OAuthAuthorizationCallback,
 ): Promise<AuthorizationCodeReturn | AuthorizationErrorResponse> {
   const {
     issuer: iss,
@@ -157,29 +145,7 @@ export async function buildAuthorizationCode(
     defaultCodeChallengeMethod,
     authorizationCode,
   } = options;
-
-  let extraClaims: JWTClaims & { sub: string };
-  let oauthReq: AuthorizationCodeRequest;
-
-  try {
-    const result = await cb({
-      issuer: iss,
-      defaultCodeChallengeMethod,
-      authorizationCode,
-    });
-    const { claims, ...rest } = result;
-    extraClaims = claims;
-    oauthReq = rest as AuthorizationCodeRequest;
-  } catch (error_: unknown) {
-    if (error_ instanceof OAuthError) return error_.toJSON();
-    throw new OAuthError({
-      error: "server_error",
-      error_description: "Error in authorization callback",
-      state: (error_ as OAuthError)?.state || undefined,
-      iss,
-      cause: error_,
-    });
-  }
+  const { claims: extraClaims, ...oauthReq } = onAuthCodeReturn;
 
   const state = oauthReq.state;
   if (
@@ -201,7 +167,7 @@ export async function buildAuthorizationCode(
   const iat = Math.floor(
     authorizationCode.encryptOptions.currentDate.getTime() / 1000,
   );
-  const claims: OAuthAuthorizationCodeClaims = {
+  const claims: AuthorizationCodeClaims = {
     jti: randomJti(),
     ...(oauthReq.redirect_uri ? { redirect_uri: oauthReq.redirect_uri } : {}),
     ...extraClaims,
@@ -221,6 +187,9 @@ export async function buildAuthorizationCode(
     authorizationCode.privateKey,
     authorizationCode.encryptOptions,
   );
+
+  await options.hooks?.onAuthorizationCodeIssued?.({ claims });
+
   return { code, state, iss, claims };
 }
 
@@ -228,23 +197,88 @@ export async function buildAuthorizationCode(
  * Build redirect URI with either ?code= or ?error= fragment/query params as per OAuth 2.1
  * Note: OAuth 2.1 uses query component for authorization code; we preserve given state.
  */
-export function buildAuthorizationRedirect<T extends string | URL>(
-  iss: string,
-  redirectUri: T,
+export function buildAuthorizationRedirect(
+  request: AuthorizationCodeRequest,
   result: AuthorizationCodeResponse | AuthorizationErrorResponse,
-): T {
-  const url = redirectUri instanceof URL ? redirectUri : new URL(redirectUri);
+  options: Pick<ResolvedOAuthOptions, "issuer">,
+): string | AuthorizationErrorResponse {
+  const url = new URL(request.redirect_uri);
   const params = url.searchParams;
-  params.set("iss", iss);
-  if ("code" in result) {
+  params.set("iss", options.issuer);
+
+  if (!("code" in result) && !("error" in result)) {
+    return new OAuthError({
+      error: "server_error",
+      error_description: "Invalid authorization result",
+      iss: options.issuer,
+    }).toJSON();
+  } else if ("code" in result) {
     params.set("code", result.code);
-    if (result.state) params.set("state", result.state); // TODO: URI encode?
+    if (result.state) params.set("state", result.state);
   } else {
     params.set("error", result.error);
     if (result.error_description)
-      params.set("error_description", result.error_description); // TODO: URI encode?
+      params.set("error_description", result.error_description);
     if (result.state) params.set("state", result.state);
   }
+
   url.search = params.toString();
-  return (redirectUri instanceof URL ? url : url.toString()) as T;
+  return url.toString();
+}
+
+// --- Main Public API ---
+
+export async function issueAuthorizationCode(
+  options: ResolvedOAuthOptions,
+): Promise<string | AuthorizationErrorResponse> {
+  const { issuer: iss, defaultCodeChallengeMethod } = options;
+
+  if (!options.hooks?.onAuthorizeRequest) {
+    throw new OAuthError({
+      error: "server_error",
+      error_description: "Missing onAuthorizeReq hook",
+      iss,
+    });
+  }
+
+  let onAuthRes: OnAuthorizationCodeReqReturn | undefined = undefined;
+  try {
+    onAuthRes = await options.hooks.onAuthorizeRequest({
+      issuer: iss,
+      defaultCodeChallengeMethod,
+    });
+  } catch (error_: unknown) {
+    return error_ instanceof OAuthError
+      ? new OAuthError({
+          ...error_.toJSON(),
+          iss: error_.iss || iss,
+        }).toJSON()
+      : new OAuthError({
+          error: "server_error",
+          error_description: "Error in authorization callback",
+          iss,
+          cause: error_,
+        }).toJSON();
+  }
+
+  if (!onAuthRes || !onAuthRes.redirect_uri) {
+    return new OAuthError({
+      error: "invalid_request",
+      error_description:
+        "redirect_uri is missing and no registered redirect URI is available for this client",
+      state: onAuthRes?.state,
+      iss,
+    }).toJSON();
+  }
+
+  const validatedRes = validateAuthorizationCodeRequest(onAuthRes, {
+    issuer: iss,
+    defaultCodeChallengeMethod,
+  });
+
+  return buildAuthorizationRedirect(
+    onAuthRes,
+    validatedRes || (await buildAuthorizationCode(onAuthRes, options)),
+    options,
+  );
 }
