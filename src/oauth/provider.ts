@@ -1,76 +1,30 @@
-import type {
-  JWK,
-  JWSSignOptions,
-  JWSVerifyOptions,
-  JWEEncryptOptions,
-  JWEDecryptOptions,
-  JWTClaims,
-} from "unjwt";
 import { isPublicJWK, isJWK } from "unjwt/utils";
-import { decrypt } from "unjwt/jwe";
-import { verify } from "unjwt/jws";
+import type { JWK } from "unjwt";
 
-import type { MaybePromise } from "../types";
 import type {
-  OAuthAuthorizeOptions,
-  OAuthAuthorizeRequest,
-  OAuthAuthorizeSuccess,
-  OAuthAuthorizeError,
+  OAuthOptions,
+  ResolvedOAuthOptions,
+  AuthorizationCodeOptions,
+  AccessTokenOptions,
+  RefreshTokenOptions,
   OAuthDiscoveryOptions,
-  OAuthTokenOptions,
-  OAuthTokenRequest,
-  OAuthTokenResponse,
-  ResolvedAuthorizeOptions,
-  ResolvedTokenOptions,
 } from "./internal";
 import {
-  authorizeError as _authorizeError,
-  buildAuthorizationCode,
-  buildAuthorizeRedirect as _buildAuthorizeRedirect,
-  oAuthAuthorizationCode,
-  oAuthClientCredentials,
-  oAuthRefreshToken,
-  withTokenDefaults,
+  oauthOptionsDefaults,
+  issueAuthorizationCode,
+  issueAccessToken,
+  introspectAuthorizationCode,
+  introspectAccessToken,
+  introspectRefreshToken,
   buildOAuthDiscoveryDocument,
-  revokeToken,
 } from "./internal";
-import type {
-  OAuthAccessTokenClaims,
-  OAuthAuthorizationCodeClaims,
-  OAuthRefreshTokenClaims,
-} from "./types";
 
 /**
  * Configuration for the OAuth service wrapper.
  */
-export interface OAuthProviderConfig
-  extends Omit<
-    OAuthTokenOptions,
-    | "jwsPrivateKey"
-    | "jweSecret"
-    | "signOptions"
-    | "verifyOptions"
-    | "encryptOptions"
-    | "decryptOptions"
-  > {
+export interface OAuthProviderConfig extends OAuthOptions {
   /** Optional initial public JWKS. Private keys will be filtered. */
   jwks?: JWK[];
-  /**
-   * Options for Access Tokens.
-   */
-  accessToken: {
-    privateKey: JWK;
-    signOptions?: JWSSignOptions;
-    verifyOptions?: JWSVerifyOptions;
-  };
-  /**
-   * Options for Refresh Tokens.
-   */
-  refreshToken: {
-    privateKey: string | JWK;
-    encryptOptions?: JWEEncryptOptions;
-    decryptOptions?: JWEDecryptOptions;
-  };
 }
 
 export interface IntrospectOptions {
@@ -78,61 +32,51 @@ export interface IntrospectOptions {
 }
 
 export class OAuthProvider {
-  private activePrivateRefreshKey: string | JWK;
-  private activePrivateAccessKey: JWK;
+  private activePrivateACKey: string | JWK;
+  private activePrivateATKey: JWK;
+  private activePrivateRTKey: string | JWK;
   private _jwks?: JWK[];
-  private get authorizeOptions(): OAuthAuthorizeOptions {
-    return {
-      issuer: this.config.issuer,
-      jweSecret: this.activePrivateRefreshKey,
-      encryptOptions: this.config.refreshToken?.encryptOptions,
-      randomJti: this.config.randomJti,
-      defaultScope: this.config.defaultScope,
-      availableScopes: this.config.availableScopes,
-    };
+  private options: ResolvedOAuthOptions;
+
+  private get authorizationCodeOptions(): AuthorizationCodeOptions {
+    return this.options.authorizationCode;
   }
-  private get tokenOptions(): OAuthTokenOptions {
-    return {
-      issuer: this.config.issuer,
-      jweSecret: this.activePrivateRefreshKey,
-      jwsPrivateKey: this.activePrivateAccessKey,
-      decryptOptions: this.config.refreshToken?.decryptOptions,
-      encryptOptions: this.config.refreshToken?.encryptOptions,
-      signOptions: this.config.accessToken?.signOptions,
-      verifyOptions: this.config.accessToken?.verifyOptions,
-      randomJti: this.config.randomJti,
-      defaultScope: this.config.defaultScope,
-      availableScopes: this.config.availableScopes,
-    };
+  private get accessTokenOptions(): AccessTokenOptions {
+    return this.options.accessToken;
+  }
+  private get refreshTokenOptions(): RefreshTokenOptions {
+    return this.options.refreshToken;
   }
 
-  constructor(private readonly config: OAuthProviderConfig) {
-    this.activePrivateAccessKey = config.accessToken.privateKey;
-    this.activePrivateRefreshKey = config.refreshToken.privateKey;
+  constructor(config: OAuthProviderConfig) {
+    this.options = oauthOptionsDefaults(config);
+    this.activePrivateACKey = config.authorizationCode.privateKey;
+    this.activePrivateATKey = config.accessToken.privateKey;
+    this.activePrivateRTKey = config.refreshToken.privateKey;
     this._jwks = config.jwks ? filterPublicJwks(config.jwks) : undefined;
   }
 
   // Basic getters
   get issuer(): string {
-    return this.config.issuer;
+    return this.options.issuer;
   }
   get availableScopes(): string[] | undefined {
-    return this.config.availableScopes;
+    return this.options.availableScopes;
   }
   get defaultScope(): string | undefined {
-    return this.config.defaultScope;
+    return this.options.defaultScope;
   }
 
   /** Header-safe info about the active signing key for access tokens. */
   get accessKeyInfo(): Pick<JWK, "kid" | "alg" | "kty"> {
-    const { kid, alg, kty } = this.activePrivateAccessKey;
+    const { kid, alg, kty } = this.activePrivateATKey;
     return { kid, alg, kty };
   }
 
   /** Replace the public JWKS. Must contain the active key kid if set. */
   setJwks(jwks: JWK[]): void {
     const clean = filterPublicJwks(jwks);
-    const kid = this.activePrivateAccessKey?.kid;
+    const kid = this.activePrivateATKey?.kid;
     if (kid && !clean.some((k) => k.kid === kid)) {
       throw new Error(
         "[OAuth] Provided JWKS does not include the active signing key kid",
@@ -184,102 +128,58 @@ export class OAuthProvider {
         "[OAuth] No JWKS set; provide JWKS when rotating signing key",
       );
     }
-    this.activePrivateAccessKey = newKey;
+    this.activePrivateATKey = newKey;
   }
 
-  /** Rotate the active encryption key. */
-  rotateRefreshKey(newKey: string | JWK): void {
+  /** Rotate the active authorization code encryption key. */
+  rotateAuthorizationCodeKey(newKey: string | JWK): void {
     if (!newKey || (!isJWK(newKey) && typeof newKey !== "string")) {
       throw new Error("[OAuth] Invalid encryption key");
     }
-    this.activePrivateRefreshKey = newKey;
+    this.activePrivateACKey = newKey;
+  }
+
+  /** Rotate the active refresh token encryption key. */
+  rotateRefreshTokenKey(newKey: string | JWK): void {
+    if (!newKey || (!isJWK(newKey) && typeof newKey !== "string")) {
+      throw new Error("[OAuth] Invalid encryption key");
+    }
+    this.activePrivateRTKey = newKey;
   }
 
   // Authorization endpoint helpers
-  async authorize(
-    req: OAuthAuthorizeRequest,
-    cb?: (
-      req: OAuthAuthorizeRequest,
-      opts: ResolvedAuthorizeOptions,
-    ) => MaybePromise<
-      Partial<JWTClaims> & {
-        sub: string;
-        scope?: string;
-        client_id?: string;
-      }
-    >,
-  ): Promise<OAuthAuthorizeSuccess> {
-    return buildAuthorizationCode(req, this.authorizeOptions, cb);
-  }
-
-  buildAuthorizeRedirect<T extends string | URL>(
-    redirectUri: T,
-    result: OAuthAuthorizeSuccess | OAuthAuthorizeError,
-    options?: { iss?: string },
-  ): T {
-    return _buildAuthorizeRedirect<T>(redirectUri, result, options);
-  }
-
-  authorizeError(
-    error: OAuthAuthorizeError["error"],
-    description?: string,
-    state?: string,
-  ): OAuthAuthorizeError {
-    return _authorizeError(error, description, state);
+  async issueAuthorizationCode() {
+    return issueAuthorizationCode(this.options, this.activePrivateACKey);
   }
 
   // Token endpoint helpers
-  async tokenClientCredentials(
-    req: Extract<OAuthTokenRequest, { grant_type: "client_credentials" }>,
-    cb: (
-      opts: ResolvedTokenOptions,
-    ) => MaybePromise<JWTClaims & { scope: string }>,
-  ): Promise<OAuthTokenResponse> {
-    return oAuthClientCredentials(req, this.tokenOptions, cb);
+  async issueAccessToken() {
+    return issueAccessToken(this.options, {
+      authorizationCode: this.activePrivateACKey,
+      accessToken: this.activePrivateATKey,
+      refreshToken: this.activePrivateRTKey,
+    });
   }
 
-  async tokenAuthorizationCode(
-    req: Extract<OAuthTokenRequest, { grant_type: "authorization_code" }>,
-    cb?: (
-      claims: OAuthAuthorizationCodeClaims,
-      opts: ResolvedTokenOptions,
-    ) => MaybePromise<{
-      accessTokenClaims: JWTClaims & { scope?: string };
-      refreshTokenClaims: JWTClaims & { scope?: string };
-      onCodeUsed?: (jti: string) => MaybePromise<void>;
-    }>,
-  ): Promise<OAuthTokenResponse> {
-    return oAuthAuthorizationCode(req, this.tokenOptions, cb);
-  }
+  // Utility to introspect refresh tokens while validating their claims
+  async introspectAuthorizationCode(token: string) {
+    const ac = await introspectAuthorizationCode(
+      token,
+      this.activePrivateACKey,
+      this.options,
+    ).catch(() => undefined);
 
-  async tokenRefreshToken(
-    req: Extract<OAuthTokenRequest, { grant_type: "refresh_token" }>,
-    cb?: (
-      claims: OAuthRefreshTokenClaims,
-      opts: ResolvedTokenOptions,
-    ) => MaybePromise<{
-      accessTokenClaims: JWTClaims & { scope?: string };
-      refreshTokenClaims: JWTClaims & { scope?: string };
-      onRefreshUsed?: (jti: string) => MaybePromise<void>;
-    }>,
-  ): Promise<OAuthTokenResponse> {
-    return oAuthRefreshToken(req, this.tokenOptions, cb);
+    if (!ac?.payload) return { active: false };
+
+    return { active: true, claims: ac.payload };
   }
 
   // Utility to introspect access tokens while validating their claims
-  async introspectAccessToken(token: string, options?: IntrospectOptions) {
-    const { expiresIn } = withTokenDefaults(this.tokenOptions).signOptions;
-
-    const at = await verify<OAuthAccessTokenClaims>(
+  async introspectAccessToken(token: string) {
+    const at = await introspectAccessToken(
       token,
-      this.getPublicJwks() || this.activePrivateAccessKey,
-      {
-        issuer: this.config.issuer,
-        typ: "at+jwt",
-        maxTokenAge: expiresIn,
-        ...this.config.accessToken?.verifyOptions,
-        ...options,
-      },
+      this.getPublicJwks() || this.activePrivateATKey,
+      this.options,
     ).catch(() => undefined);
 
     if (!at?.payload) return { active: false };
@@ -288,40 +188,16 @@ export class OAuthProvider {
   }
 
   // Utility to introspect refresh tokens while validating their claims
-  async introspectRefreshToken(token: string, options?: IntrospectOptions) {
-    const { expiresIn } = withTokenDefaults(this.tokenOptions).encryptOptions;
-
-    const rt = await decrypt<OAuthRefreshTokenClaims>(
+  async introspectRefreshToken(token: string) {
+    const rt = await introspectRefreshToken(
       token,
-      this.activePrivateRefreshKey,
-      {
-        issuer: this.config.issuer,
-        maxTokenAge: expiresIn,
-        ...this.config.refreshToken?.decryptOptions,
-        ...options,
-      },
+      this.activePrivateRTKey,
+      this.options,
     ).catch(() => undefined);
 
     if (!rt?.payload) return { active: false };
 
     return { active: true, claims: rt.payload };
-  }
-
-  /**
-   * Minimal token revocation helper. Extracts jti and calls provided hook.
-   */
-  async revoke(
-    token: string,
-    kind: "access" | "refresh" | "code",
-    cb: {
-      onRevoke: (claims: {
-        jti: string;
-        iat: number;
-        exp: number;
-      }) => MaybePromise<void>;
-    },
-  ): Promise<void> {
-    await revokeToken(token, kind, this.tokenOptions, cb);
   }
 
   /**
