@@ -20,6 +20,16 @@ describe("oauth/authorize", () => {
     authorizationCode: mockAuthBaseOptions,
     refreshToken: mockAuthBaseOptions,
     accessToken: { privateKey: { kty: "oct", k: "supersecret" } },
+    // @ts-expect-error missing onTokenRequest, out of scope test
+    hooks: {
+      onAuthorizeRequest: () => ({
+        response_type: "code",
+        client_id: "client123",
+        code_challenge: "challenge456",
+        redirect_uri: "https://example.com/callback",
+        claims: { sub: "user1" },
+      }),
+    },
   });
 
   describe("authorizationCodeDefaults", () => {
@@ -137,8 +147,12 @@ describe("oauth/authorize", () => {
         redirect_uri: "https://example.com/callback",
         claims: {},
       };
-      // @ts-expect-error
-      const result = await buildAuthorizationCode(onAuthCodeReturn, options);
+      const result = await buildAuthorizationCode(
+        // @ts-expect-error
+        onAuthCodeReturn,
+        oauthOptions.authorizationCode.privateKey,
+        options,
+      );
       expect(result).toHaveProperty("error", "invalid_request");
       expect(result).toHaveProperty("error_description");
     });
@@ -152,7 +166,11 @@ describe("oauth/authorize", () => {
         redirect_uri: "https://example.com/callback",
         claims: { sub: "user1" },
       };
-      const result = await buildAuthorizationCode(onAuthCodeReturn, options);
+      const result = await buildAuthorizationCode(
+        onAuthCodeReturn,
+        oauthOptions.authorizationCode.privateKey,
+        options,
+      );
       expect(result).toHaveProperty("code");
       expect(result).toHaveProperty("state");
       expect(result).toHaveProperty("iss", options.issuer);
@@ -221,9 +239,13 @@ describe("oauth/authorize", () => {
   describe("issueAuthorizationCode", () => {
     it("throws if onAuthorizeRequest hook is missing", async () => {
       const options = { ...oauthOptions, hooks: undefined };
-      await expect(issueAuthorizationCode(options)).rejects.toThrow(
-        "Missing onAuthorizeReq hook",
-      );
+      await expect(
+        issueAuthorizationCode(
+          oauthOptions.authorizationCode.privateKey,
+          // @ts-expect-error intentionally missing hooks
+          options,
+        ),
+      ).rejects.toThrow("Missing onAuthorizeReq hook");
     });
 
     it("throws if redirect_uri is missing", async () => {
@@ -238,8 +260,13 @@ describe("oauth/authorize", () => {
           }),
         },
       };
-      // @ts-expect-error
-      await expect(issueAuthorizationCode(options)).resolves.toStrictEqual({
+      await expect(
+        issueAuthorizationCode(
+          oauthOptions.authorizationCode.privateKey,
+          // @ts-expect-error intentionally missing redirect_uri
+          options,
+        ),
+      ).resolves.toStrictEqual({
         error: "invalid_request",
         error_description:
           "redirect_uri is missing and no registered redirect URI is available for this client",
@@ -259,27 +286,20 @@ describe("oauth/authorize", () => {
           },
         },
       };
-      // @ts-expect-error
-      const res = await issueAuthorizationCode(options);
+      const res = await issueAuthorizationCode(
+        oauthOptions.authorizationCode.privateKey,
+        // @ts-expect-error intentionally throwing inside hook
+        options,
+      );
       expect(res).toHaveProperty("error", "invalid_client");
       expect(res).toHaveProperty("error_description");
     });
 
     it("returns redirect URI with code if hook returns valid", async () => {
-      const options = {
-        ...oauthOptions,
-        hooks: {
-          onAuthorizeRequest: () => ({
-            response_type: "code",
-            client_id: "client123",
-            code_challenge: "challenge456",
-            redirect_uri: "https://example.com/callback",
-            claims: { sub: "user1" },
-          }),
-        },
-      };
-      // @ts-expect-error
-      const uri = await issueAuthorizationCode(options);
+      const uri = await issueAuthorizationCode(
+        oauthOptions.authorizationCode.privateKey,
+        oauthOptions,
+      );
       expect(uri).toContain("code=");
       expect(uri).toContain("iss=");
     });

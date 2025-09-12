@@ -1,4 +1,5 @@
 import { encrypt } from "unjwt/jwe";
+import type { JWK } from "unjwt";
 
 import type { AuthorizationCodeClaims } from "../types";
 import type { OnAuthorizationCodeReqReturn } from "../hooks";
@@ -137,6 +138,7 @@ export function validateAuthorizationCodeRequest(
 
 export async function buildAuthorizationCode(
   onAuthCodeReturn: OnAuthorizationCodeReqReturn,
+  privateKey: string | JWK,
   options: ResolvedOAuthOptions,
 ): Promise<AuthorizationCodeReturn | AuthorizationErrorResponse> {
   const {
@@ -184,7 +186,7 @@ export async function buildAuthorizationCode(
 
   const code = await encrypt(
     claims,
-    authorizationCode.privateKey,
+    privateKey,
     authorizationCode.encryptOptions,
   );
 
@@ -229,6 +231,7 @@ export function buildAuthorizationRedirect(
 // --- Main Public API ---
 
 export async function issueAuthorizationCode(
+  privateKey: string | JWK,
   options: ResolvedOAuthOptions,
 ): Promise<string | AuthorizationErrorResponse> {
   const { issuer: iss, defaultCodeChallengeMethod } = options;
@@ -278,7 +281,8 @@ export async function issueAuthorizationCode(
 
   return buildAuthorizationRedirect(
     onAuthRes,
-    validatedRes || (await buildAuthorizationCode(onAuthRes, options)),
+    validatedRes ||
+      (await buildAuthorizationCode(onAuthRes, privateKey, options)),
     options,
   );
 }

@@ -240,6 +240,6 @@ export function oauthOptionsDefaults<T extends OAuthOptions>(
     authorizationCode,
     refreshToken,
     accessToken,
-    hooks: opts.hooks
+    hooks: opts.hooks,
   };
 }
