@@ -116,7 +116,7 @@ export interface OAuthOptions {
    * Access Token options.
    */
   accessToken: AccessTokenOptions;
-  hooks?: OAuthProviderHooks;
+  hooks: OAuthProviderHooks;
 }
 
 export type ResolvedAuthorizationCodeOptions = Require<
@@ -240,5 +240,6 @@ export function oauthOptionsDefaults<T extends OAuthOptions>(
     authorizationCode,
     refreshToken,
     accessToken,
+    hooks: opts.hooks
   };
 }
