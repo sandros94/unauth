@@ -138,8 +138,8 @@ export function validateAuthorizationCodeRequest(
 
 export async function buildAuthorizationCode(
   onAuthCodeReturn: OnAuthorizationCodeReqReturn,
-  privateKey: string | JWK,
   options: ResolvedOAuthOptions,
+  privateKey?: string | JWK,
 ): Promise<AuthorizationCodeReturn | AuthorizationErrorResponse> {
   const {
     issuer: iss,
@@ -186,7 +186,7 @@ export async function buildAuthorizationCode(
 
   const code = await encrypt(
     claims,
-    privateKey,
+    privateKey || options.authorizationCode.privateKey,
     authorizationCode.encryptOptions,
   );
 
@@ -231,8 +231,8 @@ export function buildAuthorizationRedirect(
 // --- Main Public API ---
 
 export async function issueAuthorizationCode(
-  privateKey: string | JWK,
   options: ResolvedOAuthOptions,
+  privateKey?: string | JWK,
 ): Promise<string | AuthorizationErrorResponse> {
   const { issuer: iss, defaultCodeChallengeMethod } = options;
 
@@ -282,7 +282,7 @@ export async function issueAuthorizationCode(
   return buildAuthorizationRedirect(
     onAuthRes,
     validatedRes ||
-      (await buildAuthorizationCode(onAuthRes, privateKey, options)),
+      (await buildAuthorizationCode(onAuthRes, options, privateKey)),
     options,
   );
 }
