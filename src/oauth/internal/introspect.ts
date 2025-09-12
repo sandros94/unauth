@@ -8,26 +8,24 @@ import type {
   RefreshTokenClaims,
 } from "../types"
 import type {
-  ResolvedAuthorizationCodeOptions,
-  ResolvedAccessTokenOptions,
-  ResolvedRefreshTokenOptions,
+  ResolvedOAuthOptions,
 } from "./defaults"
 
 // Utility to introspect refresh tokens while validating their claims
 export async function introspectAuthorizationCode(
   token: string,
   privateKey: string | JWK,
-  options: ResolvedAuthorizationCodeOptions & { issuer: string; },
+  options: ResolvedOAuthOptions,
 ): Promise<JWEDecryptResult<AuthorizationCodeClaims>> {
-  const { issuer, ...opts } = options;
+  const { issuer, authorizationCode } = options;
 
   return decrypt<AuthorizationCodeClaims>(
     token,
     privateKey,
     {
       issuer,
-      maxTokenAge: opts.encryptOptions.expiresIn,
-      ...opts.decryptOptions,
+      maxTokenAge: authorizationCode.encryptOptions.expiresIn,
+      ...authorizationCode.decryptOptions,
     },
   );
 }
@@ -36,9 +34,9 @@ export async function introspectAuthorizationCode(
 export async function introspectAccessToken(
   token: string,
   key: JWK | JWKSet,
-  options: ResolvedAccessTokenOptions & { issuer: string; },
+  options: ResolvedOAuthOptions,
 ): Promise<JWSVerifyResult<AccessTokenClaims>> {
-  const { issuer, ...opts } = options;
+  const { issuer, accessToken } = options;
 
   return verify<AccessTokenClaims>(
     token,
@@ -46,8 +44,8 @@ export async function introspectAccessToken(
     {
       issuer,
       typ: "at+jwt",
-      maxTokenAge: opts.signOptions.expiresIn,
-      ...opts?.verifyOptions,
+      maxTokenAge: accessToken.signOptions.expiresIn,
+      ...accessToken?.verifyOptions,
     },
   );
 }
@@ -56,17 +54,17 @@ export async function introspectAccessToken(
 export async function introspectRefreshToken(
   token: string,
   privateKey: string | JWK,
-  options: ResolvedRefreshTokenOptions & { issuer: string; },
+  options: ResolvedOAuthOptions,
 ): Promise<JWEDecryptResult<RefreshTokenClaims>> {
-  const { issuer, ...opts } = options;
+  const { issuer, refreshToken } = options;
 
   return decrypt<RefreshTokenClaims>(
     token,
     privateKey,
     {
       issuer,
-      maxTokenAge: opts.encryptOptions.expiresIn,
-      ...opts?.decryptOptions,
+      maxTokenAge: refreshToken.encryptOptions.expiresIn,
+      ...refreshToken?.decryptOptions,
     },
   );
 }
