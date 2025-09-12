@@ -168,8 +168,8 @@ describe("oauth/authorize", () => {
       };
       const result = await buildAuthorizationCode(
         onAuthCodeReturn,
-        oauthOptions.authorizationCode.privateKey,
         options,
+        oauthOptions.authorizationCode.privateKey,
       );
       expect(result).toHaveProperty("code");
       expect(result).toHaveProperty("state");
@@ -241,9 +241,9 @@ describe("oauth/authorize", () => {
       const options = { ...oauthOptions, hooks: undefined };
       await expect(
         issueAuthorizationCode(
-          oauthOptions.authorizationCode.privateKey,
           // @ts-expect-error intentionally missing hooks
           options,
+          oauthOptions.authorizationCode.privateKey,
         ),
       ).rejects.toThrow("Missing onAuthorizeReq hook");
     });
@@ -262,9 +262,9 @@ describe("oauth/authorize", () => {
       };
       await expect(
         issueAuthorizationCode(
-          oauthOptions.authorizationCode.privateKey,
           // @ts-expect-error intentionally missing redirect_uri
           options,
+          oauthOptions.authorizationCode.privateKey,
         ),
       ).resolves.toStrictEqual({
         error: "invalid_request",
@@ -287,9 +287,9 @@ describe("oauth/authorize", () => {
         },
       };
       const res = await issueAuthorizationCode(
-        oauthOptions.authorizationCode.privateKey,
         // @ts-expect-error intentionally throwing inside hook
         options,
+        oauthOptions.authorizationCode.privateKey,
       );
       expect(res).toHaveProperty("error", "invalid_client");
       expect(res).toHaveProperty("error_description");
@@ -297,8 +297,8 @@ describe("oauth/authorize", () => {
 
     it("returns redirect URI with code if hook returns valid", async () => {
       const uri = await issueAuthorizationCode(
-        oauthOptions.authorizationCode.privateKey,
         oauthOptions,
+        oauthOptions.authorizationCode.privateKey,
       );
       expect(uri).toContain("code=");
       expect(uri).toContain("iss=");
