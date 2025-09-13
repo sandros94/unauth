@@ -148,7 +148,14 @@ export function authorizationCodeDefaults<T extends AuthorizationCodeOptions>(
 ): ResolvedAuthorizationCodeOptions {
   return {
     privateKey: opts.privateKey,
-    decryptOptions: opts.decryptOptions,
+    decryptOptions: {
+      ...opts.decryptOptions,
+      currentDate:
+        opts?.decryptOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
+      maxTokenAge:
+        opts?.decryptOptions?.maxTokenAge ??
+        DEFAULTS_OPTIONS.authorizationCode.expiresIn,
+    },
     encryptOptions: {
       ...opts?.encryptOptions,
       currentDate:
@@ -168,7 +175,14 @@ export function refreshTokenDefaults<T extends RefreshTokenOptions>(
 ): ResolvedRefreshTokenOptions {
   return {
     privateKey: opts.privateKey,
-    decryptOptions: opts.decryptOptions,
+    decryptOptions: {
+      ...opts.decryptOptions,
+      currentDate:
+        opts?.decryptOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
+      maxTokenAge:
+        opts?.decryptOptions?.maxTokenAge ??
+        DEFAULTS_OPTIONS.refreshToken.expiresIn,
+    },
     encryptOptions: {
       ...opts?.encryptOptions,
       currentDate:
@@ -188,7 +202,14 @@ export function accessTokenDefaults<T extends AccessTokenOptions>(
 ): ResolvedAccessTokenOptions {
   return {
     privateKey: opts.privateKey,
-    verifyOptions: opts.verifyOptions,
+    verifyOptions: {
+      ...opts.verifyOptions,
+      currentDate:
+        opts?.verifyOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
+      maxTokenAge:
+        opts?.verifyOptions?.maxTokenAge ??
+        DEFAULTS_OPTIONS.accessToken.expiresIn,
+    },
     signOptions: {
       ...opts?.signOptions,
       currentDate:
@@ -208,6 +229,10 @@ export function oauthOptionsDefaults<T extends OAuthOptions>(
       ...opts.authorizationCode?.encryptOptions,
       currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
     },
+    decryptOptions: {
+      ...opts.authorizationCode?.decryptOptions,
+      currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
+    },
   });
   const refreshToken = refreshTokenDefaults({
     ...opts.refreshToken,
@@ -215,11 +240,19 @@ export function oauthOptionsDefaults<T extends OAuthOptions>(
       ...opts.refreshToken?.encryptOptions,
       currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
     },
+    decryptOptions: {
+      ...opts.refreshToken?.decryptOptions,
+      currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
+    },
   });
   const accessToken = accessTokenDefaults({
     ...opts.accessToken,
     signOptions: {
       ...opts.accessToken?.signOptions,
+      currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
+    },
+    verifyOptions: {
+      ...opts.accessToken?.verifyOptions,
       currentDate: opts.currentDate || DEFAULTS_OPTIONS.currentDate,
     },
   });

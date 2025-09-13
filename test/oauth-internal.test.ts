@@ -36,6 +36,10 @@ describe("oauth/authorize", () => {
     it("applies defaults", () => {
       expect(authorizationCodeDefaults(mockAuthBaseOptions)).toEqual({
         privateKey: "supersecret",
+        decryptOptions: {
+          maxTokenAge: 600,
+          currentDate: expect.any(Date),
+        },
         encryptOptions: {
           expiresIn: 600,
           currentDate: expect.any(Date),
@@ -51,6 +55,10 @@ describe("oauth/authorize", () => {
 
       expect(authorizationCodeDefaults(opts)).toEqual({
         privateKey: "supersecret",
+        decryptOptions: {
+          maxTokenAge: 600,
+          currentDate: expect.any(Date),
+        },
         encryptOptions: {
           expiresIn: 600,
           currentDate: expect.any(Date),
@@ -61,6 +69,10 @@ describe("oauth/authorize", () => {
       const now = new Date("2025-09-10T12:00:00Z");
       const opts = {
         ...mockAuthBaseOptions,
+        decryptOptions: {
+          maxTokenAge: 123,
+          currentDate: now,
+        },
         encryptOptions: {
           expiresIn: 123,
           currentDate: now,
@@ -68,6 +80,10 @@ describe("oauth/authorize", () => {
       };
       expect(authorizationCodeDefaults(opts)).toEqual({
         privateKey: "supersecret",
+        decryptOptions: {
+          maxTokenAge: 123,
+          currentDate: now,
+        },
         encryptOptions: {
           expiresIn: 123,
           currentDate: now,
