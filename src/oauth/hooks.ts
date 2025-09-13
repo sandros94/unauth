@@ -25,20 +25,10 @@ export interface OAuthProviderHooks {
   onAuthorizeRequest(
     opts: Pick<ResolvedOAuthOptions, "issuer" | "defaultCodeChallengeMethod">,
   ): MaybePromise<OnAuthorizationCodeReqReturn>;
-  onAuthorizationCode?(ctx: {
-    client_id: string;
-    scope?: string;
-  }): MaybePromise<
-    JWTClaims & {
-      client_id?: string;
-      scope?: string;
-      resource?: string | string[];
-    }
-  >;
   onAuthorizationCodeIssued?(ctx: {
     claims: AuthorizationCodeClaims;
   }): MaybePromise<void>;
-  onAuthorizationCodeGrant?(ctx: {
+  onAuthorizationCodeCheck?(ctx: {
     claims: AuthorizationCodeClaims;
   }): MaybePromise<void>;
   onAuthorizationCodeUsed?(
@@ -52,7 +42,7 @@ export interface OAuthProviderHooks {
   ): MaybePromise<void>;
 
   onTokenRequest(): MaybePromise<TokenRequest>;
-  onRefreshTokenGrant?(ctx: { claims: RefreshTokenClaims }): MaybePromise<void>;
+  onRefreshTokenCheck?(ctx: { claims: RefreshTokenClaims }): MaybePromise<void>;
   onRefreshTokenUsed?(
     ctx: {
       claims: RefreshTokenClaims;
@@ -78,25 +68,7 @@ export interface OAuthProviderHooks {
 /**
  * @deprecated
  */
-export interface OAuthProviderHooksOld {
-  /** Whenever a token or code is revoked (best-effort). */
-  onTokenRevoked?(ctx: {
-    kind: "access" | "refresh" | "code";
-    jti: string;
-    iat: number;
-    exp: number;
-  }): void | Promise<void>;
-}
-
-/**
- * @deprecated
- */
 export interface OAuthRequestEvents {
-  /** For server wrappers to stash verified auth code claims in a request context. */
-  onAuthorizationCode?(params: {
-    code: string;
-    claims: AuthorizationCodeClaims;
-  }): void | Promise<void>;
   /** For server wrappers to stash freshly minted tokens / claims. */
   onTokens?(params: {
     access_token: string;

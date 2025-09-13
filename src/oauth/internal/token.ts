@@ -138,7 +138,7 @@ export async function handleAuthorizationCodeGrant(
   }
 
   // Hook to also validate the claims externally before issuing tokens
-  await opts.hooks?.onAuthorizationCodeGrant?.({ claims: codeClaims });
+  await opts.hooks?.onAuthorizationCodeCheck?.({ claims: codeClaims });
 
   // 5. Build tokens
   const scope = codeClaims.scope || opts.defaultScope;
@@ -250,7 +250,7 @@ export async function handleRefreshTokenGrant(
   }
 
   // Hook to also validate the claims externally before issuing tokens
-  await opts.hooks?.onRefreshTokenGrant?.({ claims: oldTokenClaims });
+  await opts.hooks?.onRefreshTokenCheck?.({ claims: oldTokenClaims });
 
   // 5. Build new tokens (implementing refresh token rotation)
   const iat = Math.floor(opts.currentDate.getTime() / 1000);
@@ -321,10 +321,8 @@ export async function handleClientCredentialsGrant(
     });
   }
 
-  const scope = req.scope || opts.defaultScope;
-
   const clientClaims = await opts.hooks.onClientAuthenticate({
-    scope,
+    scope: req.scope,
   });
 
   if (!clientClaims || !clientClaims.sub || !clientClaims.client_id) {
@@ -334,13 +332,14 @@ export async function handleClientCredentialsGrant(
     });
   }
 
+  const scope = clientClaims.scope || opts.defaultScope;
+
   // Validate resource/audience or fallback to defaultAudience
   // Per RFC 8707, resource maps to aud, and per RFC 9068 is both required and falls back to defaultAudience then scope
   const aud =
     clientClaims.aud ||
     clientClaims.resource ||
     opts.defaultAudience ||
-    clientClaims.scope ||
     scope;
   if (!aud) {
     throw new OAuthError({
