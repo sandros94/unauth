@@ -337,10 +337,7 @@ export async function handleClientCredentialsGrant(
   // Validate resource/audience or fallback to defaultAudience
   // Per RFC 8707, resource maps to aud, and per RFC 9068 is both required and falls back to defaultAudience then scope
   const aud =
-    clientClaims.aud ||
-    clientClaims.resource ||
-    opts.defaultAudience ||
-    scope;
+    clientClaims.aud || clientClaims.resource || opts.defaultAudience || scope;
   if (!aud) {
     throw new OAuthError({
       error: "invalid_grant",
