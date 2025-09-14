@@ -1,26 +1,20 @@
-import type { JWK, JWSSignOptions, JWSVerifyOptions, JWTClaims } from "unjwt";
-import { verify } from "unjwt/jws";
+import type { JWK, JWSSignOptions, JWSVerifyOptions } from "unjwt";
 import { isJWK, isPublicJWK } from "unjwt/utils";
-
-import type { MaybePromise } from "../types";
 
 import { type OAuthProviderConfig, OAuthProvider } from "../oauth";
 import type {
-  OAuthAuthorizeSuccess,
-  ResolvedAuthorizeOptions,
-} from "../oauth/internal";
-import type {
-  OIDCAuthorizeRequest,
+  ResolvedOIDCOptions,
   OIDCDiscoveryOptions,
   OIDCUserInfoProfile,
 } from "./internal";
 import {
-  buildIdToken,
+  oidcOptionsDefaults,
+  introspectIdToken,
   buildOIDCDiscoveryDocument,
   buildUserInfo,
-  validateOIDCAuthorizeRequest,
+  signIdToken,
 } from "./internal";
-import type { OIDCBuildIdTokenArgs, OIDCIdTokenClaims } from "./types";
+import type { TokenErrorResponse, TokenResponse } from "../oauth/internal";
 
 export interface OIDCProviderConfig extends OAuthProviderConfig {
   /**
@@ -35,12 +29,13 @@ export interface OIDCProviderConfig extends OAuthProviderConfig {
 
 export class OIDCProvider extends OAuthProvider {
   private activePrivateIDKey: JWK;
-  private _oidcJwks?: JWK[];
+  private oidcOptions: ResolvedOIDCOptions;
 
-  constructor(private readonly cfg: OIDCProviderConfig) {
+  constructor(cfg: OIDCProviderConfig) {
     const { idToken: _id, ...oauthCfg } = cfg;
     super(oauthCfg);
     this.activePrivateIDKey = cfg.idToken.privateKey;
+    this.oidcOptions = oidcOptionsDefaults(cfg);
   }
 
   get idTokenKeyInfo(): Pick<JWK, "kid" | "alg" | "kty"> {
@@ -57,23 +52,7 @@ export class OIDCProvider extends OAuthProvider {
         "[OIDC] Provided JWKS does not include the active signing key kid",
       );
     }
-    // Store only OIDC keys; OAuth keys are managed by the parent and merged on read.
-    this._oidcJwks = clean;
-  }
-
-  /**
-   * Public JWKS payload (only public keys).
-   */
-  override getPublicJwks(): { keys: JWK[] } | undefined {
-    const oauthKeys = super.getPublicJwks()?.keys || [];
-    const oidcKeys = this._oidcJwks || [];
-    if (oauthKeys.length === 0 && oidcKeys.length === 0) return undefined;
-    // Merge by kid to avoid duplicates
-    const byKid = new Map<string | undefined, JWK>();
-    for (const k of [...oauthKeys, ...oidcKeys]) {
-      byKid.set(k.kid, k);
-    }
-    return { keys: [...byKid.values()] };
+    super.setJwks(clean);
   }
 
   /**
@@ -112,58 +91,54 @@ export class OIDCProvider extends OAuthProvider {
   }
 
   // Authorization endpoint helpers (OAuth 2.1 + OIDC validation)
-  override async authorize(
-    req: OIDCAuthorizeRequest,
-    cb?: (
-      req: OIDCAuthorizeRequest,
-      opts: ResolvedAuthorizeOptions,
-    ) => MaybePromise<
-      Partial<JWTClaims> & {
-        sub: string;
-        scope?: string | undefined;
-        client_id?: string | undefined;
-      }
-    >,
-  ): Promise<OAuthAuthorizeSuccess> {
-    validateOIDCAuthorizeRequest(req);
-    return super.authorize(req, cb);
+  override async issueAuthorizationCode() {
+    // TODO: OIDC Validate authorize request via hook
+    return super.issueAuthorizationCode();
   }
 
-  // OIDC: Build ID Token
-  async buildIdToken(
-    args: OIDCBuildIdTokenArgs,
-    cb?: (
-      args: OIDCBuildIdTokenArgs,
-      opts: {
-        issuer: string;
-        jwsKey: JWK;
-        signOptions: JWSSignOptions & { expiresIn: number };
-      },
-    ) => MaybePromise<Partial<JWTClaims> & { scope?: string }>,
-  ): Promise<string> {
-    return buildIdToken(
-      args,
+  override async issueAccessToken(): Promise<
+    (TokenResponse & { id_token?: string }) | TokenErrorResponse
+  > {
+    const base = await super.issueAccessToken();
+    if (!("access_token" in (base as TokenResponse)))
+      return base as TokenErrorResponse;
+
+    const tokenRes = base as TokenResponse;
+    // Attach id_token only when openid scope requested
+    const scope = tokenRes.scope || "";
+    if (!scope.split(" ").includes("openid")) return tokenRes;
+
+    // Introspect access token to get claims for ID Token
+    const at = await this.introspectAccessToken(tokenRes.access_token);
+    if (!at.active || !at.claims) return tokenRes; // shouldn't happen
+
+    const id_token = await signIdToken(
       {
-        issuer: this.issuer,
-        jwsKey: this.activePrivateIDKey,
-        signOptions: this.cfg.idToken?.signOptions,
+        access: tokenRes.access_token,
+        // TODO: how should we handle code and nonce here?
       },
-      cb,
+      at.claims,
+      this.oidcOptions,
+      this.activePrivateIDKey,
     );
+
+    return { ...tokenRes, id_token } as TokenResponse & { id_token: string };
   }
 
-  // OIDC: Verify (introspect) ID Token
+  // Utility to introspect id tokens while validating their claims
   async introspectIdToken(token: string) {
-    try {
-      const { payload } = await verify<OIDCIdTokenClaims>(
-        token,
-        this.activePrivateIDKey,
-        { issuer: this.issuer, ...this.cfg.idToken?.verifyOptions },
-      );
-      return { active: true as const, claims: payload };
-    } catch {
-      return { active: false as const, claims: undefined };
-    }
+    const at = await introspectIdToken(
+      token,
+      this.getPublicJwks() || this.activePrivateIDKey,
+      this.oidcOptions,
+    ).catch((error_) => {
+      console.error(error_);
+      return undefined;
+    });
+
+    if (!at?.payload) return { active: false };
+
+    return { active: true, claims: at.payload };
   }
 
   /**

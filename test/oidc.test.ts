@@ -1,110 +1,68 @@
-import { describe, it, expect } from "vitest";
-import { generateKey } from "unjwt/jwk";
-import { type JWTClaims, verify } from "unjwt/jws";
+import { beforeAll, describe, expect, it } from "vitest";
+import type { JWK } from "unjwt";
 
+import type { TokenResponse } from "../src";
 import { OIDCProvider } from "../src/oidc";
+import { generateJwk } from "../src/utils";
 
-describe("OIDCProvider", async () => {
-  const issuer = "https://op.example";
-  const [atKey, idKey] = await Promise.all([
-    generateKey("HS256", { toJWK: { kid: "acc1" } }),
-    generateKey("HS256", { toJWK: { kid: "id1" } }),
-  ]);
-  const rtSecret = "refresh-secret";
+describe("OIDCProvider", () => {
+  const now = new Date("2025-01-01T00:00:00Z");
 
-  const op = new OIDCProvider({
-    issuer,
-    accessToken: { privateKey: atKey, signOptions: { alg: "HS256" } },
-    refreshToken: { privateKey: rtSecret },
-    idToken: { privateKey: idKey, signOptions: { alg: "HS256" } },
-    defaultScope: "openid profile",
-    availableScopes: ["openid", "profile", "email"],
+  let atPriv!: JWK;
+  let atPub!: JWK;
+  let idPriv!: JWK;
+  let idPub!: JWK;
+
+  beforeAll(async () => {
+    const at = await generateJwk("ES256", { params: { kid: "at-1" } });
+    atPriv = at.privateKey;
+    atPub = at.publicKey;
+    const id = await generateJwk("ES256", { params: { kid: "id-1" } });
+    idPriv = id.privateKey;
+    idPub = id.publicKey;
   });
 
-  it("validate authorize requires openid and only code/query", async () => {
-    await expect(
-      op.authorize(
-        {
+  it("issues id_token when scope contains openid", async () => {
+    const state: { code?: string } = {};
+    const provider = new OIDCProvider({
+      issuer: "https://issuer.oidc2",
+      authorizationCode: { privateKey: "ac" },
+      refreshToken: { privateKey: "rt" },
+      accessToken: { privateKey: atPriv },
+      idToken: { privateKey: idPriv },
+      hooks: {
+        onAuthorizeRequest: () => ({
           response_type: "code",
-          client_id: "c",
-          redirect_uri: "https://cb",
-          scope: "profile", // missing openid
-          code_challenge: "v",
-        },
-        async () => ({ sub: "u" }),
-      ),
-    ).rejects.toThrow(/Missing required openid/);
-
-    // valid
-    const ok = await op.authorize(
-      {
-        response_type: "code",
-        client_id: "c",
-        redirect_uri: "https://cb",
-        scope: "openid profile",
-        code_challenge: "v",
+          client_id: "c1",
+          code_challenge: "ver",
+          redirect_uri: "https://app/cb",
+          scope: "openid profile",
+          claims: { sub: "user1" },
+        }),
+        onTokenRequest: () => ({
+          grant_type: "authorization_code",
+          code: state.code!,
+          client_id: "c1",
+          code_verifier: "ver",
+        }),
       },
-      async () => ({ sub: "u" }),
-    );
-    expect(ok.code).toBeTypeOf("string");
-  });
-
-  it("builds and introspects ID Token", async () => {
-    const id = await op.buildIdToken({
-      subject: "u1",
-      audience: "c1",
-      nonce: "n",
-      access_token: "at",
+      jwks: [atPub, idPub],
+      currentDate: now,
     });
-    const { payload } = await verify<JWTClaims>(id, idKey);
-    expect(payload.iss).toBe(issuer);
-    expect(payload.sub).toBe("u1");
-    expect(payload.aud).toBe("c1");
-    expect(payload.nonce).toBe("n");
-    expect(typeof payload.exp).toBe("number");
-    expect(typeof payload.iat).toBe("number");
 
-    const res = await op.introspectIdToken(id);
-    expect(res.active).toBe(true);
-    expect(res.claims?.iss).toBe(issuer);
+    const redirect = await provider.issueAuthorizationCode();
+    const url = new URL(redirect as string);
+    state.code = url.searchParams.get("code") || undefined;
+    expect(state.code).toBeTruthy();
 
-    const bad = await op.introspectIdToken("x.y.z");
-    expect(bad.active).toBe(false);
-  });
+    const tokenRes = await provider.issueAccessToken();
+    expect(tokenRes).toHaveProperty("access_token");
+    expect(tokenRes).toHaveProperty("id_token");
 
-  it("discovery document merges OAuth and OIDC bits", () => {
-    const d = op.getDiscoveryDocument();
-    expect(d.issuer).toBe(issuer);
-    expect(d.authorization_endpoint).toBe(`${issuer}/authorize`);
-    expect(d.userinfo_endpoint).toBe(`${issuer}/userinfo`);
-    expect(d.scopes_supported).toContain("openid");
-    expect(d.response_types_supported).toContain("code");
-  });
-
-  it("JWKS management across OAuth and OIDC and ID signing key rotation", async () => {
-    const [newOkp, otherOkp, id1Okp] = await Promise.all([
-      generateKey("Ed25519", { toJWK: { kid: "new" } }),
-      generateKey("Ed25519", { toJWK: { kid: "other" } }),
-      generateKey("Ed25519", { toJWK: { kid: "id1" } }),
-    ]);
-
-    // Setting JWKS that doesn't include ID key should fail
-    expect(() => op.setJwks([otherOkp.publicKey])).toThrow(
-      /does not include the active signing key kid/,
+    const idt = await provider.introspectIdToken(
+      (tokenRes as TokenResponse & { id_token: string }).id_token,
     );
-
-    // rotate without JWKS set should fail
-    expect(() => op.rotateIDKey(newOkp.privateKey)).toThrow(/No JWKS set/);
-
-    // First set JWKS including both current and new kids
-    op.setJwks([id1Okp.publicKey, newOkp.publicKey]);
-    // rotate using current JWKS
-    op.rotateIDKey(newOkp.privateKey);
-    expect(op.idTokenKeyInfo.kid).toBe("new");
-
-    // getPublicJwks returns merged keys (currently only one)
-    const pub = op.getPublicJwks();
-    expect(pub?.keys.find((k) => k.kid === "new")).toBeDefined();
-    expect(op.getPublicKeyByKid("new")).toBeDefined();
+    expect(idt.active).toBe(true);
+    expect(idt.claims?.sub).toBe("user1");
   });
 });

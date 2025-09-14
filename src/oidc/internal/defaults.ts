@@ -1,31 +1,42 @@
-import type { JWSSignOptions } from "unjwt";
-import type { Require } from "../../types";
+import type {
+  AccessTokenOptions,
+  ResolvedAccessTokenOptions,
+  OAuthOptions,
+  ResolvedOAuthOptions,
+} from "../../oauth/internal/defaults";
+import {
+  accessTokenDefaults,
+  oauthOptionsDefaults,
+} from "../../oauth/internal/defaults";
 
-import type { OIDCIdTokenOptions } from "../types";
+import type { OIDCProviderHooks } from "../hooks";
 
-export const OIDC_DEFAULTS = Object.freeze({
-  idTokenExpiresIn: 3600, // 1 hour
-});
+export type IDTokenOptions = AccessTokenOptions;
 
-export type ResolvedOIDCIdTokenOptions = Require<
-  OIDCIdTokenOptions,
-  "signOptions.expiresIn"
->;
+export type ResolvedIDTokenOptions = ResolvedAccessTokenOptions;
 
-export function withIdTokenDefaults(
-  opts: OIDCIdTokenOptions,
-): ResolvedOIDCIdTokenOptions {
-  const { issuer, jwsKey, signOptions } = opts;
+export interface OIDCOptions extends OAuthOptions {
+  idToken: IDTokenOptions;
+}
 
-  const resolvedSign: JWSSignOptions & { expiresIn: number } = {
-    ...signOptions,
-    expiresIn: signOptions?.expiresIn ?? OIDC_DEFAULTS.idTokenExpiresIn,
-  };
+export interface ResolvedOIDCOptions
+  extends Omit<ResolvedOAuthOptions, "hooks"> {
+  hooks: OIDCProviderHooks;
+  idToken: ResolvedIDTokenOptions;
+}
 
+export function idTokenDefaults<T extends IDTokenOptions>(
+  opts: T,
+): ResolvedIDTokenOptions {
+  // Since they share the same structure, we can reuse the access token defaults
+  return accessTokenDefaults(opts);
+}
+
+export function oidcOptionsDefaults<T extends OIDCOptions>(
+  opts: T,
+): ResolvedOIDCOptions {
   return {
-    issuer,
-    jwsKey,
-    signOptions: resolvedSign,
-    eddsaHashAlgorithm: opts.eddsaHashAlgorithm,
+    ...oauthOptionsDefaults(opts),
+    idToken: idTokenDefaults(opts.idToken),
   };
 }

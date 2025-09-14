@@ -1,18 +1,10 @@
-import type { JWSAlgorithm, JWTClaims } from "unjwt";
-import { hash, secureCompare } from "unsecure";
 import { sign } from "unjwt/jws";
+import type { JWK, JWSAlgorithm } from "unjwt";
+import { hash, secureCompare } from "unsecure";
 
-import type { MaybePromise } from "../../types";
-
-import type {
-  OIDCBuildIdTokenArgs,
-  OIDCIdTokenClaims,
-  OIDCIdTokenOptions,
-} from "../types";
-import {
-  type ResolvedOIDCIdTokenOptions,
-  withIdTokenDefaults,
-} from "./defaults";
+import type { AccessTokenClaims } from "../../oauth";
+import type { IdTokenClaims } from "../types";
+import type { ResolvedOIDCOptions } from "./defaults";
 
 /**
  * Compute token hash (at_hash / c_hash) per OIDC Core 3.3.2.11: base64url( left-most half of hash(access_token) )
@@ -63,79 +55,11 @@ export async function computeTokenHash(
 }
 
 /**
- * Build and sign an ID Token.
- */
-export async function buildIdToken(
-  args: OIDCBuildIdTokenArgs,
-  options: OIDCIdTokenOptions,
-  cb?: (
-    args: OIDCBuildIdTokenArgs,
-    opts: ResolvedOIDCIdTokenOptions,
-  ) => MaybePromise<Partial<JWTClaims> & { scope?: string }>,
-): Promise<string> {
-  const {
-    subject,
-    audience,
-    nonce,
-    auth_time,
-    acr,
-    amr,
-    azp,
-    access_token,
-    code,
-    additionalClaims,
-  } = args;
-  const { issuer, jwsKey, signOptions } = withIdTokenDefaults(options);
-  const eddsaHashAlgorithm = options.eddsaHashAlgorithm || "SHA-512";
-  const alg = jwsKey.alg || signOptions.alg;
-
-  const extraClaims = cb ? await cb(args, { issuer, jwsKey, signOptions }) : {};
-
-  const claims: Omit<OIDCIdTokenClaims, "exp"> = {
-    ...additionalClaims,
-    ...extraClaims,
-    iss: issuer,
-    sub: subject,
-    aud: audience,
-    ...(nonce ? { nonce } : {}),
-    ...(auth_time
-      ? {
-          auth_time:
-            typeof auth_time === "number"
-              ? auth_time
-              : Math.floor(auth_time.getTime() / 1000),
-        }
-      : {}),
-    ...(acr ? { acr } : {}),
-    ...(amr ? { amr } : {}),
-    ...(azp ? { azp } : {}),
-  };
-
-  const [at_hash, c_hash] = await Promise.all([
-    alg && access_token
-      ? computeTokenHash(access_token, alg, eddsaHashAlgorithm)
-      : undefined,
-    alg && code ? computeTokenHash(code, alg, eddsaHashAlgorithm) : undefined,
-  ]);
-  if (!("at_hash" in claims) && at_hash) {
-    claims.at_hash = at_hash;
-  }
-  if (!("c_hash" in claims) && c_hash) {
-    claims.c_hash = c_hash;
-  }
-
-  return sign(claims, jwsKey, {
-    protectedHeader: { typ: "at+jwt", ...signOptions.protectedHeader },
-    ...signOptions,
-  });
-}
-
-/**
  * Verify ID Token hash claims (at_hash and c_hash) against provided values.
  * This is intended for clients or token validators, not for the authorize request.
  */
 export async function verifyIdTokenHashes(
-  claims: OIDCIdTokenClaims,
+  claims: IdTokenClaims,
   jwsAlg: string,
   args: { access_token?: string; code?: string },
 ): Promise<void> {
@@ -154,4 +78,75 @@ export async function verifyIdTokenHashes(
   if (cHash && !secureCompare(claims.c_hash!, cHash)) {
     throw new Error("[OIDC] c_hash validation failed");
   }
+}
+
+async function buildIdTokenClaims(
+  args: {
+    access?: string;
+    code?: string;
+    nonce?: string;
+  },
+  accessTokenClaims: AccessTokenClaims,
+  opts: ResolvedOIDCOptions,
+  idTokenKey?: JWK,
+): Promise<IdTokenClaims> {
+  const { issuer } = opts;
+  const iat = Math.floor(Date.now() / 1000);
+  const exp = iat + (opts.idToken.signOptions?.expiresIn ?? 600);
+  const aud = accessTokenClaims.client_id;
+  const base: IdTokenClaims = {
+    iss: issuer,
+    sub: accessTokenClaims.sub,
+    aud,
+    iat,
+    exp,
+  };
+
+  // Compute at_hash or c_hash if respective input provided and alg known
+  const alg = idTokenKey?.alg || opts.idToken.privateKey.alg;
+  if (alg) {
+    const [atHash, cHash] = await Promise.all([
+      args.access ? computeTokenHash(args.access, alg) : undefined,
+      args.code ? computeTokenHash(args.code, alg) : undefined,
+    ]);
+    base.at_hash = atHash;
+    base.c_hash = cHash;
+  }
+  if (args.nonce) base.nonce = args.nonce;
+
+  const hookExtras = (await opts.hooks?.onIdTokenClaims?.({
+    reason: args.code ? "authorization_code" : "refresh_token",
+    accessToken: accessTokenClaims,
+    refreshToken: undefined,
+    nonce: args.nonce,
+  })) as Partial<IdTokenClaims> | undefined;
+
+  return {
+    ...base,
+    ...(hookExtras && { ...hookExtras }),
+  };
+}
+
+export async function signIdToken(
+  args: {
+    access?: string;
+    code?: string;
+    nonce?: string;
+  },
+  accessTokenClaims: AccessTokenClaims,
+  opts: ResolvedOIDCOptions,
+  idTokenKey?: JWK,
+) {
+  const claims = await buildIdTokenClaims(
+    args,
+    accessTokenClaims,
+    opts,
+    idTokenKey,
+  );
+
+  return sign(
+    claims,
+    idTokenKey || opts.idToken.privateKey,
+    opts.idToken.signOptions,
+  );
 }

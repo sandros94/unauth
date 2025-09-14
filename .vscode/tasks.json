@@ -20,7 +20,7 @@
     {
       "label": "test",
       "type": "shell",
-      "command": "pnpm test",
+      "command": "pnpm test:types && pnpm vitest run --slowTestThreshold=500",
       "isBackground": false,
       "problemMatcher": ["$tsc", "$eslint-stylish"],
       "group": "build"
