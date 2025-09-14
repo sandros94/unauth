@@ -203,9 +203,9 @@ export function validateTokenRequest(
 }
 
 export async function validateAuthorizationCodeClaims(args: {
-  claims: AuthorizationCodeClaims,
-  req: AuthorizationCodeGrantRequest,
-  iss: string,
+  claims: AuthorizationCodeClaims;
+  req: AuthorizationCodeGrantRequest;
+  iss: string;
 }): Promise<TokenErrorResponse | undefined> {
   const { claims, req, iss } = args;
 
@@ -273,9 +273,9 @@ export function validateClientCredentialsGrantRequest(
 }
 
 export async function validateRefreshTokenClaims(args: {
-  claims: RefreshTokenClaims,
-  req: RefreshTokenGrantRequest,
-  iss: string,
+  claims: RefreshTokenClaims;
+  req: RefreshTokenGrantRequest;
+  iss: string;
 }): Promise<TokenErrorResponse | undefined> {
   const { claims, req, iss } = args;
 
@@ -357,7 +357,7 @@ export async function buildAuthorizationCodeGrant(
     exp: iat + atOpts.signOptions.expiresIn,
     iat,
     client_id: req.client_id,
-    scope : codeClaims.scope,
+    scope: codeClaims.scope,
   };
 
   const rtClaims: RefreshTokenClaims = {
@@ -369,20 +369,12 @@ export async function buildAuthorizationCodeGrant(
     iat,
     client_id: req.client_id,
     resource: codeClaims.resource,
-    scope : codeClaims.scope,
+    scope: codeClaims.scope,
   };
 
   const [access_token, refresh_token] = await Promise.all([
-    sign(
-      atClaims,
-      atOpts.privateKey,
-      atOpts.signOptions,
-    ),
-    encrypt(
-      rtClaims,
-      rtOpts.privateKey,
-      rtOpts.encryptOptions,
-    ),
+    sign(atClaims, atOpts.privateKey, atOpts.signOptions),
+    encrypt(rtClaims, rtOpts.privateKey, rtOpts.encryptOptions),
   ]);
 
   return {
@@ -395,7 +387,7 @@ export async function buildAuthorizationCodeGrant(
     },
     accessTokenClaims: atClaims,
     refreshTokenClaims: rtClaims,
-  }
+  };
 }
 
 /**
@@ -430,7 +422,7 @@ export async function buildClientCredentialsGrant(
     exp: iat + atOpts.signOptions.expiresIn,
     iat,
     client_id: req.client_id,
-    scope : req.scope,
+    scope: req.scope,
   };
 
   const access_token = await sign(
@@ -447,14 +439,14 @@ export async function buildClientCredentialsGrant(
       scope: atClaims.scope,
     },
     accessTokenClaims: atClaims,
-  }
+  };
 }
 
 /**
  * Handles the `refresh_token` grant flow.
  */
-export async function handleRefreshTokenGrant(
-  args: HandleRefreshTokenGrantArgs
+export async function buildRefreshTokenGrant(
+  args: HandleRefreshTokenGrantArgs,
 ): Promise<HandleRefreshTokenGrantReturn> {
   const {
     req,
@@ -471,7 +463,7 @@ export async function handleRefreshTokenGrant(
   const atOpts = accessTokenDefaults({
     ...accessTokenOptions,
     currentDate,
-  })
+  });
   const rtOpts = refreshTokenDefaults({
     ...refreshTokenOptions,
     currentDate,
@@ -506,16 +498,8 @@ export async function handleRefreshTokenGrant(
   };
 
   const [access_token, new_refresh_token] = await Promise.all([
-    sign(
-      newAccessTokenClaims,
-      atOpts.privateKey,
-      atOpts.signOptions,
-    ),
-    encrypt(
-      newRefreshTokenClaims,
-      rtOpts.privateKey,
-      rtOpts.encryptOptions,
-    ),
+    sign(newAccessTokenClaims, atOpts.privateKey, atOpts.signOptions),
+    encrypt(newRefreshTokenClaims, rtOpts.privateKey, rtOpts.encryptOptions),
   ]);
 
   return {

@@ -1,17 +1,44 @@
 import type { JWTClaims } from "unjwt";
 
+import type {
+  AuthorizationCodeClaims as OAuthAuthorizationCodeClaims,
+  TokenSuccessResponse as OAuthTokenSuccessResponse,
+} from "../oauth/types";
+
+export type * from "../oauth/provider/error";
+
+export type {
+  AccessTokenClaims,
+  RefreshTokenClaims,
+  AuthorizeRequest,
+  AuthorizeSuccessResponse,
+  AuthorizeResponse,
+  AuthorizationCodeGrantRequest,
+  ClientCredentialsGrantRequest,
+  RefreshTokenGrantRequest,
+  TokenRequest,
+  TokenResponse,
+} from "../oauth/types";
+
 export interface IdTokenClaims extends JWTClaims {
   iss: Exclude<JWTClaims["iss"], undefined>;
   sub: string;
   aud: string | string[];
   exp: Exclude<JWTClaims["exp"], undefined>;
   iat: Exclude<JWTClaims["iat"], undefined>;
-  auth_time?: number;
+  at_hash: string;
   nonce?: string;
+  auth_time?: number;
   acr?: string;
   amr?: string[];
   azp?: string;
-  at_hash?: string;
-  c_hash?: string;
   sid?: string;
+}
+
+export interface AuthorizationCodeClaims extends OAuthAuthorizationCodeClaims {
+  nonce: string;
+}
+
+export interface TokenSuccessResponse extends OAuthTokenSuccessResponse {
+  id_token: string;
 }

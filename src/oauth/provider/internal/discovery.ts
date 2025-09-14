@@ -22,8 +22,14 @@ export interface OAuthDiscoveryOptions {
 }
 
 export type OAuthDiscoveryDocument = ParseType<
-  Required<Omit<OAuthDiscoveryOptions, "default_scope" | "prefix">> & {
+  Required<
+    Omit<
+      OAuthDiscoveryOptions,
+      "default_scope" | "revocation_endpoint" | "prefix"
+    >
+  > & {
     default_scope?: string;
+    revocation_endpoint?: string;
   }
 >;
 
@@ -42,7 +48,7 @@ export function buildOAuthDiscoveryDocument(
     token_endpoint: opts.token_endpoint || `${baseUrl}/token`,
     introspection_endpoint:
       opts.introspection_endpoint || `${baseUrl}/introspect`,
-    revocation_endpoint: opts.revocation_endpoint || `${baseUrl}/revoke`,
+    revocation_endpoint: opts.revocation_endpoint,
     response_types_supported: opts.response_types_supported ?? ["code"],
     scopes_supported: opts.scopes_supported ?? [],
     default_scope: opts.default_scope,

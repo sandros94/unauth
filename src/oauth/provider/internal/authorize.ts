@@ -33,10 +33,12 @@ export interface BuildAuthorizationCodeArgs {
   options: AuthorizationCodeOptions;
 }
 
-export type BuildAuthorizationCodeReturn = AuthorizeErrorResponse | {
-  res: AuthorizeResponse;
-  claims: AuthorizationCodeClaims;
-}
+export type BuildAuthorizationCodeReturn =
+  | AuthorizeErrorResponse
+  | {
+      res: AuthorizeResponse;
+      claims: AuthorizationCodeClaims;
+    };
 
 export interface BuildAuthorizationRedirectArgs {
   res: AuthorizeResponse;
@@ -48,9 +50,7 @@ export interface BuildAuthorizationRedirectArgs {
 
 // #region runtime validation functions
 
-function isAuthorizationCodeRequest(
-  value: unknown,
-): value is AuthorizeRequest {
+function isAuthorizationCodeRequest(value: unknown): value is AuthorizeRequest {
   if (typeof value !== "object" || value == null) return false;
   const v = value as AuthorizeRequest;
   return (
@@ -60,7 +60,8 @@ function isAuthorizationCodeRequest(
     (v.redirect_uri === undefined || typeof v.redirect_uri === "string") &&
     (v.state === undefined || typeof v.state === "string") &&
     (v.scope === undefined || typeof v.scope === "string") &&
-    (v.code_challenge_method === undefined || typeof v.code_challenge_method === "string")
+    (v.code_challenge_method === undefined ||
+      typeof v.code_challenge_method === "string")
   );
 }
 
@@ -72,9 +73,10 @@ function validateAuthorizeRequest(
     return new OAuthError({
       error: "invalid_request",
       error_description: "Invalid authorize request",
-      state: 'state' in req && typeof (req as AuthorizeRequest).state === 'string'
-        ? (req as AuthorizeRequest).state
-        : undefined,
+      state:
+        "state" in req && typeof (req as AuthorizeRequest).state === "string"
+          ? (req as AuthorizeRequest).state
+          : undefined,
     }).toJSON();
   }
 
@@ -99,7 +101,10 @@ function validateAuthorizeRequest(
     }).toJSON();
   }
 
-  if (req.code_challenge_method !== "plain" && req.code_challenge_method !== "S256") {
+  if (
+    req.code_challenge_method !== "plain" &&
+    req.code_challenge_method !== "S256"
+  ) {
     return new OAuthError({
       error: "invalid_request",
       error_description: "Unsupported code_challenge_method",
@@ -108,7 +113,10 @@ function validateAuthorizeRequest(
     }).toJSON();
   }
 
-  if (!req.resource || (Array.isArray(req.resource) && req.resource.length === 0)) {
+  if (
+    !req.resource ||
+    (Array.isArray(req.resource) && req.resource.length === 0)
+  ) {
     return new OAuthError({
       error: "invalid_request",
       error_description: "Missing resource in authorization request",
@@ -120,10 +128,10 @@ function validateAuthorizeRequest(
   return undefined;
 }
 
-export function validateRedirectUri(
+export function validateAuthorizeRedirectUri(
   redirectUri: string | undefined,
   registeredRedirectUris: string | string[],
-  options: { iss: string, state?: string },
+  options: { iss: string; state?: string },
 ): string | AuthorizeErrorResponse {
   const uris = Array.isArray(registeredRedirectUris)
     ? registeredRedirectUris
@@ -138,11 +146,9 @@ export function validateRedirectUri(
         state: options.state,
         iss: options.iss,
       }).toJSON();
-    }
-    else if (uris.length === 1 && uris[0]) {
+    } else if (uris.length === 1 && uris[0]) {
       return uris[0];
-    }
-    else {
+    } else {
       return new OAuthError({
         error: "invalid_request",
         error_description: "No redirect URIs registered for this client",
@@ -173,7 +179,7 @@ export function validateRedirectUri(
 // #region runtime implementation functions
 
 export async function buildAuthorizationCode(
-  args: BuildAuthorizationCodeArgs
+  args: BuildAuthorizationCodeArgs,
 ): Promise<BuildAuthorizationCodeReturn> {
   const { req, claims, iss, randomJti, options } = args;
   const validationError = validateAuthorizeRequest(req, iss);
@@ -184,7 +190,8 @@ export async function buildAuthorizationCode(
   if (!("sub" in claims) || typeof claims.sub !== "string" || !claims.sub) {
     return new OAuthError({
       error: "invalid_request",
-      error_description: "Missing subject (sub) for end-user in authorization request",
+      error_description:
+        "Missing subject (sub) for end-user in authorization request",
       state: req.state,
       iss,
     }).toJSON() as AuthorizeErrorResponse;
@@ -192,9 +199,7 @@ export async function buildAuthorizationCode(
 
   const opts = authorizationCodeDefaults(options);
 
-  const iat = Math.floor(
-    opts.encryptOptions.currentDate.getTime() / 1000,
-  );
+  const iat = Math.floor(opts.encryptOptions.currentDate.getTime() / 1000);
   const acClaims: AuthorizationCodeClaims = {
     ...claims,
     jti: (randomJti || crypto.randomUUID)(),
@@ -225,14 +230,16 @@ export async function buildAuthorizationCode(
     }).toJSON() as AuthorizeErrorResponse;
   });
 
-  return typeof code === "string" ? {
-    res: {
-      code,
-      iss,
-      state: req.state,
-    },
-    claims: acClaims,
-  } : code;
+  return typeof code === "string"
+    ? {
+        res: {
+          code,
+          iss,
+          state: req.state,
+        },
+        claims: acClaims,
+      }
+    : code;
 }
 
 /**
