@@ -10,9 +10,9 @@ export type GenericErrorCode =
 
 // #endregion
 
-// #region Authorization Error
+// #region Authorize Error
 
-export type AuthorizationErrorCode =
+export type AuthorizeErrorCode =
   | GenericErrorCode
   // The resource owner or authorization server denied the request.
   | "access_denied"
@@ -25,10 +25,10 @@ export type AuthorizationErrorCode =
 
 /**
  * Interface for the query parameters of an error redirect response
- * from the Authorization Endpoint.
+ * from the Authorize Endpoint.
  */
-export interface AuthorizationErrorResponse {
-  error: AuthorizationErrorCode | (string & {});
+export interface AuthorizeErrorResponse {
+  error: AuthorizeErrorCode | (string & {});
   error_description?: string;
   error_uri?: string;
   state?: string;
@@ -118,7 +118,7 @@ export interface IntrospectionErrorResponse {
 // #region OAuth Error
 
 export type OAuthErrorDetails =
-  | AuthorizationErrorResponse
+  | AuthorizeErrorResponse
   | TokenErrorResponse
   | TokenRevocationErrorResponse
   | ResourceErrorResponse
@@ -152,7 +152,7 @@ export class OAuthError extends Error {
   readonly error_uri?: string;
 
   /**
-   * Optional state parameter (used by Authorization Endpoint).
+   * Optional state parameter (used by Authorize Endpoint).
    */
   readonly state?: string;
 
@@ -162,7 +162,7 @@ export class OAuthError extends Error {
   readonly realm?: string;
 
   /**
-   * Optional issuer identifier (used by Authorization responses in this codebase).
+   * Optional issuer identifier (used by Authorize responses in this codebase).
    */
   readonly iss?: string;
 
@@ -231,20 +231,20 @@ export class OAuthError extends Error {
     if (this.error_uri)
       (
         out as
-          | AuthorizationErrorResponse
+          | AuthorizeErrorResponse
           | TokenErrorResponse
           | TokenRevocationErrorResponse
           | IntrospectionErrorResponse
       ).error_uri = this.error_uri;
-    if (this.state) (out as AuthorizationErrorResponse).state = this.state;
-    if (this.iss) (out as AuthorizationErrorResponse).iss = this.iss;
+    if (this.state) (out as AuthorizeErrorResponse).state = this.state;
+    if (this.iss) (out as AuthorizeErrorResponse).iss = this.iss;
     if (this.realm) (out as ResourceErrorResponse).realm = this.realm;
     return out;
   }
 
   // Convenience factories
 
-  static forAuthorization(err: AuthorizationErrorResponse) {
+  static forAuthorize(err: AuthorizeErrorResponse) {
     return new OAuthError(err);
   }
 
