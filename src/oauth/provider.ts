@@ -4,9 +4,6 @@ import type { JWK } from "unjwt";
 import type {
   OAuthOptions,
   ResolvedOAuthOptions,
-  AuthorizationCodeOptions,
-  AccessTokenOptions,
-  RefreshTokenOptions,
   OAuthDiscoveryOptions,
 } from "./internal";
 import {
@@ -37,16 +34,6 @@ export class OAuthProvider {
   private activePrivateRTKey: string | JWK;
   private _jwks?: JWK[];
   private options: ResolvedOAuthOptions;
-
-  private get authorizationCodeOptions(): AuthorizationCodeOptions {
-    return this.options.authorizationCode;
-  }
-  private get accessTokenOptions(): AccessTokenOptions {
-    return this.options.accessToken;
-  }
-  private get refreshTokenOptions(): RefreshTokenOptions {
-    return this.options.refreshToken;
-  }
 
   constructor(config: OAuthProviderConfig) {
     this.options = oauthOptionsDefaults(config);
