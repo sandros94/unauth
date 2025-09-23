@@ -11,19 +11,9 @@ export default defineBuildConfig({
       name: "oauth",
     },
     {
-      input: "./src/oauth/internal",
-      outDir: "./dist/oauth/internal",
-      name: "oauth/internal",
-    },
-    {
       input: "./src/oidc",
       outDir: "./dist/oidc",
       name: "oidc",
-    },
-    {
-      input: "./src/oidc/internal",
-      outDir: "./dist/oidc/internal",
-      name: "oidc/internal",
     },
     {
       input: "./src/utils",
