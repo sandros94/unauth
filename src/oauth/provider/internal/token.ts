@@ -28,7 +28,7 @@ import { isScopeSubset, validatePKCE } from "./utils";
 /**
  * Arguments for handling the `authorization_code` grant flow.
  */
-export interface HandleAuthorizationCodeGrantArgs {
+export interface BuildAuthorizationCodeGrantArgs {
   req: AuthorizationCodeGrantRequest;
   codeClaims: AuthorizationCodeClaims;
   accessTokenOptions: AccessTokenOptions;
@@ -52,7 +52,7 @@ export interface HandleAuthorizationCodeGrantArgs {
 /**
  * Return values from handling the `authorization_code` grant flow.
  */
-export interface HandleAuthorizationCodeGrantReturn {
+export interface BuildAuthorizationCodeGrantReturn {
   res: TokenSuccessResponse;
   accessTokenClaims: AccessTokenClaims;
   refreshTokenClaims: RefreshTokenClaims;
@@ -61,7 +61,7 @@ export interface HandleAuthorizationCodeGrantReturn {
 /**
  * Arguments for handling the `client_credentials` grant flow.
  */
-export interface HandleClientCredentialsGrantArgs {
+export interface BuildClientCredentialsGrantArgs {
   req: ClientCredentialsGrantRequest;
   accessTokenOptions: AccessTokenOptions;
   extraAccessTokenClaims?: JWTClaims;
@@ -82,7 +82,7 @@ export interface HandleClientCredentialsGrantArgs {
 /**
  * Return values from handling the `client_credentials` grant flow.
  */
-export interface HandleClientCredentialsGrantReturn {
+export interface BuildClientCredentialsGrantReturn {
   res: TokenSuccessResponse;
   accessTokenClaims: AccessTokenClaims;
 }
@@ -90,7 +90,7 @@ export interface HandleClientCredentialsGrantReturn {
 /**
  * Arguments for handling the `refresh_token` grant flow.
  */
-export interface HandleRefreshTokenGrantArgs {
+export interface BuildRefreshTokenGrantArgs {
   req: RefreshTokenGrantRequest;
   refreshTokenClaims: RefreshTokenClaims;
   accessTokenOptions: AccessTokenOptions;
@@ -114,7 +114,7 @@ export interface HandleRefreshTokenGrantArgs {
 /**
  * Return values from handling the `refresh_token` grant flow.
  */
-export interface HandleRefreshTokenGrantReturn {
+export interface BuildRefreshTokenGrantReturn {
   res: TokenSuccessResponse;
   accessTokenClaims: AccessTokenClaims;
   refreshTokenClaims: RefreshTokenClaims;
@@ -318,14 +318,14 @@ export async function validateRefreshTokenClaims(args: {
 
 // #endregion validation functions
 
-// #region Grant-Specific Handlers
+// #region Grant-Specific Builders
 
 /**
- * Handles the `authorization_code` grant flow.
+ * Builds the `authorization_code` grant flow.
  */
 export async function buildAuthorizationCodeGrant(
-  args: HandleAuthorizationCodeGrantArgs,
-): Promise<HandleAuthorizationCodeGrantReturn> {
+  args: BuildAuthorizationCodeGrantArgs,
+): Promise<BuildAuthorizationCodeGrantReturn> {
   const {
     req,
     codeClaims,
@@ -391,11 +391,11 @@ export async function buildAuthorizationCodeGrant(
 }
 
 /**
- * Handles the `client_credentials` grant flow.
+ * Builds the `client_credentials` grant flow.
  */
 export async function buildClientCredentialsGrant(
-  args: HandleClientCredentialsGrantArgs,
-): Promise<HandleClientCredentialsGrantReturn> {
+  args: BuildClientCredentialsGrantArgs,
+): Promise<BuildClientCredentialsGrantReturn> {
   const {
     req,
     accessTokenOptions,
@@ -443,11 +443,11 @@ export async function buildClientCredentialsGrant(
 }
 
 /**
- * Handles the `refresh_token` grant flow.
+ * Builds the `refresh_token` grant flow.
  */
 export async function buildRefreshTokenGrant(
-  args: HandleRefreshTokenGrantArgs,
-): Promise<HandleRefreshTokenGrantReturn> {
+  args: BuildRefreshTokenGrantArgs,
+): Promise<BuildRefreshTokenGrantReturn> {
   const {
     req,
     refreshTokenClaims,
@@ -515,4 +515,4 @@ export async function buildRefreshTokenGrant(
   };
 }
 
-// #endregion Grant-Specific Handlers
+// #endregion Grant-Specific Builders

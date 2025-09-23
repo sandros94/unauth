@@ -5,10 +5,10 @@ import type { IdTokenClaims } from "../../types";
 import {
   type TokenErrorResponse,
   type AuthorizationCodeGrantRequest,
-  type HandleAuthorizationCodeGrantArgs as OAuthHandleAuthorizationCodeGrantArgs,
-  type HandleAuthorizationCodeGrantReturn as OAuthHandleAuthorizationCodeGrantReturn,
-  type HandleRefreshTokenGrantArgs as OAuthHandleRefreshTokenGrantArgs,
-  type HandleRefreshTokenGrantReturn as OAuthHandleRefreshTokenGrantReturn,
+  type BuildAuthorizationCodeGrantArgs as OAuthBuildAuthorizationCodeGrantArgs,
+  type BuildAuthorizationCodeGrantReturn as OAuthBuildAuthorizationCodeGrantReturn,
+  type BuildRefreshTokenGrantArgs as OAuthBuildRefreshTokenGrantArgs,
+  type BuildRefreshTokenGrantReturn as OAuthBuildRefreshTokenGrantReturn,
   validateAuthorizationCodeClaims as oauthValidateAuthorizationCodeClaims,
   buildAuthorizationCodeGrant as oauthBuildAuthorizationCodeGrant,
   buildRefreshTokenGrant as oauthBuildRefreshTokenGrant,
@@ -23,8 +23,8 @@ import type {
 import { computeTokenHash } from "./utils";
 
 export {
-  type HandleClientCredentialsGrantArgs,
-  type HandleClientCredentialsGrantReturn,
+  type BuildClientCredentialsGrantArgs,
+  type BuildClientCredentialsGrantReturn,
   buildClientCredentialsGrant,
   validateClientCredentialsGrantRequest,
   validateRefreshTokenClaims,
@@ -40,22 +40,22 @@ interface BuildIDTokenArgs {
   currentDate: Date;
 }
 
-export interface HandleAuthorizationCodeGrantArgs
-  extends Omit<OAuthHandleAuthorizationCodeGrantArgs, "codeClaims"> {
+export interface BuildAuthorizationCodeGrantArgs
+  extends Omit<OAuthBuildAuthorizationCodeGrantArgs, "codeClaims"> {
   codeClaims: AuthorizationCodeClaims;
   idTokenOptions: IdTokenOptions;
   extraIdTokenClaims?: JWTClaims;
 }
 
-export interface HandleAuthorizationCodeGrantReturn
-  extends OAuthHandleAuthorizationCodeGrantReturn {
+export interface BuildAuthorizationCodeGrantReturn
+  extends OAuthBuildAuthorizationCodeGrantReturn {
   res: TokenSuccessResponse;
   idTokenClaims: IdTokenClaims;
 }
 
-export interface HandleRefreshTokenGrantArgs
+export interface BuildRefreshTokenGrantArgs
   extends Omit<
-    OAuthHandleRefreshTokenGrantArgs,
+    OAuthBuildRefreshTokenGrantArgs,
     "codeClaims" | "refreshTokenClaims"
   > {
   refreshTokenClaims: RefreshTokenClaims;
@@ -63,8 +63,8 @@ export interface HandleRefreshTokenGrantArgs
   extraIdTokenClaims?: JWTClaims;
 }
 
-export interface HandleRefreshTokenGrantReturn
-  extends Omit<OAuthHandleRefreshTokenGrantReturn, "refreshTokenClaims"> {
+export interface BuildRefreshTokenGrantReturn
+  extends Omit<OAuthBuildRefreshTokenGrantReturn, "refreshTokenClaims"> {
   res: TokenSuccessResponse;
   idTokenClaims: IdTokenClaims;
   refreshTokenClaims: RefreshTokenClaims;
@@ -99,7 +99,7 @@ export async function validateAuthorizationCodeClaims(args: {
 
 // #endregion
 
-// #region Grant-Specific Handlers
+// #region Grant-Specific Builders
 
 async function buildIdToken(args: BuildIDTokenArgs): Promise<{
   id_token: string;
@@ -131,8 +131,8 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
 }
 
 export async function buildAuthorizationCodeGrant(
-  args: HandleAuthorizationCodeGrantArgs,
-): Promise<HandleAuthorizationCodeGrantReturn | TokenErrorResponse> {
+  args: BuildAuthorizationCodeGrantArgs,
+): Promise<BuildAuthorizationCodeGrantReturn | TokenErrorResponse> {
   const {
     req,
     codeClaims,
@@ -190,8 +190,8 @@ export async function buildAuthorizationCodeGrant(
 }
 
 export async function buildRefreshTokenGrant(
-  args: HandleRefreshTokenGrantArgs,
-): Promise<HandleRefreshTokenGrantReturn | TokenErrorResponse> {
+  args: BuildRefreshTokenGrantArgs,
+): Promise<BuildRefreshTokenGrantReturn | TokenErrorResponse> {
   const {
     req,
     refreshTokenClaims: oldRTClaims,
