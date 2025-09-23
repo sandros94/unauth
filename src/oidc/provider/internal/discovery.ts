@@ -1,8 +1,9 @@
-import type { ParseType } from "../../types";
+import type { ParseType } from "../../../types";
+
 import {
   type OAuthDiscoveryOptions,
   buildOAuthDiscoveryDocument,
-} from "../../oauth/internal";
+} from "../../../oauth/provider/internal";
 
 export interface OIDCDiscoveryOptions extends OAuthDiscoveryOptions {
   userinfo_endpoint?: string;
@@ -11,8 +12,14 @@ export interface OIDCDiscoveryOptions extends OAuthDiscoveryOptions {
 }
 
 export type OIDCDiscoveryDocument = ParseType<
-  Required<Omit<OIDCDiscoveryOptions, "default_scope">> & {
+  Required<
+    Omit<
+      OIDCDiscoveryOptions,
+      "default_scope" | "revocation_endpoint" | "prefix"
+    >
+  > & {
     default_scope?: string;
+    revocation_endpoint?: string;
   }
 >;
 
@@ -22,11 +29,13 @@ export type OIDCDiscoveryDocument = ParseType<
 export function buildOIDCDiscoveryDocument(
   opts: OIDCDiscoveryOptions,
 ): OIDCDiscoveryDocument {
-  const issuer = opts.issuer.replace(/\/+$/, "");
-  const oauthDocument = buildOAuthDiscoveryDocument({ ...opts, issuer });
+  const baseUrl = `${opts.issuer.replace(/\/+$/, "")}${
+    opts.prefix ? `/${opts.prefix.replace(/^\/+|\/+$/g, "")}` : ""
+  }`;
+  const oauthDocument = buildOAuthDiscoveryDocument(opts);
   return {
     ...oauthDocument,
-    userinfo_endpoint: opts.userinfo_endpoint || `${issuer}/userinfo`,
+    userinfo_endpoint: opts.userinfo_endpoint || `${baseUrl}/userinfo`,
     subject_types_supported: opts.subject_types_supported ?? ["public"],
     scopes_supported: opts.scopes_supported ?? [
       "openid",

@@ -10,9 +10,9 @@ export type GenericErrorCode =
 
 // #endregion
 
-// #region Authorization Error
+// #region Authorize Error
 
-export type AuthorizationErrorCode =
+export type AuthorizeErrorCode =
   | GenericErrorCode
   // The resource owner or authorization server denied the request.
   | "access_denied"
@@ -25,10 +25,10 @@ export type AuthorizationErrorCode =
 
 /**
  * Interface for the query parameters of an error redirect response
- * from the Authorization Endpoint.
+ * from the Authorize Endpoint.
  */
-export interface AuthorizationErrorResponse {
-  error: AuthorizationErrorCode | (string & {});
+export interface AuthorizeErrorResponse {
+  error: AuthorizeErrorCode | (string & {});
   error_description?: string;
   error_uri?: string;
   state?: string;
@@ -118,8 +118,7 @@ export interface IntrospectionErrorResponse {
 // #region OAuth Error
 
 export type OAuthErrorDetails =
-  | (Error & { cause?: unknown })
-  | AuthorizationErrorResponse
+  | AuthorizeErrorResponse
   | TokenErrorResponse
   | TokenRevocationErrorResponse
   | ResourceErrorResponse
@@ -153,7 +152,7 @@ export class OAuthError extends Error {
   readonly error_uri?: string;
 
   /**
-   * Optional state parameter (used by Authorization Endpoint).
+   * Optional state parameter (used by Authorize Endpoint).
    */
   readonly state?: string;
 
@@ -163,7 +162,7 @@ export class OAuthError extends Error {
   readonly realm?: string;
 
   /**
-   * Optional issuer identifier (used by Authorization responses in this codebase).
+   * Optional issuer identifier (used by Authorize responses in this codebase).
    */
   readonly iss?: string;
 
@@ -172,11 +171,17 @@ export class OAuthError extends Error {
    */
   override readonly cause?: unknown;
 
-  constructor(error: string, details?: OAuthErrorDetails);
-  constructor(details: OAuthErrorDetails);
-  constructor(arg1: string | OAuthErrorDetails, arg2?: OAuthErrorDetails) {
+  constructor(
+    error: string,
+    details?: OAuthErrorDetails | (Error & { cause?: unknown }),
+  );
+  constructor(details: OAuthErrorDetails | (Error & { cause?: unknown }));
+  constructor(
+    arg1: string | OAuthErrorDetails | (Error & { cause?: unknown }),
+    arg2?: OAuthErrorDetails | (Error & { cause?: unknown }),
+  ) {
     let errorInput: string | undefined;
-    let details: OAuthErrorDetails | undefined;
+    let details: OAuthErrorDetails | (Error & { cause?: unknown }) | undefined;
     if (typeof arg1 === "string") {
       errorInput = arg1;
       details = arg2;
@@ -185,15 +190,14 @@ export class OAuthError extends Error {
     }
 
     const errorCode =
-      (details as Exclude<OAuthErrorDetails, Error>)?.error ||
-      ((details as Error)?.cause as Exclude<OAuthErrorDetails, Error>)?.error ||
+      (details as OAuthErrorDetails)?.error ||
+      ((details as Error)?.cause as OAuthErrorDetails)?.error ||
       "invalid_request";
 
     const errorDescription =
       errorInput ||
-      (details as Exclude<OAuthErrorDetails, Error>)?.error_description ||
-      ((details as Error)?.cause as Exclude<OAuthErrorDetails, Error>)
-        ?.error_description;
+      (details as OAuthErrorDetails)?.error_description ||
+      ((details as Error)?.cause as OAuthErrorDetails)?.error_description;
 
     const error: string = ["OAuthError", errorCode, errorDescription]
       .filter(Boolean)
@@ -221,26 +225,26 @@ export class OAuthError extends Error {
    * Serialize to the OAuth error response shape appropriate for endpoints.
    * Only includes properties that are present.
    */
-  toJSON(): Exclude<OAuthErrorDetails, Error> {
-    const out: Exclude<OAuthErrorDetails, Error> = { error: this.error };
+  toJSON(): OAuthErrorDetails {
+    const out: OAuthErrorDetails = { error: this.error };
     if (this.error_description) out.error_description = this.error_description;
     if (this.error_uri)
       (
         out as
-          | AuthorizationErrorResponse
+          | AuthorizeErrorResponse
           | TokenErrorResponse
           | TokenRevocationErrorResponse
           | IntrospectionErrorResponse
       ).error_uri = this.error_uri;
-    if (this.state) (out as AuthorizationErrorResponse).state = this.state;
-    if (this.iss) (out as AuthorizationErrorResponse).iss = this.iss;
+    if (this.state) (out as AuthorizeErrorResponse).state = this.state;
+    if (this.iss) (out as AuthorizeErrorResponse).iss = this.iss;
     if (this.realm) (out as ResourceErrorResponse).realm = this.realm;
     return out;
   }
 
   // Convenience factories
 
-  static forAuthorization(err: AuthorizationErrorResponse) {
+  static forAuthorize(err: AuthorizeErrorResponse) {
     return new OAuthError(err);
   }
 

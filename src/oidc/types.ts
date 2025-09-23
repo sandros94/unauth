@@ -1,44 +1,45 @@
-import type { JWTClaims, JWK, JWSSignOptions } from "unjwt";
+import type { JWTClaims } from "unjwt";
 
-export interface OIDCIdTokenClaims extends JWTClaims {
+import type {
+  AuthorizationCodeClaims as OAuthAuthorizationCodeClaims,
+  TokenSuccessResponse as OAuthTokenSuccessResponse,
+} from "../oauth/types";
+
+export type * from "../oauth/provider/error";
+
+export type {
+  AccessTokenClaims,
+  RefreshTokenClaims,
+  AuthorizeSuccessResponse,
+  AuthorizeResponse,
+  AuthorizationCodeGrantRequest,
+  ClientCredentialsGrantRequest,
+  RefreshTokenGrantRequest,
+  TokenRequest,
+  TokenResponse,
+} from "../oauth/types";
+
+export type { AuthorizeRequest } from "./provider";
+
+export interface IdTokenClaims extends JWTClaims {
   iss: Exclude<JWTClaims["iss"], undefined>;
   sub: string;
   aud: string | string[];
   exp: Exclude<JWTClaims["exp"], undefined>;
   iat: Exclude<JWTClaims["iat"], undefined>;
-  auth_time?: number;
+  at_hash: string;
   nonce?: string;
+  auth_time?: number;
   acr?: string;
   amr?: string[];
   azp?: string;
-  at_hash?: string;
-  c_hash?: string;
   sid?: string;
 }
 
-export interface OIDCIdTokenOptions {
-  issuer: string;
-  jwsKey: JWK;
-  signOptions?: JWSSignOptions;
-  /**
-   * For EdDSA algorithms, specify which hash to use for at_hash/c_hash computation.
-   * Default is "SHA-256". For HS/RS/ES/PS alg families the hash is derived from alg bit length.
-   */
-  eddsaHashAlgorithm?: "SHA-256" | "SHA-384" | "SHA-512";
+export interface AuthorizationCodeClaims extends OAuthAuthorizationCodeClaims {
+  nonce: string;
 }
 
-export interface OIDCBuildIdTokenArgs {
-  subject: string;
-  audience: string | string[];
-  nonce?: string;
-  auth_time?: number | Date;
-  acr?: string;
-  amr?: string[];
-  azp?: string;
-  /** When provided, an at_hash will be computed according to the JWS alg */
-  access_token?: string;
-  /** When provided, a c_hash will be computed according to the JWS alg (hybrid flows) */
-  code?: string;
-  /** Optional extra claims to merge into the ID Token */
-  additionalClaims?: Partial<JWTClaims>;
+export interface TokenSuccessResponse extends OAuthTokenSuccessResponse {
+  id_token: string;
 }
