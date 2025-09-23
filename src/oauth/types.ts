@@ -144,6 +144,8 @@ export interface ClientCredentialsGrantRequest {
   grant_type: "client_credentials";
   /** The confidential client identifier, used as subject of the generated token. */
   client_id: string;
+  /** Resource Indicators per RFC 8707. */
+  resource: string | string[];
   /** The requested scope, limited to the client's own permissions. */
   scope?: string;
 }

@@ -417,7 +417,6 @@ export async function buildClientCredentialsGrant(
     jti: randomJti(),
     iss,
     sub: req.client_id,
-    // @ts-expect-error TODO: check if resource is optional in client credentials
     aud: req.resource,
     exp: iat + atOpts.signOptions.expiresIn,
     iat,
