@@ -25,22 +25,15 @@ Import:
 
 ```js
 // Main functions
-import { OAuthProvider, OIDCProvider } from "unauth";
+import {  } from "unauth";
 ```
 
 **CDN** (Deno, Bun and Browsers)
 
 ```js
 // Main functions
-import { OAuthProvider, OIDCProvider } from "https://esm.sh/unauth";
+import {  } from "https://esm.sh/unauth";
 ```
-
-### Providers overview
-
-- OIDCProvider: Full OpenID Connect on top of OAuth 2.1. Use this if you need ID Tokens, OpenID discovery, and a complete OIDC-compliant flow. Using OIDCProvider alone gives you full control over both OIDC and OAuth.
-- OAuthProvider: Focused OAuth 2.1 utilities (authorization code, refresh token, client credentials, token introspection, discovery). Useful for advanced/custom scenarios where you don't want OIDC.
-
-Both providers are unopinionated and framework-agnostic. You wire them into your HTTP handlers and provide your own storage/auth checks via small callbacks.
 
 ### Quick start (OIDC)
 
