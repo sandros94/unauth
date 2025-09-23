@@ -10,7 +10,6 @@ export type * from "../oauth/provider/error";
 export type {
   AccessTokenClaims,
   RefreshTokenClaims,
-  AuthorizeRequest,
   AuthorizeSuccessResponse,
   AuthorizeResponse,
   AuthorizationCodeGrantRequest,
@@ -19,6 +18,8 @@ export type {
   TokenRequest,
   TokenResponse,
 } from "../oauth/types";
+
+export type { AuthorizeRequest } from "./provider";
 
 export interface IdTokenClaims extends JWTClaims {
   iss: Exclude<JWTClaims["iss"], undefined>;
