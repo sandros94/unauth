@@ -25,14 +25,14 @@ Import:
 
 ```js
 // Main functions
-import {  } from "unauth";
+import {} from "unauth";
 ```
 
 **CDN** (Deno, Bun and Browsers)
 
 ```js
 // Main functions
-import {  } from "https://esm.sh/unauth";
+import {} from "https://esm.sh/unauth";
 ```
 
 ### Quick start (OIDC)

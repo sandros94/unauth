@@ -1,5 +1,7 @@
 export type MaybePromise<T> = T | Promise<T>;
 
+export type MaybeArray<T> = T | T[];
+
 export type ParseType<T> = {
   [K in keyof T]: T[K];
 } & {};

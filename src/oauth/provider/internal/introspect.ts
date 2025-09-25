@@ -1,5 +1,7 @@
 import { type JWEDecryptResult, decrypt } from "unjwt/jwe";
 import { type JWSVerifyResult, verify } from "unjwt/jws";
+import type { JWK, JWKSet } from "unjwt/jwk";
+import { isPublicJWK, isSymmetricJWK } from "unjwt/utils";
 
 import type {
   AuthorizationCodeClaims,
@@ -41,8 +43,9 @@ export async function introspectAccessToken(args: {
 }): Promise<JWSVerifyResult<AccessTokenClaims>> {
   const { token, iss, options } = args;
   const opts = accessTokenDefaults(options);
+  const key = preferPublicKey(opts);
 
-  return verify<AccessTokenClaims>(token, opts.privateKey, {
+  return verify<AccessTokenClaims>(token, key, {
     issuer: iss,
     typ: "at+jwt",
     maxTokenAge: opts.signOptions.expiresIn,
@@ -64,4 +67,26 @@ export async function introspectRefreshToken(args: {
     maxTokenAge: opts.encryptOptions.expiresIn,
     ...opts.decryptOptions,
   });
+}
+
+function preferPublicKey(options: {
+  publicKey?: JWK | JWK[];
+  privateKey: JWK;
+}): JWK | JWKSet {
+  if (options.publicKey) {
+    const key = Array.isArray(options.publicKey)
+      ? options.publicKey
+      : [options.publicKey];
+
+    return {
+      keys: key.filter((element) => isPublicJWK(element)),
+    };
+  }
+
+  if (!isSymmetricJWK(options.privateKey)) {
+    console.warn(
+      `Using private key for Access Token verification; ensure "key_ops" includes "verify" and that this is intentional.`,
+    );
+  }
+  return options.privateKey;
 }
