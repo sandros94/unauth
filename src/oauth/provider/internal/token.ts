@@ -46,7 +46,7 @@ export interface BuildAuthorizationCodeGrantArgs {
   /**
    * Date of the request (for expiration, etc.).
    */
-  currentDate: Date;
+  currentDate?: Date;
 }
 
 /**
@@ -76,7 +76,7 @@ export interface BuildClientCredentialsGrantArgs {
   /**
    * Date of the request (for expiration, etc.).
    */
-  currentDate: Date;
+  currentDate?: Date;
 }
 
 /**
@@ -108,7 +108,7 @@ export interface BuildRefreshTokenGrantArgs {
   /**
    * Date of the request (for expiration, etc.).
    */
-  currentDate: Date;
+  currentDate?: Date;
 }
 
 /**
@@ -335,16 +335,10 @@ export async function buildAuthorizationCodeGrant(
     extraAccessTokenClaims,
     extraRefreshTokenClaims,
     randomJti,
-    currentDate,
+    currentDate = new Date(),
   } = args;
-  const atOpts = accessTokenDefaults({
-    ...accessTokenOptions,
-    currentDate,
-  });
-  const rtOpts = refreshTokenDefaults({
-    ...refreshTokenOptions,
-    currentDate,
-  });
+  const atOpts = accessTokenDefaults(accessTokenOptions);
+  const rtOpts = refreshTokenDefaults(refreshTokenOptions);
 
   const iat = Math.floor(currentDate.getTime() / 1000);
 
@@ -376,6 +370,7 @@ export async function buildAuthorizationCodeGrant(
     sign(atClaims, atOpts.privateKey, {
       ...atOpts.signOptions,
       protectedHeader: { ...atOpts.signOptions.protectedHeader, typ: "at+jwt" },
+      currentDate,
     }),
     encrypt(rtClaims, rtOpts.privateKey, {
       ...rtOpts.encryptOptions,
@@ -383,6 +378,7 @@ export async function buildAuthorizationCodeGrant(
         ...rtOpts.encryptOptions.protectedHeader,
         typ: "rt+jwt",
       },
+      currentDate,
     }),
   ]);
 
@@ -411,13 +407,10 @@ export async function buildClientCredentialsGrant(
     extraAccessTokenClaims,
     iss,
     randomJti,
-    currentDate,
+    currentDate = new Date(),
   } = args;
 
-  const atOpts = accessTokenDefaults({
-    ...accessTokenOptions,
-    currentDate,
-  });
+  const atOpts = accessTokenDefaults(accessTokenOptions);
 
   const iat = Math.floor(currentDate.getTime() / 1000);
 
@@ -436,6 +429,7 @@ export async function buildClientCredentialsGrant(
   const access_token = await sign(atClaims, atOpts.privateKey, {
     ...atOpts.signOptions,
     protectedHeader: { ...atOpts.signOptions.protectedHeader, typ: "at+jwt" },
+    currentDate,
   });
 
   return {
@@ -464,17 +458,11 @@ export async function buildRefreshTokenGrant(
     extraRefreshTokenClaims,
     iss,
     randomJti,
-    currentDate,
+    currentDate = new Date(),
   } = args;
 
-  const atOpts = accessTokenDefaults({
-    ...accessTokenOptions,
-    currentDate,
-  });
-  const rtOpts = refreshTokenDefaults({
-    ...refreshTokenOptions,
-    currentDate,
-  });
+  const atOpts = accessTokenDefaults(accessTokenOptions);
+  const rtOpts = refreshTokenDefaults(refreshTokenOptions);
 
   // 5. Build new tokens (implementing refresh token rotation)
   const iat = Math.floor(currentDate.getTime() / 1000);
@@ -508,6 +496,7 @@ export async function buildRefreshTokenGrant(
     sign(newAccessTokenClaims, atOpts.privateKey, {
       ...atOpts.signOptions,
       protectedHeader: { ...atOpts.signOptions.protectedHeader, typ: "at+jwt" },
+      currentDate,
     }),
     encrypt(newRefreshTokenClaims, rtOpts.privateKey, {
       ...rtOpts.encryptOptions,
@@ -515,6 +504,7 @@ export async function buildRefreshTokenGrant(
         ...rtOpts.encryptOptions.protectedHeader,
         typ: "rt+jwt",
       },
+      currentDate,
     }),
   ]);
 
