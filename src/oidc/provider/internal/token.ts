@@ -125,6 +125,7 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
 
   const id_token = await sign(idTokenClaims, opts.privateKey, {
     ...opts.signOptions,
+    protectedHeader: { ...opts.signOptions.protectedHeader, typ: "id+jwt" },
   });
 
   return { id_token, idTokenClaims };

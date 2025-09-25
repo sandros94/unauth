@@ -11,8 +11,8 @@ importers:
   .:
     dependencies:
       unjwt:
-        specifier: ^0.5.14
-        version: 0.5.14
+        specifier: ^0.5.16
+        version: 0.5.16
       unsecure:
         specifier: ^0.0.4
         version: 0.0.4
@@ -3873,10 +3873,10 @@ packages:
         integrity: sha512-3faScn5I+hy9VleOq/qNbAd6pAx7iH5jYBMS9I1HgQVijz/4mv5Bvw5iw1sC/90CODiKo81G/ps8AJrISn687g==,
       }
 
-  unjwt@0.5.14:
+  unjwt@0.5.16:
     resolution:
       {
-        integrity: sha512-JXpj7pWEZ2QkVtTFx4Ue1fWbqvL4v2Cc2jUfGCIBBBXPNYI/kYOCl0GoDwn7pONHpSbPu3+Wm/HMROqhs75thA==,
+        integrity: sha512-zd+ZNi2vL0ssGMYl72Ylvr4LfRutV7TVY7ckdEmL4L6KvAkkJE7CC+Hl/taoo05iGsl8cOcC13vxnonitoFJ/Q==,
       }
 
   unsecure@0.0.4:
@@ -6232,7 +6232,7 @@ snapshots:
     dependencies:
       "@types/unist": 2.0.11
 
-  unjwt@0.5.14: {}
+  unjwt@0.5.16: {}
 
   unsecure@0.0.4: {}
 

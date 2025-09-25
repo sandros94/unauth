@@ -373,8 +373,17 @@ export async function buildAuthorizationCodeGrant(
   };
 
   const [access_token, refresh_token] = await Promise.all([
-    sign(atClaims, atOpts.privateKey, atOpts.signOptions),
-    encrypt(rtClaims, rtOpts.privateKey, rtOpts.encryptOptions),
+    sign(atClaims, atOpts.privateKey, {
+      ...atOpts.signOptions,
+      protectedHeader: { ...atOpts.signOptions.protectedHeader, typ: "at+jwt" },
+    }),
+    encrypt(rtClaims, rtOpts.privateKey, {
+      ...rtOpts.encryptOptions,
+      protectedHeader: {
+        ...rtOpts.encryptOptions.protectedHeader,
+        typ: "rt+jwt",
+      },
+    }),
   ]);
 
   return {
@@ -424,11 +433,10 @@ export async function buildClientCredentialsGrant(
     scope: req.scope,
   };
 
-  const access_token = await sign(
-    atClaims,
-    atOpts.privateKey,
-    atOpts.signOptions,
-  );
+  const access_token = await sign(atClaims, atOpts.privateKey, {
+    ...atOpts.signOptions,
+    protectedHeader: { ...atOpts.signOptions.protectedHeader, typ: "at+jwt" },
+  });
 
   return {
     res: {
@@ -497,8 +505,17 @@ export async function buildRefreshTokenGrant(
   };
 
   const [access_token, new_refresh_token] = await Promise.all([
-    sign(newAccessTokenClaims, atOpts.privateKey, atOpts.signOptions),
-    encrypt(newRefreshTokenClaims, rtOpts.privateKey, rtOpts.encryptOptions),
+    sign(newAccessTokenClaims, atOpts.privateKey, {
+      ...atOpts.signOptions,
+      protectedHeader: { ...atOpts.signOptions.protectedHeader, typ: "at+jwt" },
+    }),
+    encrypt(newRefreshTokenClaims, rtOpts.privateKey, {
+      ...rtOpts.encryptOptions,
+      protectedHeader: {
+        ...rtOpts.encryptOptions.protectedHeader,
+        typ: "rt+jwt",
+      },
+    }),
   ]);
 
   return {

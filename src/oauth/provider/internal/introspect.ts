@@ -30,6 +30,7 @@ export async function introspectAuthorizationCode(args: {
 
   return decrypt<AuthorizationCodeClaims>(token, opts.privateKey, {
     issuer: iss,
+    typ: "ac+jwt",
     maxTokenAge: opts.encryptOptions.expiresIn,
     ...opts.decryptOptions,
   });
@@ -64,6 +65,7 @@ export async function introspectRefreshToken(args: {
 
   return decrypt<RefreshTokenClaims>(token, opts.privateKey, {
     issuer: iss,
+    typ: "rt+jwt",
     maxTokenAge: opts.encryptOptions.expiresIn,
     ...opts.decryptOptions,
   });

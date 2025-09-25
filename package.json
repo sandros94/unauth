@@ -50,7 +50,7 @@
     "unauth": "link:."
   },
   "dependencies": {
-    "unjwt": "^0.5.14",
+    "unjwt": "^0.5.16",
     "unsecure": "^0.0.4"
   },
   "devDependencies": {
@@ -70,5 +70,5 @@
       "@parcel/watcher"
     ]
   },
-  "packageManager": "pnpm@10.17.0"
+  "packageManager": "pnpm@10.17.1"
 }
