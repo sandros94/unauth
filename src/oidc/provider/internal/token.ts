@@ -37,7 +37,7 @@ interface BuildIDTokenArgs {
   claims: Omit<IdTokenClaims, "iat" | "exp" | "at_hash">;
   access_token: string;
   options: IdTokenOptions;
-  currentDate: Date;
+  currentDate?: Date;
 }
 
 export interface BuildAuthorizationCodeGrantArgs
@@ -105,7 +105,7 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
   id_token: string;
   idTokenClaims: IdTokenClaims;
 }> {
-  const { claims, access_token, options, currentDate } = args;
+  const { claims, access_token, options, currentDate = new Date() } = args;
   const opts = idTokenDefaults(options);
   const alg = opts.privateKey.alg || opts.signOptions.alg;
   if (!alg) {
@@ -126,6 +126,7 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
   const id_token = await sign(idTokenClaims, opts.privateKey, {
     ...opts.signOptions,
     protectedHeader: { ...opts.signOptions.protectedHeader, typ: "id+jwt" },
+    currentDate,
   });
 
   return { id_token, idTokenClaims };
@@ -145,7 +146,7 @@ export async function buildAuthorizationCodeGrant(
     extraIdTokenClaims,
     iss,
     randomJti,
-    currentDate,
+    currentDate = new Date(),
   } = args;
 
   // Build OAuth tokens first
@@ -204,7 +205,7 @@ export async function buildRefreshTokenGrant(
     extraRefreshTokenClaims,
     iss,
     randomJti,
-    currentDate,
+    currentDate = new Date(),
   } = args;
 
   // Build OAuth tokens first
