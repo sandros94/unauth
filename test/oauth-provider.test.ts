@@ -83,19 +83,18 @@ describe("OAuth Provider", () => {
   });
 
   describe("Defaults", () => {
-    it("authorizationCodeDefaults fills expiresIn/currentDate", () => {
+    it("authorizationCodeDefaults fills expiresIn", () => {
       const key = makeOctJwk();
       const out = authorizationCodeDefaults({ privateKey: key });
       expect(out.encryptOptions.expiresIn).toBe(
         DEFAULTS_OPTIONS.authorizationCode.expiresIn,
       );
-      expect(out.encryptOptions.currentDate).toBeDefined();
       expect(out.decryptOptions?.maxTokenAge).toBe(
         DEFAULTS_OPTIONS.authorizationCode.expiresIn,
       );
     });
 
-    it("refreshTokenDefaults fills expiresIn/currentDate", () => {
+    it("refreshTokenDefaults fills expiresIn", () => {
       const key = makeOctJwk();
       const out = refreshTokenDefaults({ privateKey: key });
       expect(out.encryptOptions.expiresIn).toBe(
@@ -106,7 +105,7 @@ describe("OAuth Provider", () => {
       );
     });
 
-    it("accessTokenDefaults fills expiresIn/currentDate", () => {
+    it("accessTokenDefaults fills expiresIn", () => {
       const key = makeOctJwk(32, "HS256");
       const out = accessTokenDefaults({ privateKey: key });
       expect(out.signOptions.expiresIn).toBe(

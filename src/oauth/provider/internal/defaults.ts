@@ -9,8 +9,6 @@ import type {
 import type { MaybeArray, Require } from "../../../types";
 
 export const DEFAULTS_OPTIONS = Object.freeze({
-  randomJti: () => crypto.randomUUID(),
-  currentDate: new Date(),
   authorizationCode: {
     expiresIn: 60 * 10, // 10 minutes
   },
@@ -20,6 +18,7 @@ export const DEFAULTS_OPTIONS = Object.freeze({
   accessToken: {
     expiresIn: 60 * 60, // 1 hour
   },
+  randomJti: () => crypto.randomUUID(),
 });
 
 // Authorization Code Options
@@ -41,7 +40,7 @@ export interface AuthorizationCodeOptions {
 
 export type ResolvedAuthorizationCodeOptions = Require<
   AuthorizationCodeOptions,
-  "encryptOptions.expiresIn" | "encryptOptions.currentDate"
+  "encryptOptions.expiresIn"
 >;
 
 /**
@@ -54,16 +53,12 @@ export function authorizationCodeDefaults<T extends AuthorizationCodeOptions>(
     privateKey: opts.privateKey,
     decryptOptions: {
       ...opts.decryptOptions,
-      currentDate:
-        opts?.decryptOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
       maxTokenAge:
         opts?.decryptOptions?.maxTokenAge ??
         DEFAULTS_OPTIONS.authorizationCode.expiresIn,
     },
     encryptOptions: {
       ...opts?.encryptOptions,
-      currentDate:
-        opts?.encryptOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
       expiresIn:
         opts?.encryptOptions?.expiresIn ??
         DEFAULTS_OPTIONS.authorizationCode.expiresIn,
@@ -87,16 +82,12 @@ export function refreshTokenDefaults<T extends RefreshTokenOptions>(
     privateKey: opts.privateKey,
     decryptOptions: {
       ...opts.decryptOptions,
-      currentDate:
-        opts?.decryptOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
       maxTokenAge:
         opts?.decryptOptions?.maxTokenAge ??
         DEFAULTS_OPTIONS.refreshToken.expiresIn,
     },
     encryptOptions: {
       ...opts?.encryptOptions,
-      currentDate:
-        opts?.encryptOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
       expiresIn:
         opts?.encryptOptions?.expiresIn ??
         DEFAULTS_OPTIONS.refreshToken.expiresIn,
@@ -127,7 +118,7 @@ export interface AccessTokenOptions {
 
 export type ResolvedAccessTokenOptions = Require<
   AccessTokenOptions,
-  "signOptions.expiresIn" | "signOptions.currentDate"
+  "signOptions.expiresIn"
 >;
 
 /**
@@ -141,16 +132,12 @@ export function accessTokenDefaults<T extends AccessTokenOptions>(
     publicKey: opts.publicKey,
     verifyOptions: {
       ...opts.verifyOptions,
-      currentDate:
-        opts?.verifyOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
       maxTokenAge:
         opts?.verifyOptions?.maxTokenAge ??
         DEFAULTS_OPTIONS.accessToken.expiresIn,
     },
     signOptions: {
       ...opts?.signOptions,
-      currentDate:
-        opts?.signOptions?.currentDate || DEFAULTS_OPTIONS.currentDate,
       expiresIn:
         opts?.signOptions?.expiresIn ?? DEFAULTS_OPTIONS.accessToken.expiresIn,
     },
