@@ -204,7 +204,9 @@ describe("OAuth Provider", () => {
           iss,
           options: acOpts,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(
+        "OAuthError invalid_request Missing redirect_uri for authorization redirect",
+      );
     });
 
     // Skipping success path that requires actual JWE support; covered via token grant builders below
