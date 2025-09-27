@@ -1,16 +1,18 @@
 import type { JWTClaims } from "unjwt";
 
 import {
+  type AuthorizeErrorResponse,
   type AuthorizeRequest as OAuthAuthorizeRequest,
   type BuildAuthorizationCodeArgs as OAuthBuildAuthorizationCodeArgs,
   type BuildAuthorizationCodeReturn as OAuthBuildAuthorizationCodeReturn,
   buildAuthorizationCode as oauthBuildAuthorizationCode,
+  buildAuthorizationRedirect,
   OAuthError,
 } from "../../../oauth";
 
 export {
   type BuildAuthorizationRedirectArgs,
-  validateAuthorizeRedirectUri,
+  validateRedirectUri,
   buildAuthorizationRedirect,
 } from "../../../oauth/provider/internal/authorize";
 
@@ -63,8 +65,10 @@ export async function buildAuthorizationCode(
   const { req, claims, iss, randomJti, options } = args;
 
   // Enforce OIDC-specific inputs
+  let error: AuthorizeErrorResponse | undefined = undefined;
+
   if (!scopeIncludesOpenId(req.scope)) {
-    return new OAuthError({
+    error = new OAuthError({
       error: "invalid_request",
       error_description: "Missing required openid scope",
       state: req.state,
@@ -73,7 +77,7 @@ export async function buildAuthorizationCode(
   }
 
   if (!req.nonce || typeof req.nonce !== "string") {
-    return new OAuthError({
+    error = new OAuthError({
       error: "invalid_request",
       error_description: "Missing nonce in authorization request",
       state: req.state,
@@ -82,12 +86,20 @@ export async function buildAuthorizationCode(
   }
 
   if (req.code_challenge_method !== "S256") {
-    return new OAuthError({
+    error = new OAuthError({
       error: "invalid_request",
       error_description: "code_challenge_method must be S256",
       state: req.state,
       iss,
     }).toJSON();
+  }
+
+  // if error, return early
+  if (error) {
+    return buildAuthorizationRedirect({
+      res: error,
+      redirect_uri: req.redirect_uri,
+    });
   }
 
   // Propagate nonce via claims so it is available to the token step

@@ -56,7 +56,9 @@ describe("OIDC Provider", () => {
         iss,
         options: acOpts,
       });
-      expect((r1 as { error: string }).error).toBe("invalid_request");
+      expect(r1).toMatchInlineSnapshot(
+        `"https://cb/?iss=https%3A%2F%2Fissuer&error=invalid_request&error_description=code_challenge_method+must+be+S256"`,
+      );
 
       const r2 = await buildAuthorizationCode({
         // @ts-expect-error testing invalid input
@@ -65,7 +67,9 @@ describe("OIDC Provider", () => {
         iss,
         options: acOpts,
       });
-      expect((r2 as { error: string }).error).toBe("invalid_request");
+      expect(r2).toMatchInlineSnapshot(
+        `"https://cb/?iss=https%3A%2F%2Fissuer&error=invalid_request&error_description=code_challenge_method+must+be+S256"`,
+      );
 
       const r3 = await buildAuthorizationCode({
         req: { ...baseReq, scope: "openid", code_challenge_method: "S256" },
@@ -73,7 +77,9 @@ describe("OIDC Provider", () => {
         iss,
         options: acOpts,
       });
-      expect((r3 as { error: string }).error).toBe("invalid_request");
+      expect(r3).toMatchInlineSnapshot(
+        `"https://cb/?iss=https%3A%2F%2Fissuer&error=invalid_request&error_description=Missing+nonce+in+authorization+request"`,
+      );
     });
 
     it("passes with openid scope, nonce, S256 and propagates nonce", async () => {
@@ -95,7 +101,8 @@ describe("OIDC Provider", () => {
         options: acOpts,
         randomJti: () => "x",
       });
-      expect("res" in out).toBe(true);
+      expect(out).toBeTypeOf("string");
+      expect(out).toContain("https://cb/?iss=https%3A%2F%2Fissuer&code=");
     });
   });
 

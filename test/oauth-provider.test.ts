@@ -12,7 +12,7 @@ import {
   buildOAuthDiscoveryDocument,
   buildAuthorizationCode,
   buildAuthorizationRedirect,
-  validateAuthorizeRedirectUri,
+  validateRedirectUri,
   validateTokenRequest,
   validateAuthorizationCodeClaims,
   buildAuthorizationCodeGrant,
@@ -169,33 +169,42 @@ describe("OAuth Provider", () => {
     } as const;
 
     it("validates redirect URIs", () => {
-      const err1 = validateAuthorizeRedirectUri(undefined, ["a", "b"], {
+      const err1 = validateRedirectUri(
+        { redirectUri: undefined },
+        ["a", "b"],
         iss,
-      });
+      );
       expect((err1 as { error: string }).error).toBe("invalid_request");
-      const def = validateAuthorizeRedirectUri(undefined, ["https://cb"], {
+      const def = validateRedirectUri(
+        { redirectUri: undefined },
+        ["https://cb"],
         iss,
-      });
+      );
       expect(def).toBe("https://cb");
-      const err2 = validateAuthorizeRedirectUri("https://cbX", ["https://cb"], {
+      const err2 = validateRedirectUri(
+        { redirectUri: "https://cbX" },
+        ["https://cb"],
         iss,
-      });
+      );
       expect((err2 as { error: string }).error).toBe("invalid_request");
-      const ok = validateAuthorizeRedirectUri("https://cb", ["https://cb"], {
+      const ok = validateRedirectUri(
+        { redirectUri: "https://cb" },
+        ["https://cb"],
         iss,
-      });
+      );
       expect(ok).toBe("https://cb");
     });
 
     it("buildAuthorizationCode validates input and returns error on bad request", async () => {
-      const res = await buildAuthorizationCode({
-        // @ts-expect-error missing: redirect_uri, code_challenge, etc.
-        req: { client_id: "c", response_type: "code" },
-        claims: { sub: "u" },
-        iss,
-        options: acOpts,
-      });
-      expect((res as { error: string }).error).toBeDefined();
+      await expect(
+        buildAuthorizationCode({
+          // @ts-expect-error missing: redirect_uri, code_challenge, etc.
+          req: { client_id: "c", response_type: "code" },
+          claims: { sub: "u" },
+          iss,
+          options: acOpts,
+        }),
+      ).rejects.toThrow();
     });
 
     // Skipping success path that requires actual JWE support; covered via token grant builders below
@@ -209,7 +218,8 @@ describe("OAuth Provider", () => {
         resource: "res",
         redirect_uri: "https://cb",
       };
-      const out = await buildAuthorizationCode({
+
+      const redirectWithError = await buildAuthorizationCode({
         req,
         claims: { sub: "u" },
         iss,
@@ -217,13 +227,14 @@ describe("OAuth Provider", () => {
         // @ts-expect-error Intentionally pass an invalid privateKey to make encrypt() fail internally
         options: { privateKey: { not: "a valid key" } },
       });
-      expect((out as { error: string }).error).toBe("server_error");
+      expect(redirectWithError).toMatchInlineSnapshot(
+        `"https://cb/?iss=https%3A%2F%2Fissuer&error=server_error&error_description=JWE+%22alg%22+%28Key+Management+Algorithm%29+must+be+provided+in+options+or+inferable+from+the+key"`,
+      );
     });
 
     it("buildAuthorizationRedirect builds URL with params", () => {
       const url = buildAuthorizationRedirect({
-        res: { code: "code123", iss, state: "s" },
-        iss,
+        res: { code: "code123", state: "s", iss },
         redirect_uri: "https://cb/path?existing=1",
       });
       expect(url).toContain("code=code123");
@@ -231,8 +242,7 @@ describe("OAuth Provider", () => {
       expect(url).toContain("state=s");
 
       const errUrl = buildAuthorizationRedirect({
-        res: { error: "invalid_request", error_description: "bad" },
-        iss,
+        res: { error: "invalid_request", error_description: "bad", iss },
         redirect_uri: "https://cb",
       });
       expect(errUrl).toContain("error=invalid_request");
