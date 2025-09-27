@@ -26,11 +26,15 @@ export interface BuildAuthorizationCodeArgs {
    * Issuer to include in error responses (if any).
    */
   iss: string;
+  options: AuthorizationCodeOptions;
   /**
    * A function to generate a unique identifier for tokens.
    */
   randomJti?: () => string;
-  options: AuthorizationCodeOptions;
+  /**
+   * Date to use when computing NumericDate claims, defaults to `new Date()`.
+   */
+  currentDate?: Date;
 }
 
 export type BuildAuthorizationCodeReturn =
@@ -181,7 +185,7 @@ export function validateAuthorizeRedirectUri(
 export async function buildAuthorizationCode(
   args: BuildAuthorizationCodeArgs,
 ): Promise<BuildAuthorizationCodeReturn> {
-  const { req, claims, iss, randomJti, options } = args;
+  const { req, claims, iss, options } = args;
   const validationError = validateAuthorizeRequest(req, iss);
 
   if (validationError) {
@@ -199,10 +203,14 @@ export async function buildAuthorizationCode(
 
   const opts = authorizationCodeDefaults(options);
 
-  const iat = Math.floor(opts.encryptOptions.currentDate.getTime() / 1000);
+  const randomJti = args.randomJti || crypto.randomUUID;
+  const currentDate =
+    (args.currentDate || opts.encryptOptions.currentDate) ?? new Date();
+  const iat = Math.floor(currentDate.getTime() / 1000);
+
   const acClaims: AuthorizationCodeClaims = {
     ...claims,
-    jti: (randomJti || crypto.randomUUID)(),
+    jti: randomJti(),
     iss,
     iat,
     exp: iat + opts.encryptOptions.expiresIn,
@@ -216,11 +224,14 @@ export async function buildAuthorizationCode(
     ...(req.scope ? { scope: req.scope } : {}),
   };
 
-  const code = await encrypt(
-    claims,
-    opts.privateKey,
-    opts.encryptOptions,
-  ).catch((error_) => {
+  const code = await encrypt(claims, opts.privateKey, {
+    ...opts.encryptOptions,
+    protectedHeader: {
+      ...opts.encryptOptions?.protectedHeader,
+      typ: "ac+jwt",
+    },
+    currentDate,
+  }).catch((error_) => {
     return new OAuthError({
       error: "server_error",
       error_description: "Failed to generate authorization code",

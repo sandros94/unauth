@@ -105,7 +105,7 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
   id_token: string;
   idTokenClaims: IdTokenClaims;
 }> {
-  const { claims, access_token, options, currentDate = new Date() } = args;
+  const { claims, access_token, options } = args;
   const opts = idTokenDefaults(options);
   const alg = opts.privateKey.alg || opts.signOptions.alg;
   if (!alg) {
@@ -114,6 +114,8 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
 
   const at_hash = await computeTokenHash(access_token, alg);
 
+  const currentDate =
+    (args.currentDate || opts.signOptions.currentDate) ?? new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
 
   const idTokenClaims: IdTokenClaims = {

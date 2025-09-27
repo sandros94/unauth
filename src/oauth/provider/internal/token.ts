@@ -42,7 +42,7 @@ export interface BuildAuthorizationCodeGrantArgs {
   /**
    * A function to generate a unique identifier for tokens.
    */
-  randomJti: () => string;
+  randomJti?: () => string;
   /**
    * Date of the request (for expiration, etc.).
    */
@@ -72,7 +72,7 @@ export interface BuildClientCredentialsGrantArgs {
   /**
    * A function to generate a unique identifier for tokens.
    */
-  randomJti: () => string;
+  randomJti?: () => string;
   /**
    * Date of the request (for expiration, etc.).
    */
@@ -104,7 +104,7 @@ export interface BuildRefreshTokenGrantArgs {
   /**
    * A function to generate a unique identifier for tokens.
    */
-  randomJti: () => string;
+  randomJti?: () => string;
   /**
    * Date of the request (for expiration, etc.).
    */
@@ -334,12 +334,16 @@ export async function buildAuthorizationCodeGrant(
     iss,
     extraAccessTokenClaims,
     extraRefreshTokenClaims,
-    randomJti,
-    currentDate = new Date(),
   } = args;
   const atOpts = accessTokenDefaults(accessTokenOptions);
   const rtOpts = refreshTokenDefaults(refreshTokenOptions);
 
+  const randomJti = args.randomJti || crypto.randomUUID;
+  const currentDate =
+    (args.currentDate ||
+      atOpts.signOptions.currentDate ||
+      rtOpts.encryptOptions.currentDate) ??
+    new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
 
   const atClaims: AccessTokenClaims = {
@@ -401,17 +405,13 @@ export async function buildAuthorizationCodeGrant(
 export async function buildClientCredentialsGrant(
   args: BuildClientCredentialsGrantArgs,
 ): Promise<BuildClientCredentialsGrantReturn> {
-  const {
-    req,
-    accessTokenOptions,
-    extraAccessTokenClaims,
-    iss,
-    randomJti,
-    currentDate = new Date(),
-  } = args;
+  const { req, accessTokenOptions, extraAccessTokenClaims, iss } = args;
 
   const atOpts = accessTokenDefaults(accessTokenOptions);
 
+  const randomJti = args.randomJti || crypto.randomUUID;
+  const currentDate =
+    (args.currentDate || atOpts.signOptions.currentDate) ?? new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
 
   const atClaims: AccessTokenClaims = {
@@ -457,14 +457,18 @@ export async function buildRefreshTokenGrant(
     extraAccessTokenClaims,
     extraRefreshTokenClaims,
     iss,
-    randomJti,
-    currentDate = new Date(),
   } = args;
 
   const atOpts = accessTokenDefaults(accessTokenOptions);
   const rtOpts = refreshTokenDefaults(refreshTokenOptions);
 
   // 5. Build new tokens (implementing refresh token rotation)
+  const randomJti = args.randomJti || crypto.randomUUID;
+  const currentDate =
+    (args.currentDate ||
+      atOpts.signOptions.currentDate ||
+      rtOpts.encryptOptions.currentDate) ??
+    new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
   const newScope = req.scope || refreshTokenClaims.scope;
 
