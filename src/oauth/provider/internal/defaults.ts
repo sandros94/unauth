@@ -165,7 +165,6 @@ export interface OAuthProviderOptions {
   refreshTokenOptions: RefreshTokenOptions;
   accessTokenOptions: AccessTokenOptions;
   randomJti?: () => string;
-  currentDate?: () => Date;
 }
 
 /**
@@ -175,7 +174,6 @@ export function oauthProviderDefaults(args: OAuthProviderOptions) {
   return {
     issuer: args.issuer,
     randomJti: args.randomJti || DEFAULTS_OPTIONS.randomJti,
-    currentDate: args.currentDate || DEFAULTS_OPTIONS.currentDate,
     authorizationCodeOptions: authorizationCodeDefaults(
       args.authorizationCodeOptions,
     ),
