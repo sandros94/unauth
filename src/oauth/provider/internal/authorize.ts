@@ -42,8 +42,8 @@ export type BuildAuthorizationCodeReturn =
 
 export interface BuildAuthorizationRedirectArgs {
   res: AuthorizeResponse;
-  iss: string;
   redirect_uri: string;
+  iss: string;
 }
 
 // #endregion type definitions
