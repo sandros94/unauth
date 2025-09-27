@@ -1,11 +1,11 @@
 import type { ParseType } from "../../../types";
 
 import {
-  type OAuthDiscoveryOptions,
+  type BuildOAuthDiscoveryArgs,
   buildOAuthDiscoveryDocument,
 } from "../../../oauth/provider/internal";
 
-export interface OIDCDiscoveryOptions extends OAuthDiscoveryOptions {
+export interface BuildOIDCDiscoveryArgs extends BuildOAuthDiscoveryArgs {
   userinfo_endpoint?: string;
   subject_types_supported?: string[];
   claims_supported?: string[];
@@ -14,7 +14,7 @@ export interface OIDCDiscoveryOptions extends OAuthDiscoveryOptions {
 export type OIDCDiscoveryDocument = ParseType<
   Required<
     Omit<
-      OIDCDiscoveryOptions,
+      BuildOIDCDiscoveryArgs,
       "default_scope" | "revocation_endpoint" | "prefix"
     >
   > & {
@@ -27,7 +27,7 @@ export type OIDCDiscoveryDocument = ParseType<
  * Build a minimal OpenID Provider Configuration (discovery) document.
  */
 export function buildOIDCDiscoveryDocument(
-  opts: OIDCDiscoveryOptions,
+  opts: BuildOIDCDiscoveryArgs,
 ): OIDCDiscoveryDocument {
   const baseUrl = `${opts.issuer.replace(/\/+$/, "")}${
     opts.prefix ? `/${opts.prefix.replace(/^\/+|\/+$/g, "")}` : ""

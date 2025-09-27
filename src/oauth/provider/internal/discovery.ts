@@ -1,6 +1,6 @@
 import type { ParseType } from "../../../types";
 
-export interface OAuthDiscoveryOptions {
+export interface BuildOAuthDiscoveryArgs {
   issuer: string;
   /**
    * An optional prefix for all endpoint URLs.
@@ -24,7 +24,7 @@ export interface OAuthDiscoveryOptions {
 export type OAuthDiscoveryDocument = ParseType<
   Required<
     Omit<
-      OAuthDiscoveryOptions,
+      BuildOAuthDiscoveryArgs,
       "default_scope" | "revocation_endpoint" | "prefix"
     >
   > & {
@@ -34,7 +34,7 @@ export type OAuthDiscoveryDocument = ParseType<
 >;
 
 export function buildOAuthDiscoveryDocument(
-  opts: OAuthDiscoveryOptions,
+  opts: BuildOAuthDiscoveryArgs,
 ): OAuthDiscoveryDocument {
   const baseUrl = `${opts.issuer.replace(/\/+$/, "")}${
     opts.prefix ? `/${opts.prefix.replace(/^\/+|\/+$/g, "")}` : ""
