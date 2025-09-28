@@ -4,7 +4,7 @@ export { OAuthError } from "../../oauth";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
-import { deepFreeze } from "../../utils";
+import { deepFreeze } from "../../../utils";
 
 import { OAuthProvider } from "../../oauth";
 

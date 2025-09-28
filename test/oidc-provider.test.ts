@@ -2,8 +2,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { randomBytes } from "node:crypto";
 import { base64UrlEncode } from "unsecure/utils";
 import type { JWK_oct } from "unjwt";
-import * as oauthProvider from "../src/oauth/provider";
-import * as oidcUtils from "../src/oidc/provider/internal/utils";
+import * as oauthProvider from "../src/core/oauth/provider";
+import * as oidcUtils from "../src/core/oidc/provider/internal/utils";
 import * as jws from "unjwt/jws";
 
 vi.mock("unjwt/jws", () => ({
@@ -19,14 +19,14 @@ import {
   issueAuthorizationCodeGrant as oidcIssueAuthorizationCodeGrant,
   issueRefreshTokenGrant as oidcIssueRefreshTokenGrant,
   computeTokenHash,
-} from "../src/oidc/provider";
+} from "../src/core/oidc/provider";
 import type {
   NormalizedAuthorizeInput,
   IssueAuthorizationCodeOptions,
   IssueTokenOptions,
   NormalizedAuthorizationCodeGrantInput,
   NormalizedRefreshTokenGrantInput,
-} from "../src/oidc/provider";
+} from "../src/core/oidc/provider";
 
 const makeOctJwk = (size = 32, alg?: string): JWK_oct => {
   const key = randomBytes(size);

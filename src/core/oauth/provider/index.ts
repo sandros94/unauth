@@ -4,7 +4,7 @@ export * from "./internal";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
-import { deepFreeze } from "../../utils";
+import { deepFreeze } from "../../../utils";
 
 import type {
   Result,

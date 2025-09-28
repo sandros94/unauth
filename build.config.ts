@@ -6,12 +6,12 @@ export default defineBuildConfig({
   entries: [
     "./src/index",
     {
-      input: "./src/oauth",
+      input: "./src/core/oauth",
       outDir: "./dist/oauth",
       name: "oauth",
     },
     {
-      input: "./src/oidc",
+      input: "./src/core/oidc",
       outDir: "./dist/oidc",
       name: "oidc",
     },
@@ -40,7 +40,7 @@ async function removeDtsFiles(directory: string) {
       }
     }
   } catch (error) {
-    if (error.code === "ENOENT" || error.code === "ENOTDIR") {
+    if ((error as any).code === "ENOENT" || (error as any).code === "ENOTDIR") {
       return;
     }
     console.error(`Error processing ${directory}: ${error}`);

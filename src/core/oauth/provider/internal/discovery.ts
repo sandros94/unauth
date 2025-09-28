@@ -1,4 +1,4 @@
-import type { ParseType } from "../../../types";
+import type { ParseType } from "../../../../types";
 
 export interface BuildOAuthDiscoveryArgs {
   issuer: string;

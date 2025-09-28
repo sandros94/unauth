@@ -6,7 +6,7 @@ import type {
   JWSVerifyOptions,
 } from "unjwt";
 
-import type { MaybeArray, Require } from "../../../types";
+import type { MaybeArray, Require } from "../../../../types";
 
 export const DEFAULTS_OPTIONS = Object.freeze({
   authorizationCode: {

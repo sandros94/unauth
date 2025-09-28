@@ -29,13 +29,13 @@ import {
   issueAuthorizationCodeGrant,
   issueClientCredentialsGrant,
   issueRefreshTokenGrant,
-} from "../src/oauth/provider";
+} from "../src/core/oauth/provider";
 import type {
   NormalizedAuthorizationCodeGrantInput,
   NormalizedClientCredentialsGrantInput,
   NormalizedRefreshTokenGrantInput,
   IssueTokenOptions,
-} from "../src/oauth/provider";
+} from "../src/core/oauth/provider";
 
 // Helpers
 
