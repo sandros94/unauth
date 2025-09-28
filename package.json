@@ -50,7 +50,7 @@
     "unauth": "link:."
   },
   "dependencies": {
-    "unjwt": "^0.5.16",
+    "unjwt": "^0.5.19",
     "unsecure": "^0.0.4"
   },
   "devDependencies": {
