@@ -9,6 +9,8 @@ import {
   type BuildAuthorizationCodeGrantReturn as OAuthBuildAuthorizationCodeGrantReturn,
   type BuildRefreshTokenGrantArgs as OAuthBuildRefreshTokenGrantArgs,
   type BuildRefreshTokenGrantReturn as OAuthBuildRefreshTokenGrantReturn,
+  validateTokenRequest as oauthValidateTokenRequest,
+  validateAuthorizationCodeGrantRequest as oauthValidateAuthorizationCodeGrantRequest,
   validateAuthorizationCodeClaims as oauthValidateAuthorizationCodeClaims,
   buildAuthorizationCodeGrant as oauthBuildAuthorizationCodeGrant,
   buildRefreshTokenGrant as oauthBuildRefreshTokenGrant,
@@ -150,6 +152,16 @@ export async function buildAuthorizationCodeGrant(
     randomJti,
     currentDate = new Date(),
   } = args;
+
+  oauthValidateTokenRequest(req, iss);
+  oauthValidateAuthorizationCodeGrantRequest(req, iss);
+
+  // Validate authorization code claims
+  await validateAuthorizationCodeClaims({
+    claims: codeClaims,
+    req,
+    iss,
+  });
 
   // Build OAuth tokens first
   const {
