@@ -23,7 +23,7 @@ import {
 import type {
   NormalizedAuthorizeInput,
   IssueAuthorizationCodeOptions,
-  IssueTokenGrantOptions,
+  IssueTokenOptions,
   NormalizedAuthorizationCodeGrantInput,
   NormalizedRefreshTokenGrantInput,
 } from "../src/oidc/provider";
@@ -36,9 +36,9 @@ const makeOctJwk = (size = 32, alg?: string): JWK_oct => {
 const fixedDate = new Date("2024-01-01T00:00:00Z");
 
 const buildOidcOptions = (
-  overrides: Partial<IssueTokenGrantOptions> = {},
-): IssueTokenGrantOptions => {
-  const base: IssueTokenGrantOptions = {
+  overrides: Partial<IssueTokenOptions> = {},
+): IssueTokenOptions => {
+  const base: IssueTokenOptions = {
     iss: "https://issuer.example.com",
     authorizationCodeOptions: {
       privateKey: "ac-secret",
@@ -256,7 +256,7 @@ describe("OIDC Provider", () => {
       signMock.mockResolvedValueOnce("id-token");
 
       const args: NormalizedAuthorizationCodeGrantInput = {
-        type: "authorization_code",
+        grant_type: "authorization_code",
         client_id: "client",
         code: {
           sub: "user",
@@ -314,7 +314,7 @@ describe("OIDC Provider", () => {
       });
       const result = await oidcIssueAuthorizationCodeGrant(
         {
-          type: "authorization_code",
+          grant_type: "authorization_code",
           client_id: "client",
           code: {
             sub: "user",
@@ -374,7 +374,7 @@ describe("OIDC Provider", () => {
       signMock.mockResolvedValueOnce("id-token-2");
 
       const args: NormalizedRefreshTokenGrantInput = {
-        type: "refresh_token",
+        grant_type: "refresh_token",
         client_id: "client",
         refresh_token: {
           sub: "user",
@@ -426,7 +426,7 @@ describe("OIDC Provider", () => {
       });
       const result = await oidcIssueRefreshTokenGrant(
         {
-          type: "refresh_token",
+          grant_type: "refresh_token",
           client_id: "client",
           refresh_token: {
             sub: "user",

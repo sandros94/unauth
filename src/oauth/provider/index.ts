@@ -42,7 +42,7 @@ import {
   validateRedirectUri,
   validateAuthorizeRequest,
   issueAuthorizationCode,
-  validateTokenGrantType,
+  validateTokenRequest,
   issueAuthorizationCodeGrant,
   issueClientCredentialsGrant,
   issueRefreshTokenGrant,
@@ -141,14 +141,14 @@ export class OAuthProvider {
 
   // Token
 
-  validateTokenGrantType(
+  validateTokenRequest(
     req: TokenRequest & {
       accessTokenExtraClaims?: Record<string, unknown>;
       refreshTokenExtraClaims?: Record<string, unknown>;
     },
     errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
   ): Result<NormalizedTokenInput, undefined, TokenErrorResponse> {
-    return validateTokenGrantType(req, errorDetails);
+    return validateTokenRequest(req, errorDetails);
   }
 
   issueAuthorizationCodeGrant(

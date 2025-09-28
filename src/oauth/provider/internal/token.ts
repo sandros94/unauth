@@ -38,7 +38,7 @@ export type TokenGrantType =
   | "client_credentials";
 
 export interface NormalizedAuthorizationCodeGrantInput {
-  type: "authorization_code";
+  grant_type: "authorization_code";
   client_id: string;
   code: string | AuthorizationCodeClaims;
   code_verifier: string;
@@ -47,7 +47,7 @@ export interface NormalizedAuthorizationCodeGrantInput {
 }
 
 export interface NormalizedClientCredentialsGrantInput {
-  type: "client_credentials";
+  grant_type: "client_credentials";
   client_id: string;
   resource: string | string[];
   scope?: string;
@@ -55,7 +55,7 @@ export interface NormalizedClientCredentialsGrantInput {
 }
 
 export interface NormalizedRefreshTokenGrantInput {
-  type: "refresh_token";
+  grant_type: "refresh_token";
   client_id: string;
   refresh_token: string | RefreshTokenClaims;
   requested_scope?: string;
@@ -68,7 +68,7 @@ export type NormalizedTokenInput =
   | NormalizedRefreshTokenGrantInput
   | NormalizedClientCredentialsGrantInput;
 
-export interface IssueTokenGrantOptions {
+export interface IssueTokenOptions {
   iss: string;
   authorizationCodeOptions: AuthorizationCodeOptions;
   accessTokenOptions: AccessTokenOptions;
@@ -109,7 +109,7 @@ export type IssueRefreshTokenGrantReturn = Result<
   TokenErrorResponse
 >;
 
-export type IssueTokenGrantReturn =
+export type IssueTokenReturn =
   | IssueAuthorizationCodeGrantReturn
   | IssueClientCredentialsGrantReturn
   | IssueRefreshTokenGrantReturn;
@@ -424,7 +424,7 @@ function validateRefreshTokenGrantRequest(
 
 // #region validations
 
-export function validateTokenGrantType(
+export function validateTokenRequest(
   req: TokenRequest & {
     accessTokenExtraClaims?: Record<string, unknown>;
     refreshTokenExtraClaims?: Record<string, unknown>;
@@ -455,7 +455,7 @@ export function validateTokenGrantType(
 
   if (isAuthorizationCodeGrantRequest(req)) {
     return validateAuthorizationCodeGrantRequest({
-      type: "authorization_code",
+      grant_type: "authorization_code",
       client_id: req.client_id,
       code: req.code,
       code_verifier: req.code_verifier,
@@ -466,7 +466,7 @@ export function validateTokenGrantType(
 
   if (isClientCredentialsGrantRequest(req)) {
     return validateClientCredentialsGrantRequest({
-      type: "client_credentials",
+      grant_type: "client_credentials",
       client_id: req.client_id,
       resource: req.resource,
       scope: req.scope,
@@ -476,7 +476,7 @@ export function validateTokenGrantType(
 
   if (isRefreshTokenGrantRequest(req)) {
     return validateRefreshTokenGrantRequest({
-      type: "refresh_token",
+      grant_type: "refresh_token",
       client_id: req.client_id,
       refresh_token: req.refresh_token,
       requested_scope: req.scope,
@@ -504,7 +504,7 @@ export function validateTokenGrantType(
  */
 export async function issueAuthorizationCodeGrant(
   args: NormalizedAuthorizationCodeGrantInput,
-  options: IssueTokenGrantOptions,
+  options: IssueTokenOptions,
 ): Promise<IssueAuthorizationCodeGrantReturn> {
   const {
     iss,
@@ -606,7 +606,7 @@ export async function issueAuthorizationCodeGrant(
  */
 export async function issueClientCredentialsGrant(
   args: NormalizedClientCredentialsGrantInput,
-  options: IssueTokenGrantOptions,
+  options: IssueTokenOptions,
 ): Promise<IssueClientCredentialsGrantReturn> {
   const { client_id, resource, scope, accessTokenExtraClaims } = args;
   const { iss, accessTokenOptions } = options;
@@ -657,7 +657,7 @@ export async function issueClientCredentialsGrant(
  */
 export async function issueRefreshTokenGrant(
   args: NormalizedRefreshTokenGrantInput,
-  options: IssueTokenGrantOptions,
+  options: IssueTokenOptions,
 ): Promise<IssueRefreshTokenGrantReturn> {
   const { iss, accessTokenOptions, refreshTokenOptions } = options;
 

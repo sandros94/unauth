@@ -25,7 +25,7 @@ import {
   issueAuthorizationCode,
   validatePKCE,
   isScopeSubset,
-  validateTokenGrantType,
+  validateTokenRequest,
   issueAuthorizationCodeGrant,
   issueClientCredentialsGrant,
   issueRefreshTokenGrant,
@@ -34,7 +34,7 @@ import type {
   NormalizedAuthorizationCodeGrantInput,
   NormalizedClientCredentialsGrantInput,
   NormalizedRefreshTokenGrantInput,
-  IssueTokenGrantOptions,
+  IssueTokenOptions,
 } from "../src/oauth/provider";
 
 // Helpers
@@ -48,9 +48,9 @@ const makeOctJwk = (size = 32, alg?: string): JWK_oct => {
 const fixedDate = new Date("2024-01-01T00:00:00Z");
 
 const buildTokenOptions = (
-  overrides: Partial<IssueTokenGrantOptions> = {},
-): IssueTokenGrantOptions => {
-  const base: IssueTokenGrantOptions = {
+  overrides: Partial<IssueTokenOptions> = {},
+): IssueTokenOptions => {
+  const base: IssueTokenOptions = {
     iss: "https://issuer.example.com",
     authorizationCodeOptions: {
       privateKey: "ac-secret",
@@ -481,7 +481,7 @@ describe("OAuth Provider", () => {
     });
 
     it("normalizes authorization_code token grant requests", () => {
-      const res = validateTokenGrantType({
+      const res = validateTokenRequest({
         grant_type: "authorization_code",
         client_id: "client",
         code: "abc",
@@ -495,7 +495,7 @@ describe("OAuth Provider", () => {
       }
       expect(res.value).toEqual(
         expect.objectContaining({
-          type: "authorization_code",
+          grant_type: "authorization_code",
           client_id: "client",
           code: "abc",
           code_verifier: "verifier",
@@ -506,7 +506,7 @@ describe("OAuth Provider", () => {
     });
 
     it("rejects token requests lacking client binding", () => {
-      const res = validateTokenGrantType({
+      const res = validateTokenRequest({
         grant_type: "client_credentials",
         client_id: "" as unknown as string,
         resource: "https://api",
@@ -520,10 +520,10 @@ describe("OAuth Provider", () => {
     });
 
     it("rejects unsupported grant types", () => {
-      const res = validateTokenGrantType({
+      const res = validateTokenRequest({
         grant_type: "password",
         client_id: "client",
-      } as unknown as Parameters<typeof validateTokenGrantType>[0]);
+      } as unknown as Parameters<typeof validateTokenRequest>[0]);
       expect(res.success).toBe(false);
       if (res.success) {
         throw new Error("Expected failure");
@@ -537,7 +537,7 @@ describe("OAuth Provider", () => {
       const encryptMock = vi.mocked(jwe.encrypt);
       encryptMock.mockResolvedValueOnce("encrypted-rt");
       const args: NormalizedAuthorizationCodeGrantInput = {
-        type: "authorization_code",
+        grant_type: "authorization_code",
         client_id: "client",
         code: makeAuthCodeClaims(),
         code_verifier: "verifier",
@@ -587,7 +587,7 @@ describe("OAuth Provider", () => {
     it("rejects authorization_code grant when PKCE fails", async () => {
       const result = await issueAuthorizationCodeGrant(
         {
-          type: "authorization_code",
+          grant_type: "authorization_code",
           client_id: "client",
           code: {
             ...makeAuthCodeClaims(),
@@ -609,7 +609,7 @@ describe("OAuth Provider", () => {
       const signMock = vi.mocked(jws.sign);
       signMock.mockResolvedValueOnce("signed-cc");
       const args: NormalizedClientCredentialsGrantInput = {
-        type: "client_credentials",
+        grant_type: "client_credentials",
         client_id: "client",
         resource: "https://api",
         scope: "write",
@@ -645,7 +645,7 @@ describe("OAuth Provider", () => {
       const encryptMock = vi.mocked(jwe.encrypt);
       encryptMock.mockResolvedValueOnce("new-rt");
       const args: NormalizedRefreshTokenGrantInput = {
-        type: "refresh_token",
+        grant_type: "refresh_token",
         client_id: "client",
         refresh_token: {
           sub: "user",
@@ -688,7 +688,7 @@ describe("OAuth Provider", () => {
     it("rejects refresh_token grant when requested scope exceeds original", async () => {
       const result = await issueRefreshTokenGrant(
         {
-          type: "refresh_token",
+          grant_type: "refresh_token",
           client_id: "client",
           refresh_token: {
             sub: "user",

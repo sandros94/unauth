@@ -12,7 +12,7 @@ import {
   type NormalizedAuthorizationCodeGrantInput as OAuthNormalizedAuthorizationCodeGrantInput,
   type NormalizedRefreshTokenGrantInput as OAuthNormalizedRefreshTokenGrantInput,
   type NormalizedClientCredentialsGrantInput,
-  type IssueTokenGrantOptions as OAuthIssueTokenGrantOptions,
+  type IssueTokenOptions as OAuthIssueTokenOptions,
   type IssueClientCredentialsGrantReturn,
   issueAuthorizationCodeGrant as oauthIssueAuthorizationCodeGrant,
   issueRefreshTokenGrant as oauthIssueRefreshTokenGrant,
@@ -27,7 +27,7 @@ export {
   type TokenGrantType,
   type NormalizedClientCredentialsGrantInput,
   type IssueClientCredentialsGrantReturn,
-  validateTokenGrantType,
+  validateTokenRequest,
   issueClientCredentialsGrant,
 } from "../../../oauth/provider/internal/token";
 
@@ -48,7 +48,7 @@ export type NormalizedTokenInput =
   | NormalizedRefreshTokenGrantInput
   | NormalizedClientCredentialsGrantInput;
 
-export interface IssueTokenGrantOptions extends OAuthIssueTokenGrantOptions {
+export interface IssueTokenOptions extends OAuthIssueTokenOptions {
   idTokenOptions: IdTokenOptions;
 }
 
@@ -72,7 +72,7 @@ export type IssueRefreshTokenGrantReturn = Result<
   TokenErrorResponse
 >;
 
-export type IssueTokenGrantReturn =
+export type IssueTokenReturn =
   | IssueAuthorizationCodeGrantReturn
   | IssueClientCredentialsGrantReturn
   | IssueRefreshTokenGrantReturn;
@@ -127,7 +127,7 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
 
 export async function issueAuthorizationCodeGrant(
   args: NormalizedAuthorizationCodeGrantInput,
-  options: IssueTokenGrantOptions,
+  options: IssueTokenOptions,
 ): Promise<IssueAuthorizationCodeGrantReturn> {
   const { iss, authorizationCodeOptions, idTokenOptions, currentDate } =
     options;
@@ -194,7 +194,7 @@ export async function issueAuthorizationCodeGrant(
 
 export async function issueRefreshTokenGrant(
   args: NormalizedRefreshTokenGrantInput,
-  options: IssueTokenGrantOptions,
+  options: IssueTokenOptions,
 ): Promise<IssueRefreshTokenGrantReturn> {
   const {
     iss,
