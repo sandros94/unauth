@@ -164,7 +164,7 @@ function isRefreshTokenGrantRequest(
 }
 
 export function validateAuthorizationCodeGrantRequest(
-  req: AuthorizationCodeGrantRequest,
+  req: BuildAuthorizationCodeGrantArgs["req"],
   iss: string,
 ): void {
   if (
@@ -232,7 +232,7 @@ export function validateClientCredentialsGrantRequest(
 }
 
 export function validateRefreshTokenGrantRequest(
-  req: RefreshTokenGrantRequest,
+  req: BuildRefreshTokenGrantArgs["req"],
   iss: string,
 ): void {
   if (
@@ -269,7 +269,7 @@ export function validateRefreshTokenGrantRequest(
 export function validateTokenRequest(
   req: unknown,
   iss: string,
-): asserts req is TokenRequest {
+): req is TokenRequest {
   if (!isTokenRequest(req)) {
     throw new OAuthError({
       error: "invalid_request",
@@ -283,7 +283,7 @@ export function validateTokenRequest(
     isClientCredentialsGrantRequest(req) ||
     isRefreshTokenGrantRequest(req)
   ) {
-    return;
+    return true;
   }
 
   throw new OAuthError({
@@ -443,13 +443,11 @@ export async function buildAuthorizationCodeGrant(
 
   const codeClaims =
     typeof req.code === "string"
-      ? (
-          await introspectAuthorizationCode({
-            token: req.code,
-            iss,
-            options: authorizationCodeOptions,
-          })
-        ).payload
+      ? await introspectAuthorizationCode({
+          token: req.code,
+          iss,
+          options: authorizationCodeOptions,
+        })
       : req.code;
 
   await validateAuthorizationCodeClaims({
@@ -591,13 +589,11 @@ export async function buildRefreshTokenGrant(
 
   const refreshTokenClaims =
     typeof req.refresh_token === "string"
-      ? (
-          await introspectRefreshToken({
-            token: req.refresh_token,
-            iss,
-            options: refreshTokenOptions,
-          })
-        ).payload
+      ? await introspectRefreshToken({
+          token: req.refresh_token,
+          iss,
+          options: refreshTokenOptions,
+        })
       : req.refresh_token;
 
   await validateRefreshTokenClaims({

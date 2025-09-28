@@ -134,13 +134,11 @@ export async function buildAuthorizationCodeGrant(
 
   const codeClaims =
     typeof req.code === "string"
-      ? (
-          await introspectAuthorizationCode<AuthorizationCodeClaims>({
-            token: req.code,
-            iss,
-            options: authorizationCodeOptions,
-          })
-        ).payload
+      ? await introspectAuthorizationCode<AuthorizationCodeClaims>({
+          token: req.code,
+          iss,
+          options: authorizationCodeOptions,
+        })
       : req.code;
 
   // Build OAuth tokens first
@@ -171,7 +169,7 @@ export async function buildAuthorizationCodeGrant(
     claims: {
       ...extraIdTokenClaims,
       iss,
-      aud: accessTokenClaims.aud,
+      aud: req.client_id,
       sub: accessTokenClaims.sub,
       nonce: codeClaims.nonce,
     },
@@ -206,13 +204,11 @@ export async function buildRefreshTokenGrant(
 
   const oldRTClaims =
     typeof req.refresh_token === "string"
-      ? (
-          await introspectRefreshToken<RefreshTokenClaims>({
-            token: req.refresh_token,
-            iss,
-            options: refreshTokenOptions,
-          })
-        ).payload
+      ? await introspectRefreshToken<RefreshTokenClaims>({
+          token: req.refresh_token,
+          iss,
+          options: refreshTokenOptions,
+        })
       : req.refresh_token;
 
   // Build OAuth tokens first
