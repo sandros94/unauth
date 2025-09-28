@@ -1,6 +1,6 @@
-import { type JWEDecryptResult, decrypt } from "unjwt/jwe";
-import { type JWSVerifyResult, verify } from "unjwt/jws";
 import type { JWK, JWKSet } from "unjwt/jwk";
+import { decrypt } from "unjwt/jwe";
+import { verify } from "unjwt/jws";
 import { isPublicJWK, isSymmetricJWK } from "unjwt/utils";
 
 import type {
@@ -26,16 +26,18 @@ export async function introspectAuthorizationCode<
   token: string;
   iss: string;
   options: AuthorizationCodeOptions;
-}): Promise<JWEDecryptResult<T>> {
+}): Promise<T> {
   const { token, iss, options } = args;
   const opts = authorizationCodeDefaults(options);
 
-  return decrypt<T>(token, opts.privateKey, {
+  const { payload } = await decrypt<T>(token, opts.privateKey, {
     issuer: iss,
     typ: "ac+jwt",
     maxTokenAge: opts.encryptOptions.expiresIn,
     ...opts.decryptOptions,
   });
+
+  return payload;
 }
 
 // Utility to introspect access tokens while validating their claims
@@ -43,17 +45,19 @@ export async function introspectAccessToken<T extends AccessTokenClaims>(args: {
   token: string;
   iss: string;
   options: AccessTokenOptions;
-}): Promise<JWSVerifyResult<T>> {
+}): Promise<T> {
   const { token, iss, options } = args;
   const opts = accessTokenDefaults(options);
   const key = preferPublicKey(opts);
 
-  return verify<T>(token, key, {
+  const { payload } = await verify<T>(token, key, {
     issuer: iss,
     typ: "at+jwt",
     maxTokenAge: opts.signOptions.expiresIn,
     ...opts.verifyOptions,
   });
+
+  return payload;
 }
 
 // Utility to introspect refresh tokens while validating their claims
@@ -63,16 +67,18 @@ export async function introspectRefreshToken<
   token: string;
   iss: string;
   options: RefreshTokenOptions;
-}): Promise<JWEDecryptResult<T>> {
+}): Promise<T> {
   const { token, iss, options } = args;
   const opts = refreshTokenDefaults(options);
 
-  return decrypt<T>(token, opts.privateKey, {
+  const { payload } = await decrypt<T>(token, opts.privateKey, {
     issuer: iss,
     typ: "rt+jwt",
     maxTokenAge: opts.encryptOptions.expiresIn,
     ...opts.decryptOptions,
   });
+
+  return payload;
 }
 
 function preferPublicKey(options: {

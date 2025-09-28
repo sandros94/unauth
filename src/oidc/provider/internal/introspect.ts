@@ -1,5 +1,5 @@
 import { isPublicJWK, isSymmetricJWK } from "unjwt/utils";
-import { type JWSVerifyResult, verify } from "unjwt/jws";
+import { verify } from "unjwt/jws";
 import type { JWK, JWKSet } from "unjwt/jwk";
 
 import type { IdTokenClaims } from "../../types";
@@ -12,17 +12,19 @@ export async function introspectIdToken<T extends IdTokenClaims>(args: {
   token: string;
   iss: string;
   options: IdTokenOptions;
-}): Promise<JWSVerifyResult<T>> {
+}): Promise<T> {
   const { token, iss, options } = args;
   const opts = idTokenDefaults(options);
   const key = preferPublicKey(opts);
 
-  return verify<T>(token, key, {
+  const { payload } = await verify<T>(token, key, {
     issuer: iss,
     typ: "id+jwt",
     maxTokenAge: opts.signOptions.expiresIn,
     ...opts.verifyOptions,
   });
+
+  return payload;
 }
 
 function preferPublicKey(options: {
