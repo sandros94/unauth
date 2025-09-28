@@ -12,13 +12,10 @@ import {
   type BuildRefreshTokenGrantReturn as OAuthBuildRefreshTokenGrantReturn,
   validateTokenRequest as oauthValidateTokenRequest,
   validateAuthorizationCodeGrantRequest as oauthValidateAuthorizationCodeGrantRequest,
-  validateAuthorizationCodeClaims as oauthValidateAuthorizationCodeClaims,
-  validateRefreshTokenClaims as oauthValidateRefreshTokenClaims,
   buildAuthorizationCodeGrant as oauthBuildAuthorizationCodeGrant,
   buildRefreshTokenGrant as oauthBuildRefreshTokenGrant,
   introspectAuthorizationCode,
   introspectRefreshToken,
-  OAuthError,
 } from "../../../oauth";
 import { type IdTokenOptions, idTokenDefaults } from "./defaults";
 import type {
@@ -32,7 +29,9 @@ export {
   type BuildClientCredentialsGrantArgs,
   type BuildClientCredentialsGrantReturn,
   buildClientCredentialsGrant,
+  validateAuthorizationCodeClaims,
   validateClientCredentialsGrantRequest,
+  validateRefreshTokenClaims,
   validateTokenRequest,
 } from "../../../oauth/provider/internal/token";
 
@@ -74,56 +73,6 @@ export interface BuildRefreshTokenGrantReturn
   res: TokenSuccessResponse;
   idTokenClaims: IdTokenClaims;
   refreshTokenClaims: RefreshTokenClaims;
-}
-
-// #endregion
-
-// #region validation functions
-
-export async function validateAuthorizationCodeClaims(args: {
-  claims: AuthorizationCodeClaims;
-  req: Pick<AuthorizationCodeGrantRequest, "client_id" | "code_verifier">;
-  iss: string;
-}): Promise<void> {
-  const { claims, req, iss } = args;
-
-  // OIDC requirements: ensure nonce presence propagated in codeClaims
-  if (!claims.nonce) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Missing nonce in authorization code claims",
-      iss,
-    });
-  }
-
-  await oauthValidateAuthorizationCodeClaims({
-    claims,
-    req,
-    iss,
-  });
-}
-
-export async function validateRefreshTokenClaims(args: {
-  claims: RefreshTokenClaims;
-  req: Pick<RefreshTokenGrantRequest, "client_id" | "scope">;
-  iss: string;
-}): Promise<void> {
-  const { claims, req, iss } = args;
-
-  // OIDC requirements: ensure nonce presence propagated in codeClaims
-  if (!claims.nonce) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Missing nonce in authorization code claims",
-      iss,
-    });
-  }
-
-  await oauthValidateRefreshTokenClaims({
-    claims,
-    req,
-    iss,
-  });
 }
 
 // #endregion
@@ -193,13 +142,6 @@ export async function buildAuthorizationCodeGrant(
           })
         ).payload
       : req.code;
-
-  // Validate authorization code claims
-  await validateAuthorizationCodeClaims({
-    claims: codeClaims,
-    req,
-    iss,
-  });
 
   // Build OAuth tokens first
   const {
@@ -272,13 +214,6 @@ export async function buildRefreshTokenGrant(
           })
         ).payload
       : req.refresh_token;
-
-  // Validate refresh token claims
-  await validateRefreshTokenClaims({
-    claims: oldRTClaims,
-    req,
-    iss,
-  });
 
   // Build OAuth tokens first
   const {

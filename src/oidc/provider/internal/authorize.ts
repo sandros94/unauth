@@ -1,5 +1,3 @@
-import type { JWTClaims } from "unjwt";
-
 import {
   type AuthorizeErrorResponse,
   type AuthorizeRequest as OAuthAuthorizeRequest,
@@ -26,7 +24,7 @@ export interface AuthorizeRequest extends OAuthAuthorizeRequest {
   /**
    * Nonce value to associate a client session with an ID token, and to mitigate replay attacks.
    */
-  nonce: string;
+  nonce?: string;
   /**
    * PKCE code challenge method MUST be S256 (SHA-256)
    */
@@ -56,7 +54,7 @@ function scopeIncludesOpenId(scope: unknown): boolean {
 /**
  * Build an OAuth 2.1 authorization code with OIDC requirements:
  * - scope MUST include "openid"
- * - nonce is REQUIRED and propagated
+ * - nonce if present must be propagated
  * - code_challenge_method MUST be "S256"
  */
 export async function buildAuthorizationCode(
@@ -71,15 +69,6 @@ export async function buildAuthorizationCode(
     error = new OAuthError({
       error: "invalid_request",
       error_description: "Missing required openid scope",
-      state: req.state,
-      iss,
-    }).toJSON();
-  }
-
-  if (!req.nonce || typeof req.nonce !== "string") {
-    error = new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing nonce in authorization request",
       state: req.state,
       iss,
     }).toJSON();
@@ -103,8 +92,9 @@ export async function buildAuthorizationCode(
   }
 
   // Propagate nonce via claims so it is available to the token step
-  const enrichedClaims = { ...claims, nonce: req.nonce } as JWTClaims & {
-    sub: string;
+  const enrichedClaims = {
+    ...claims,
+    ...(req.nonce ? { nonce: req.nonce } : {}),
   };
 
   return oauthBuildAuthorizationCode({

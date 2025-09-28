@@ -5,7 +5,6 @@ import type { JWK_oct } from "unjwt";
 
 import {
   buildAuthorizationCode,
-  validateAuthorizationCodeClaims,
   buildAuthorizationCodeGrant,
   buildRefreshTokenGrant,
   idTokenDefaults,
@@ -40,7 +39,7 @@ describe("OIDC Provider", () => {
       decryptOptions: { currentDate: now, maxTokenAge: 600 },
     } as const;
 
-    it("requires openid scope, nonce and S256", async () => {
+    it("requires openid scope and S256", async () => {
       const baseReq: AuthorizeRequest = {
         client_id: "c",
         response_type: "code",
@@ -70,16 +69,6 @@ describe("OIDC Provider", () => {
       });
       expect(r2).toMatchInlineSnapshot(
         `"https://cb/?iss=https%3A%2F%2Fissuer&error=invalid_request&error_description=code_challenge_method+must+be+S256"`,
-      );
-
-      const r3 = await buildAuthorizationCode({
-        req: { ...baseReq, scope: "openid", code_challenge_method: "S256" },
-        claims: { sub: "u" },
-        iss,
-        options: acOpts,
-      });
-      expect(r3).toMatchInlineSnapshot(
-        `"https://cb/?iss=https%3A%2F%2Fissuer&error=invalid_request&error_description=Missing+nonce+in+authorization+request"`,
       );
     });
 
@@ -182,36 +171,6 @@ describe("OIDC Provider", () => {
       privateKey: jwk,
       signOptions: { alg: "HS256", expiresIn: 1800, currentDate: now },
     } as const;
-
-    it("validateAuthorizationCodeClaims requires nonce then OAuth checks", async () => {
-      const req: AuthorizationCodeGrantRequest = {
-        grant_type: "authorization_code",
-        code: "c",
-        client_id: "client",
-        code_verifier: "v",
-      };
-      // @ts-expect-error testing missing nonce
-      const claimsMissingNonce: AuthorizationCodeClaims = {
-        sub: "u",
-        jti: "j",
-        iss,
-        iat: 1,
-        exp: 2,
-        client_id: "client",
-        redirect_uri: "https://cb",
-        code_challenge: "x",
-        code_challenge_method: "plain",
-        resource: "api",
-        scope: "openid",
-      };
-      await expect(
-        validateAuthorizationCodeClaims({
-          claims: claimsMissingNonce,
-          req,
-          iss,
-        }),
-      ).rejects.toMatchObject({ error: "invalid_grant" });
-    });
 
     it("authorization_code grant returns id_token with at_hash matching alg", async () => {
       const verifier = "verifier";

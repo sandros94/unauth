@@ -37,7 +37,7 @@ export interface IdTokenClaims extends JWTClaims {
 }
 
 export interface AuthorizationCodeClaims extends OAuthAuthorizationCodeClaims {
-  nonce: string;
+  nonce?: string;
 }
 
 export interface TokenSuccessResponse extends OAuthTokenSuccessResponse {
