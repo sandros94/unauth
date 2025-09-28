@@ -179,9 +179,7 @@ export class OAuthProvider {
 
 function getPublicKeys(publicKey?: JWK | JWK[]): JWKSet {
   if (publicKey !== undefined) {
-    const key = Array.isArray(publicKey)
-      ? publicKey
-      : [publicKey];
+    const key = Array.isArray(publicKey) ? publicKey : [publicKey];
 
     return {
       keys: key.filter((key) => key.kid !== undefined && isPublicJWK(key)),
