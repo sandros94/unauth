@@ -1,4 +1,5 @@
 export * from "./internal";
+export { OAuthError } from "../../oauth";
 
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
@@ -105,7 +106,12 @@ export class OIDCProvider extends OAuthProvider {
     >,
   ): Promise<BuildAuthorizationCodeGrantReturn> {
     return buildAuthorizationCodeGrant({
-      ...args,
+      req: args.req,
+      codeClaims: args.codeClaims,
+      currentDate: args.currentDate,
+      extraIdTokenClaims: args.extraIdTokenClaims,
+      extraAccessTokenClaims: args.extraAccessTokenClaims,
+      extraRefreshTokenClaims: args.extraRefreshTokenClaims,
       iss: this.iss,
       randomJti: this.randomJtiFn,
       accessTokenOptions: this.accessTokenOptions,
@@ -125,7 +131,12 @@ export class OIDCProvider extends OAuthProvider {
     >,
   ): Promise<BuildRefreshTokenGrantReturn> {
     return buildRefreshTokenGrant({
-      ...args,
+      req: args.req,
+      currentDate: args.currentDate,
+      refreshTokenClaims: args.refreshTokenClaims,
+      extraIdTokenClaims: args.extraIdTokenClaims,
+      extraAccessTokenClaims: args.extraAccessTokenClaims,
+      extraRefreshTokenClaims: args.extraRefreshTokenClaims,
       iss: this.iss,
       randomJti: this.randomJtiFn,
       accessTokenOptions: this.accessTokenOptions,

@@ -170,19 +170,19 @@ export function buildAuthorizationRedirect(
 
 export function validateRedirectUri(
   req: {
-    redirectUri?: string | undefined;
+    redirect_uri?: string | undefined;
     state?: string;
   },
   registeredRedirectUris: string | string[],
   iss?: string | undefined,
 ): string | AuthorizeErrorResponse {
-  const { redirectUri, state } = req;
+  const { redirect_uri, state } = req;
   const uris = Array.isArray(registeredRedirectUris)
     ? registeredRedirectUris
     : [registeredRedirectUris];
 
   // If no redirect URI is requested, and only one is registered, use that one.
-  if (!redirectUri) {
+  if (!redirect_uri) {
     if (uris.length > 1) {
       return new OAuthError({
         error: "invalid_request",
@@ -204,9 +204,9 @@ export function validateRedirectUri(
 
   // If a redirect URI is requested, it must exactly match one of the registered URIs via `secureCompare`.
   for (const uri of uris) {
-    // We use the requested redirectUri as the time constant comparison input to avoid leaking
-    if (secureCompare(redirectUri, uri)) {
-      return redirectUri;
+    // We use the requested redirect_uri as the time constant comparison input to avoid leaking
+    if (secureCompare(redirect_uri, uri)) {
+      return redirect_uri;
     }
   }
 

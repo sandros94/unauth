@@ -170,25 +170,25 @@ describe("OAuth Provider", () => {
 
     it("validates redirect URIs", () => {
       const err1 = validateRedirectUri(
-        { redirectUri: undefined },
+        { redirect_uri: undefined },
         ["a", "b"],
         iss,
       );
       expect((err1 as { error: string }).error).toBe("invalid_request");
       const def = validateRedirectUri(
-        { redirectUri: undefined },
+        { redirect_uri: undefined },
         ["https://cb"],
         iss,
       );
       expect(def).toBe("https://cb");
       const err2 = validateRedirectUri(
-        { redirectUri: "https://cbX" },
+        { redirect_uri: "https://cbX" },
         ["https://cb"],
         iss,
       );
       expect((err2 as { error: string }).error).toBe("invalid_request");
       const ok = validateRedirectUri(
-        { redirectUri: "https://cb" },
+        { redirect_uri: "https://cb" },
         ["https://cb"],
         iss,
       );

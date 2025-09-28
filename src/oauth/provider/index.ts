@@ -4,6 +4,7 @@ export * from "./internal";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
+import type { AuthorizeRequest } from "../types";
 import type {
   OAuthProviderOptions,
   ResolvedAuthorizationCodeOptions,
@@ -67,12 +68,11 @@ export class OAuthProvider {
   // Authorize
 
   validateAuthorizeRedirectUri(
-    redirectUri: string | undefined,
+    req: Pick<AuthorizeRequest, "redirect_uri" | "state">,
     registeredRedirectUris: string | string[],
-    state?: string,
   ) {
     return validateRedirectUri(
-      { redirectUri, state },
+      req,
       registeredRedirectUris,
       this.iss,
     );
