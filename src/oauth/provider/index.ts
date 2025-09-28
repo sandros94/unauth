@@ -4,17 +4,29 @@ export * from "./internal";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
-import type { AuthorizeRequest } from "../types";
+import type {
+  AuthorizeRequest,
+  AuthorizeErrorResponse,
+  TokenRequest,
+  AuthorizationCodeClaims,
+  AccessTokenClaims,
+  RefreshTokenClaims,
+} from "../types";
 import type {
   OAuthProviderOptions,
+  OAuthDiscoveryDocument,
   ResolvedAuthorizationCodeOptions,
   ResolvedAccessTokenOptions,
   ResolvedRefreshTokenOptions,
   BuildOAuthDiscoveryArgs,
   BuildAuthorizationCodeArgs,
+  BuildAuthorizationCodeReturn,
   BuildAuthorizationCodeGrantArgs,
+  BuildAuthorizationCodeGrantReturn,
   BuildClientCredentialsGrantArgs,
+  BuildClientCredentialsGrantReturn,
   BuildRefreshTokenGrantArgs,
+  BuildRefreshTokenGrantReturn,
 } from "./internal";
 import {
   oauthProviderDefaults,
@@ -61,7 +73,7 @@ export class OAuthProvider {
 
   // Discovery
 
-  discovery(options?: Omit<BuildOAuthDiscoveryArgs, "issuer">) {
+  discovery(options?: Omit<BuildOAuthDiscoveryArgs, "issuer">): OAuthDiscoveryDocument {
     return buildOAuthDiscoveryDocument({ ...options, issuer: this.iss });
   }
 
@@ -70,13 +82,13 @@ export class OAuthProvider {
   validateAuthorizeRedirectUri(
     req: Pick<AuthorizeRequest, "redirect_uri" | "state">,
     registeredRedirectUris: string | string[],
-  ) {
+  ): string | AuthorizeErrorResponse {
     return validateRedirectUri(req, registeredRedirectUris, this.iss);
   }
 
   async authorizationCode(
     args: Pick<BuildAuthorizationCodeArgs, "req" | "claims">,
-  ) {
+  ): Promise<BuildAuthorizationCodeReturn> {
     return buildAuthorizationCode({
       req: args.req,
       claims: args.claims,
@@ -88,7 +100,7 @@ export class OAuthProvider {
 
   // Token
 
-  validateTokenRequest(req: unknown) {
+  validateTokenRequest(req: unknown): req is TokenRequest {
     return validateTokenRequest(req, this.iss);
   }
 
@@ -101,7 +113,7 @@ export class OAuthProvider {
       | "accessTokenOptions"
       | "refreshTokenOptions"
     >,
-  ) {
+  ): Promise<BuildAuthorizationCodeGrantReturn> {
     return buildAuthorizationCodeGrant({
       req: args.req,
       currentDate: args.currentDate,
@@ -120,7 +132,7 @@ export class OAuthProvider {
       BuildClientCredentialsGrantArgs,
       "iss" | "randomJti" | "accessTokenOptions"
     >,
-  ) {
+  ): Promise<BuildClientCredentialsGrantReturn> {
     return buildClientCredentialsGrant({
       req: args.req,
       currentDate: args.currentDate,
@@ -136,7 +148,7 @@ export class OAuthProvider {
       BuildRefreshTokenGrantArgs,
       "iss" | "randomJti" | "accessTokenOptions" | "refreshTokenOptions"
     >,
-  ) {
+  ): Promise<BuildRefreshTokenGrantReturn> {
     return buildRefreshTokenGrant({
       req: args.req,
       currentDate: args.currentDate,
@@ -151,7 +163,7 @@ export class OAuthProvider {
 
   // Introspection
 
-  introspectAuthorizationCode(token: string) {
+  introspectAuthorizationCode(token: string): Promise<AuthorizationCodeClaims> {
     return introspectAuthorizationCode({
       token,
       iss: this.iss,
@@ -159,7 +171,7 @@ export class OAuthProvider {
     });
   }
 
-  introspectAccessToken(token: string) {
+  introspectAccessToken(token: string): Promise<AccessTokenClaims> {
     return introspectAccessToken({
       token,
       iss: this.iss,
@@ -167,7 +179,7 @@ export class OAuthProvider {
     });
   }
 
-  introspectRefreshToken(token: string) {
+  introspectRefreshToken(token: string): Promise<RefreshTokenClaims> {
     return introspectRefreshToken({
       token,
       iss: this.iss,

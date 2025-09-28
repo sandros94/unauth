@@ -11,6 +11,7 @@ import type {
   ResolvedRefreshTokenOptions,
 } from "../../oauth/provider/internal";
 
+import type { IdTokenClaims } from "../types";
 import type {
   OIDCProviderOptions,
   ResolvedIdTokenOptions,
@@ -75,7 +76,7 @@ export class OIDCProvider extends OAuthProvider {
 
   buildUserInfo<T extends Record<string, unknown>>(
     profile: OIDCUserInfoProfile,
-  ) {
+  ): OIDCUserInfoProfile & T {
     return buildUserInfo<T>(profile);
   }
 
@@ -147,7 +148,7 @@ export class OIDCProvider extends OAuthProvider {
 
   // Introspection
 
-  introspectIdToken(token: string) {
+  introspectIdToken(token: string): Promise<IdTokenClaims> {
     return introspectIdToken({
       token,
       iss: this.iss,
