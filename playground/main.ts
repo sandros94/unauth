@@ -51,29 +51,28 @@ app.get("/callback", (event) => {
 app.get("/authorize", async (event) => {
   const req = getQuery<AuthorizeRequest>(event);
 
-  try {
-    provider.validateAuthorizeRedirectUri(
-      req,
-      "http://localhost:3000/callback",
-    );
-  } catch (error_) {
-    if (error_ instanceof OAuthError) {
-      const error = error_.toJSON();
-      throw new HTTPError({
-        status: 402,
-        statusText: "OAuth Error",
-        cause: new Error(`${error.error}: ${error.error_description}`),
-      });
-    }
-    throw error_;
-  }
-
-  const redirect = await provider.authorizationCode({
+  const redirect = await provider.authorize({
     req,
     claims: {
       sub: "user-123", // Authenticate your user here and set the subject (sub) claim
     },
-  });
+  }, "http://localhost:3000/callback")
+    .catch((error_) => {
+      if (error_ instanceof OAuthError) {
+        const error = error_.toJSON();
+        throw new HTTPError({
+          status: 402,
+          statusText: "OAuth Error",
+          cause: new Error(`${error.error}: ${error.error_description}`),
+        });
+      }
+      throw new HTTPError({
+        status: 500,
+        statusText: "Internal Server Error",
+        cause: error_,
+      });
+    });
+
   return new Response(null, {
     status: 302,
     headers: { Location: redirect },
@@ -87,62 +86,24 @@ app.post("/token", async (event) => {
 
   if (!req) throw HTTPError.status(400, "Invalid or missing request body");
 
-  try {
-    provider.validateTokenRequest(req);
-  } catch (error_) {
-    if (error_ instanceof OAuthError) {
-      const error = error_.toJSON();
+  const grant = await provider.token(req)
+    .catch((error_) => {
+      if (error_ instanceof OAuthError) {
+        const error = error_.toJSON();
+        throw new HTTPError({
+          status: 402,
+          statusText: "OAuth Error",
+          cause: new Error(`${error.error}: ${error.error_description}`),
+        });
+      }
       throw new HTTPError({
-        status: 402,
-        statusText: "OAuth Error",
-        cause: new Error(`${error.error}: ${error.error_description}`),
+        status: 500,
+        statusText: "Internal Server Error",
+        cause: error_,
       });
-    }
-    throw error_;
-  }
+    });
 
-  const grantType = req.grant_type;
-
-  try {
-    switch (grantType) {
-      case "authorization_code": {
-        const acGrant = await provider.authorizationCodeGrant({
-          req,
-        });
-        console.log(acGrant.accessTokenClaims.aud)
-        return acGrant.res;
-      }
-      case "refresh_token": {
-        const rtGrant = await provider.refreshTokenGrant({
-          req,
-        });
-        return rtGrant.res;
-      }
-      case "client_credentials": {
-        const ccGrant = await provider.clientCredentialsGrant({
-          req,
-        });
-        return ccGrant.res;
-      }
-      default: {
-        throw new OAuthError({
-          error: "unsupported_grant_type",
-          error_description: `Unsupported grant_type: ${grantType}`,
-          iss: provider.iss,
-        });
-      }
-    }
-  } catch (error_) {
-    if (error_ instanceof OAuthError) {
-      const error = error_.toJSON();
-      throw new HTTPError({
-        status: 402,
-        statusText: "OAuth Error",
-        cause: new Error(`${error.error}: ${error.error_description}`),
-      });
-    }
-    throw error_;
-  }
+  return grant.res;
 });
 
 // UserInfo endpoint (GET)

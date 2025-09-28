@@ -59,13 +59,15 @@ try {
   console.log("callback url:", callbackUrl.toString(), "\n\n");
 
   // 4) Exchange the code for tokens
-  const tokens = await client.authorizationCodeGrant(config, callbackUrl, {
-    pkceCodeVerifier: code_verifier,
-    expectedState: state,
-  }).catch((error_) => {
-    console.error("Error during token exchange:", error_.cause);
-    throw error_;
-  });
+  const tokens = await client
+    .authorizationCodeGrant(config, callbackUrl, {
+      pkceCodeVerifier: code_verifier,
+      expectedState: state,
+    })
+    .catch((error_) => {
+      console.error("Error during token exchange:", error_.cause);
+      throw error_;
+    });
   console.log("tokens:", tokens, "\n\n");
 
   // 5) Call userinfo (skip subject verification since we did not fetch ID Token claims)
