@@ -19,6 +19,7 @@ import type {
   AuthorizationCodeClaims,
   RefreshTokenClaims,
   AuthorizationCodeGrantRequest,
+  RefreshTokenGrantRequest,
 } from "../src/oidc/types";
 
 const makeOctJwk = (size = 32, alg?: string): JWK_oct => {
@@ -153,6 +154,14 @@ describe("OIDC Provider", () => {
     const now = new Date("2024-01-01T00:00:00Z");
     const jwk = makeOctJwk(32, "HS256");
 
+    const authorizationCodeOptions = {
+      privateKey: "ac-jwe-secret-key", // OR JWK
+      encryptOptions: {
+        expiresIn: 600,
+        currentDate: now,
+      },
+      decryptOptions: { currentDate: now, maxTokenAge: 600 },
+    } as const;
     const accessTokenOptions = {
       privateKey: jwk,
       signOptions: {
@@ -207,9 +216,8 @@ describe("OIDC Provider", () => {
     it("authorization_code grant returns id_token with at_hash matching alg", async () => {
       const verifier = "verifier";
       const challenge = verifier; // plain
-      const req: AuthorizationCodeGrantRequest = {
+      const req: Omit<AuthorizationCodeGrantRequest, "code"> = {
         grant_type: "authorization_code",
-        code: "code",
         client_id: "client",
         code_verifier: verifier,
       };
@@ -229,8 +237,11 @@ describe("OIDC Provider", () => {
       };
 
       const out = await buildAuthorizationCodeGrant({
-        req,
-        codeClaims,
+        req: {
+          ...req,
+          code: codeClaims,
+        },
+        authorizationCodeOptions,
         accessTokenOptions,
         refreshTokenOptions,
         idTokenOptions,
@@ -252,11 +263,10 @@ describe("OIDC Provider", () => {
     });
 
     it("refresh_token grant returns new id_token (nonce propagated if present)", async () => {
-      const req = {
+      const req: Omit<RefreshTokenGrantRequest, "refresh_token"> = {
         grant_type: "refresh_token",
-        refresh_token: "rt",
         client_id: "client",
-      } as const;
+      };
       const old: RefreshTokenClaims = {
         sub: "u",
         client_id: "client",
@@ -270,8 +280,10 @@ describe("OIDC Provider", () => {
       };
 
       const out = await buildRefreshTokenGrant({
-        req,
-        refreshTokenClaims: old,
+        req: {
+          ...req,
+          refresh_token: old,
+        },
         idTokenOptions,
         accessTokenOptions,
         refreshTokenOptions,

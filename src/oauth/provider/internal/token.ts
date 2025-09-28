@@ -167,7 +167,10 @@ export function validateAuthorizationCodeGrantRequest(
   req: AuthorizationCodeGrantRequest,
   iss: string,
 ): void {
-  if (!req.code || typeof req.code !== "string") {
+  if (
+    !req.code ||
+    (typeof req.code !== "string" && typeof req.code !== "object")
+  ) {
     throw new OAuthError({
       error: "invalid_request",
       error_description: "Missing authorization code",
@@ -232,7 +235,11 @@ export function validateRefreshTokenGrantRequest(
   req: RefreshTokenGrantRequest,
   iss: string,
 ): void {
-  if (!req.refresh_token || typeof req.refresh_token !== "string") {
+  if (
+    !req.refresh_token ||
+    (typeof req.refresh_token !== "string" &&
+      typeof req.refresh_token !== "object")
+  ) {
     throw new OAuthError({
       error: "invalid_request",
       error_description: "Missing refresh_token",

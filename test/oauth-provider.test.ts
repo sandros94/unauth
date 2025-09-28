@@ -257,6 +257,14 @@ describe("OAuth Provider", () => {
     const now = new Date("2024-01-01T00:00:00Z");
     const jwk = makeOctJwk(32, "HS256"); // for JWS (access/id tokens)
 
+    const authorizationCodeOptions = {
+      privateKey: "ac-jwe-secret-key", // OR JWK
+      encryptOptions: {
+        expiresIn: 600,
+        currentDate: now,
+      },
+      decryptOptions: { currentDate: now, maxTokenAge: 600 },
+    } as const;
     const accessTokenOptions = {
       privateKey: jwk,
       signOptions: {
@@ -290,23 +298,23 @@ describe("OAuth Provider", () => {
       const tg = await buildAuthorizationCodeGrant({
         req: {
           grant_type: "authorization_code",
-          code: "dummy",
+          code: {
+            sub: "user",
+            jti: "j1",
+            iss,
+            iat: Math.floor(now.getTime() / 1000),
+            exp: Math.floor(now.getTime() / 1000) + 600,
+            client_id: "client",
+            redirect_uri: "https://cb",
+            code_challenge: "verifier",
+            code_challenge_method: "plain",
+            resource: "api",
+            scope: "read",
+          },
           client_id: "client",
           code_verifier: "verifier",
         },
-        codeClaims: {
-          sub: "user",
-          jti: "j1",
-          iss,
-          iat: Math.floor(now.getTime() / 1000),
-          exp: Math.floor(now.getTime() / 1000) + 600,
-          client_id: "client",
-          redirect_uri: "https://cb",
-          code_challenge: "verifier",
-          code_challenge_method: "plain",
-          resource: "api",
-          scope: "read",
-        },
+        authorizationCodeOptions,
         accessTokenOptions,
         refreshTokenOptions,
         iss,
@@ -403,9 +411,8 @@ describe("OAuth Provider", () => {
     it("buildAuthorizationCodeGrant builds AT/RT with expected claims", async () => {
       const verifier = "v";
       const challenge = "v"; // plain
-      const req: AuthorizationCodeGrantRequest = {
+      const req: Omit<AuthorizationCodeGrantRequest, "code"> = {
         grant_type: "authorization_code",
-        code: "code",
         client_id: "client",
         code_verifier: verifier,
       };
@@ -424,8 +431,11 @@ describe("OAuth Provider", () => {
       };
 
       const out = await buildAuthorizationCodeGrant({
-        req,
-        codeClaims,
+        req: {
+          ...req,
+          code: codeClaims,
+        },
+        authorizationCodeOptions,
         accessTokenOptions,
         refreshTokenOptions,
         extraAccessTokenClaims: { extra: true },
@@ -474,9 +484,8 @@ describe("OAuth Provider", () => {
     });
 
     it("buildRefreshTokenGrant rotates refresh token and narrows scope", async () => {
-      const req: RefreshTokenGrantRequest = {
+      const req: Omit<RefreshTokenGrantRequest, "refresh_token"> = {
         grant_type: "refresh_token",
-        refresh_token: "rt",
         client_id: "client",
         scope: "read",
       };
@@ -491,8 +500,10 @@ describe("OAuth Provider", () => {
         scope: "read write",
       };
       const out = await buildRefreshTokenGrant({
-        req,
-        refreshTokenClaims: old,
+        req: {
+          ...req,
+          refresh_token: old,
+        },
         accessTokenOptions,
         refreshTokenOptions,
         iss,
