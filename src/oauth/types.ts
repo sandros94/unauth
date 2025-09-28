@@ -1,6 +1,7 @@
 import type { JWTClaims } from "unjwt";
 
 import type {
+  OAuthErrorDetails,
   AuthorizeErrorResponse,
   TokenErrorResponse,
 } from "./provider/error";
@@ -105,6 +106,11 @@ export interface AuthorizeRequest {
    */
   resource: string | string[];
 
+  /**
+   * Nonce value to associate a client session with an ID token, and to mitigate replay attacks.
+   */
+  nonce?: string;
+
   [key: string]: unknown;
 }
 
@@ -189,3 +195,25 @@ export interface TokenSuccessResponse {
 }
 
 export type TokenResponse = TokenSuccessResponse | TokenErrorResponse;
+
+export interface Success<
+  T,
+  A extends object | undefined = undefined,
+  E extends OAuthErrorDetails = OAuthErrorDetails,
+> {
+  success: true;
+  value: T;
+  artifacts?: A;
+  warnings?: E;
+}
+
+export interface Failure<E extends OAuthErrorDetails = OAuthErrorDetails> {
+  success: false;
+  error: E;
+}
+
+export type Result<
+  T,
+  A extends object | undefined = undefined,
+  E extends OAuthErrorDetails = OAuthErrorDetails,
+> = Success<T, A, E> | Failure<E>;

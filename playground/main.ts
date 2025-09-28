@@ -51,12 +51,16 @@ app.get("/callback", (event) => {
 app.get("/authorize", async (event) => {
   const req = getQuery<AuthorizeRequest>(event);
 
-  const redirect = await provider.authorize({
-    req,
-    claims: {
-      sub: "user-123", // Authenticate your user here and set the subject (sub) claim
-    },
-  }, "http://localhost:3000/callback")
+  const redirect = await provider
+    .authorize(
+      {
+        req,
+        claims: {
+          sub: "user-123", // Authenticate your user here and set the subject (sub) claim
+        },
+      },
+      "http://localhost:3000/callback",
+    )
     .catch((error_) => {
       if (error_ instanceof OAuthError) {
         const error = error_.toJSON();
@@ -86,22 +90,21 @@ app.post("/token", async (event) => {
 
   if (!req) throw HTTPError.status(400, "Invalid or missing request body");
 
-  const grant = await provider.token(req)
-    .catch((error_) => {
-      if (error_ instanceof OAuthError) {
-        const error = error_.toJSON();
-        throw new HTTPError({
-          status: 402,
-          statusText: "OAuth Error",
-          cause: new Error(`${error.error}: ${error.error_description}`),
-        });
-      }
+  const grant = await provider.token(req).catch((error_) => {
+    if (error_ instanceof OAuthError) {
+      const error = error_.toJSON();
       throw new HTTPError({
-        status: 500,
-        statusText: "Internal Server Error",
-        cause: error_,
+        status: 402,
+        statusText: "OAuth Error",
+        cause: new Error(`${error.error}: ${error.error_description}`),
       });
+    }
+    throw new HTTPError({
+      status: 500,
+      statusText: "Internal Server Error",
+      cause: error_,
     });
+  });
 
   return grant.res;
 });

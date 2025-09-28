@@ -1,32 +1,40 @@
-import { type JWTClaims, encrypt } from "unjwt/jwe";
 import { computeExpiresInSeconds } from "unjwt/utils";
 import { secureCompare } from "unsecure";
+import { encrypt } from "unjwt/jwe";
 
 import type {
   AuthorizeRequest,
-  AuthorizeErrorResponse,
-  AuthorizeResponse,
+  AuthorizationCodeClaims,
+  Result,
 } from "../../types";
 
-import { OAuthError } from "../error";
+import {
+  type AuthorizeErrorCode,
+  type AuthorizeErrorResponse,
+  OAuthError,
+} from "../error";
 import {
   type AuthorizationCodeOptions,
   authorizationCodeDefaults,
 } from "./defaults";
 
-// #region type definitions
+// #region types
 
-export interface BuildAuthorizationCodeArgs {
-  req: AuthorizeRequest;
-  /**
-   * Claims to include in the authorization code.
-   */
-  claims: JWTClaims & { sub: string };
-  /**
-   * Issuer to include in error responses (if any).
-   */
+export interface NormalizedAuthorizeInput {
+  client_id: string;
+  subject: string;
+  redirect_uri: string;
+  code_challenge: string;
+  code_challenge_method: "S256" | "plain";
+  resource: string | string[];
+  scope?: string;
+  state?: string;
+  acExtraClaims?: Record<string, unknown>;
+}
+
+export interface IssueAuthorizationCodeOptions {
   iss: string;
-  options: AuthorizationCodeOptions;
+  authorizationCodeOptions: AuthorizationCodeOptions;
   /**
    * A function to generate a unique identifier for tokens.
    */
@@ -37,16 +45,29 @@ export interface BuildAuthorizationCodeArgs {
   currentDate?: Date;
 }
 
-export type BuildAuthorizationCodeReturn = string;
+export type IssueAuthorizationCodeReturn = Result<
+  string,
+  AuthorizationCodeClaims,
+  AuthorizeErrorResponse
+>;
 
-export interface BuildAuthorizationRedirectArgs {
-  res: AuthorizeResponse | undefined;
-  redirect_uri: string;
+// #endregion types
+
+// #region internals
+
+function authorizeError(
+  code: AuthorizeErrorCode | (string & {}),
+  description: string,
+  details: Omit<AuthorizeErrorResponse, "error" | "error_description"> & {
+    cause?: unknown;
+  } = {},
+): AuthorizeErrorResponse {
+  return new OAuthError({
+    ...details,
+    error: code,
+    error_description: description,
+  }).toJSON();
 }
-
-// #endregion type definitions
-
-// #region internal functions
 
 function isAuthorizationCodeRequest(value: unknown): value is AuthorizeRequest {
   if (typeof value !== "object" || value == null) return false;
@@ -63,142 +84,44 @@ function isAuthorizationCodeRequest(value: unknown): value is AuthorizeRequest {
   );
 }
 
-function validateAuthorizeRequest(req: AuthorizeRequest, iss: string): void {
-  if (!isAuthorizationCodeRequest(req)) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Invalid authorize request",
-      state:
-        "state" in req && typeof (req as AuthorizeRequest).state === "string"
-          ? (req as AuthorizeRequest).state
-          : undefined,
-    });
-  }
+// #endregion internals
 
-  const state = req.state;
-
-  if (req.response_type !== "code") {
-    throw new OAuthError({
-      error: "unsupported_response_type",
-      error_description: `Unsupported response_type: ${req.response_type}`,
-      state,
-      iss,
-    });
-  }
-
-  // PKCE is required
-  if (!req.code_challenge) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing code_challenge (PKCE)",
-      state,
-      iss,
-    });
-  }
-
-  if (
-    req.code_challenge_method !== "plain" &&
-    req.code_challenge_method !== "S256"
-  ) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Unsupported code_challenge_method",
-      state,
-      iss,
-    });
-  }
-
-  if (
-    !req.resource ||
-    (Array.isArray(req.resource) && req.resource.length === 0)
-  ) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing resource in authorization request",
-      state,
-      iss,
-    });
-  }
-}
-
-/**
- * Build redirect URI with either ?code= or ?error= fragment/query params as per OAuth 2.1
- * Note: OAuth 2.1 uses query component for authorization code; we preserve given state.
- */
-export function buildAuthorizationRedirect(
-  args: BuildAuthorizationRedirectArgs,
-): string {
-  const { res, redirect_uri } = args;
-  if (!redirect_uri) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing redirect_uri for authorization redirect",
-      iss: res?.iss,
-      state: res?.state,
-    });
-  }
-
-  const url = new URL(redirect_uri);
-  const params = url.searchParams;
-  if (res?.iss) {
-    params.set("iss", res.iss);
-  }
-
-  if (!res) {
-    params.set("error", "server_error");
-    params.set("error_description", "Unknown error");
-    return url.toString();
-  }
-
-  if ("code" in res) {
-    params.set("code", res.code);
-    if (res.state) params.set("state", res.state);
-  } else {
-    params.set("error", res.error);
-    if (res.error_description)
-      params.set("error_description", res.error_description);
-    if (res.state) params.set("state", res.state);
-  }
-
-  url.search = params.toString();
-  return url.toString();
-}
-
-// #endregion internal functions
-
-// #region runtime functions
+// #region validations
 
 export function validateRedirectUri(
-  req: {
-    redirect_uri?: string | undefined;
-    state?: string;
-  },
-  registeredRedirectUris: string | string[],
-  iss?: string | undefined,
-): string | AuthorizeErrorResponse {
-  const { redirect_uri, state } = req;
-  const uris = Array.isArray(registeredRedirectUris)
-    ? registeredRedirectUris
-    : [registeredRedirectUris];
+  redirect_uri: string | undefined,
+  allowedRedirectUris: string | string[],
+  errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
+): Result<string, undefined, AuthorizeErrorResponse> {
+  const uris = Array.isArray(allowedRedirectUris)
+    ? allowedRedirectUris
+    : [allowedRedirectUris];
 
-  // If no redirect URI is requested, and only one is registered, use that one.
+  // If no redirect URI is requested, and only one is allowed, use that one.
   if (!redirect_uri) {
     if (uris.length > 1) {
-      return new OAuthError({
-        error: "invalid_request",
-        error_description: "Missing redirect_uri in request",
-        state: state,
-        iss: iss,
-      }).toJSON();
+      return {
+        success: false,
+        error: authorizeError(
+          "invalid_request",
+          "Missing redirect_uri in request",
+          errorDetails,
+        ),
+      };
     } else if (uris.length === 1 && uris[0]) {
-      return uris[0];
+      return {
+        success: true,
+        value: uris[0],
+      };
     } else {
-      return new OAuthError({
-        error: "invalid_request",
-        error_description: "No redirect URIs registered for this client",
-        state: state,
-        iss: iss,
-      }).toJSON();
+      return {
+        success: false,
+        error: authorizeError(
+          "invalid_request",
+          "No redirect URIs registered for this client",
+          errorDetails,
+        ),
+      };
     }
   }
 
@@ -206,90 +129,311 @@ export function validateRedirectUri(
   for (const uri of uris) {
     // We use the requested redirect_uri as the time constant comparison input to avoid leaking
     if (secureCompare(redirect_uri, uri)) {
-      return redirect_uri;
+      return {
+        success: true,
+        value: uri,
+      };
     }
   }
 
-  return new OAuthError({
-    error: "invalid_request",
-    error_description: "Invalid redirect_uri",
-    state: state,
-    iss: iss,
-  }).toJSON();
+  return {
+    success: false,
+    error: authorizeError(
+      "invalid_request",
+      "Invalid redirect_uri",
+      errorDetails,
+    ),
+  };
 }
 
-export async function buildAuthorizationCode(
-  args: BuildAuthorizationCodeArgs,
-): Promise<BuildAuthorizationCodeReturn> {
-  const { req, claims, iss, options } = args;
-
-  let code: string | undefined = undefined;
-  let error: AuthorizeErrorResponse | undefined = undefined;
-  try {
-    validateAuthorizeRequest(req, iss);
-
-    if (!("sub" in claims) || typeof claims.sub !== "string" || !claims.sub) {
-      throw new OAuthError({
-        error: "invalid_request",
-        error_description:
-          "Missing subject (sub) for end-user in authorization request",
-        state: req.state,
-        iss,
-      });
-    }
-
-    const opts = authorizationCodeDefaults(options);
-
-    const randomJti = args.randomJti || crypto.randomUUID;
-    const currentDate =
-      (args.currentDate || opts.encryptOptions.currentDate) ?? new Date();
-    const iat = Math.floor(currentDate.getTime() / 1000);
-
-    code = await encrypt(
-      {
-        ...claims,
-        jti: randomJti(),
-        iss,
-        iat,
-        exp: iat + computeExpiresInSeconds(opts.encryptOptions.expiresIn),
-        client_id: req.client_id,
-        redirect_uri: req.redirect_uri,
-        code_challenge: req.code_challenge,
-        // OAuth 2.1 clients are supposed to use S256, but plain is used for backwards compatibility
-        code_challenge_method: req.code_challenge_method || "plain",
-        // Persist resource indicators so the token endpoint can translate them to aud
-        resource: req.resource,
-        ...(req.scope ? { scope: req.scope } : {}),
-      },
-      opts.privateKey,
-      {
-        ...opts.encryptOptions,
-        protectedHeader: {
-          ...opts.encryptOptions?.protectedHeader,
-          typ: "ac+jwt",
-        },
-        currentDate,
-      },
-    );
-  } catch (error_) {
-    error =
-      error_ instanceof OAuthError
-        ? error_.toJSON()
-        : new OAuthError({
-            error: "server_error",
-            error_description:
-              (error_ as Error)?.message ||
-              "Failed to generate authorization code",
-            state: req.state,
-            iss,
-            cause: error_,
-          }).toJSON();
+export function validateAuthorizeRequest(
+  req: AuthorizeRequest,
+  errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
+): Result<
+  Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri">,
+  undefined,
+  AuthorizeErrorResponse
+> {
+  if (!isAuthorizationCodeRequest(req)) {
+    return {
+      success: false,
+      error: authorizeError("invalid_request", "Invalid authorize request", {
+        ...errorDetails,
+        state:
+          "state" in req && typeof (req as AuthorizeRequest).state === "string"
+            ? (req as AuthorizeRequest).state
+            : undefined,
+      }),
+    };
   }
 
-  return buildAuthorizationRedirect({
-    res: code ? { code, iss, state: req.state } : error,
-    redirect_uri: req.redirect_uri,
+  if (req.response_type !== "code") {
+    return {
+      success: false,
+      error: authorizeError(
+        "unsupported_response_type",
+        `Unsupported response_type: ${req.response_type}`,
+        {
+          ...errorDetails,
+          state: req.state,
+        },
+      ),
+    };
+  }
+
+  if (!req.client_id) {
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        "Missing client_id in authorization request",
+        errorDetails,
+      ),
+    };
+  }
+
+  // PKCE is required
+  if (!req.code_challenge) {
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        "Missing code_challenge (PKCE)",
+        {
+          ...errorDetails,
+          state: req.state,
+        },
+      ),
+    };
+  }
+
+  if (
+    req.code_challenge_method !== "plain" &&
+    req.code_challenge_method !== "S256"
+  ) {
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        "Unsupported code_challenge_method",
+        {
+          ...errorDetails,
+          state: req.state,
+        },
+      ),
+    };
+  }
+
+  if (
+    !req.resource ||
+    (Array.isArray(req.resource) && req.resource.length === 0)
+  ) {
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        "Missing resource in authorization request",
+        {
+          ...errorDetails,
+          state: req.state,
+        },
+      ),
+    };
+  }
+
+  const {
+    response_type: _rt,
+    redirect_uri: _ru, // This should be validated separately
+    client_id,
+    code_challenge,
+    code_challenge_method,
+    resource,
+    scope,
+    state,
+    ...acExtraClaims
+  } = req;
+
+  return {
+    success: true,
+    value: {
+      client_id,
+      code_challenge,
+      code_challenge_method,
+      resource,
+      scope,
+      state,
+      acExtraClaims,
+    },
+  };
+}
+
+// #endregion validations
+
+// #region runtime
+
+/**
+ * Build redirect URI with either ?code= or ?error= fragment/query params as per OAuth 2.1
+ * Note: OAuth 2.1 uses query component for authorization code; we preserve given state.
+ */
+export function buildAuthorizationRedirect(
+  redirect_uri: string,
+  code: string | undefined,
+  errorDetails: AuthorizeErrorResponse | undefined,
+  state: string | undefined,
+  iss: string | undefined,
+): Result<string, AuthorizeErrorResponse, AuthorizeErrorResponse> {
+  if (!redirect_uri) {
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        "Missing redirect_uri for authorization redirect",
+        errorDetails,
+      ),
+    };
+  }
+
+  const url = new URL(redirect_uri);
+  const params = url.searchParams;
+  if (iss) {
+    params.set("iss", iss);
+  }
+  if (state) {
+    params.set("state", state);
+  }
+
+  if (code) {
+    params.set("code", code);
+
+    url.search = params.toString();
+    return {
+      success: true,
+      value: url.toString(),
+    };
+  } else {
+    const error = errorDetails?.error || "server_error";
+    const error_description =
+      errorDetails?.error_description || "Unknown error";
+    params.set("error", error);
+    params.set("error_description", error_description);
+
+    url.search = params.toString();
+    return {
+      success: true,
+      value: url.toString(),
+      warnings: authorizeError(error, error_description, errorDetails),
+    };
+  }
+}
+
+export async function issueAuthorizationCode(
+  args: NormalizedAuthorizeInput,
+  options: IssueAuthorizationCodeOptions,
+): Promise<IssueAuthorizationCodeReturn> {
+  const {
+    client_id,
+    subject,
+    redirect_uri,
+    code_challenge,
+    code_challenge_method,
+    resource,
+    state,
+    scope,
+    acExtraClaims,
+  } = args;
+  const { iss, authorizationCodeOptions } = options;
+
+  if (!subject) {
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        "Missing subject (sub) for end-user in authorization request",
+        {
+          state,
+          iss,
+        },
+      ),
+    };
+  }
+
+  if (!client_id || !code_challenge || !resource) {
+    // This should have been caught in validation, throwing as a last resort
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: `Missing required parameters in authorization request: ${[client_id ? "" : "client_id", code_challenge ? "" : "code_challenge", resource ? "" : "resource"].filter(Boolean).join(", ")}`,
+      state,
+      iss,
+    });
+  }
+
+  const opts = authorizationCodeDefaults(authorizationCodeOptions);
+  let error: (AuthorizeErrorResponse & { cause?: unknown }) | undefined =
+    undefined;
+  const randomJti = options.randomJti || crypto.randomUUID;
+  const currentDate =
+    (options.currentDate || opts.encryptOptions.currentDate) ?? new Date();
+
+  const iat = Math.floor(currentDate.getTime() / 1000);
+  const claims = {
+    ...acExtraClaims,
+    sub: subject,
+    jti: randomJti(),
+    iss,
+    iat,
+    exp: iat + computeExpiresInSeconds(opts.encryptOptions.expiresIn),
+    client_id,
+    redirect_uri,
+    code_challenge,
+    // OAuth 2.1 clients are supposed to use S256, but plain is used for backwards compatibility
+    code_challenge_method: code_challenge_method || "S256",
+    // Persist resource indicators so the token endpoint can translate them to aud
+    resource,
+    ...(scope ? { scope } : {}),
+  };
+  const code = await encrypt(claims, opts.privateKey, {
+    ...opts.encryptOptions,
+    protectedHeader: {
+      ...opts.encryptOptions?.protectedHeader,
+      typ: "ac+jwt",
+    },
+    currentDate,
+  }).catch((error_) => {
+    error = authorizeError(
+      "server_error",
+      "Failed to generate authorization code",
+      {
+        state,
+        iss,
+        cause: error_,
+      },
+    );
+    return undefined;
   });
+
+  const redirect = buildAuthorizationRedirect(
+    redirect_uri,
+    code,
+    error,
+    state,
+    iss,
+  );
+
+  return redirect.success
+    ? {
+        success: true,
+        value: redirect.value,
+        ...(code
+          ? {
+              artifacts: claims,
+              warnings: undefined,
+            }
+          : {
+              artifacts: undefined,
+              warnings: redirect.warnings,
+            }),
+      }
+    : redirect;
 }
 
 // #endregion functions

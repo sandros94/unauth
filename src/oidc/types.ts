@@ -3,11 +3,15 @@ import type { JWTClaims } from "unjwt";
 import type {
   AuthorizationCodeClaims as OAuthAuthorizationCodeClaims,
   TokenSuccessResponse as OAuthTokenSuccessResponse,
+  TokenErrorResponse,
 } from "../oauth/types";
 
 export type * from "../oauth/provider/error";
 
 export type {
+  Result,
+  Failure,
+  Success,
   AccessTokenClaims,
   RefreshTokenClaims,
   AuthorizeSuccessResponse,
@@ -16,10 +20,7 @@ export type {
   ClientCredentialsGrantRequest,
   RefreshTokenGrantRequest,
   TokenRequest,
-  TokenResponse,
 } from "../oauth/types";
-
-export type { AuthorizeRequest } from "./provider";
 
 export interface IdTokenClaims extends JWTClaims {
   iss: Exclude<JWTClaims["iss"], undefined>;
@@ -43,3 +44,5 @@ export interface AuthorizationCodeClaims extends OAuthAuthorizationCodeClaims {
 export interface TokenSuccessResponse extends OAuthTokenSuccessResponse {
   id_token: string;
 }
+
+export type TokenResponse = TokenSuccessResponse | TokenErrorResponse;

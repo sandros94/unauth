@@ -1,41 +1,81 @@
 import { computeExpiresInSeconds } from "unjwt/utils";
-import type { JWTClaims } from "unjwt";
 import { sign } from "unjwt/jws";
 
-import type { IdTokenClaims } from "../../types";
+import type {
+  Result,
+  TokenSuccessResponse,
+  AccessTokenClaims,
+  IdTokenClaims,
+  TokenErrorResponse,
+} from "../../types";
 import {
-  type AuthorizationCodeGrantRequest,
-  type RefreshTokenGrantRequest,
-  type BuildAuthorizationCodeGrantArgs as OAuthBuildAuthorizationCodeGrantArgs,
-  type BuildAuthorizationCodeGrantReturn as OAuthBuildAuthorizationCodeGrantReturn,
-  type BuildRefreshTokenGrantArgs as OAuthBuildRefreshTokenGrantArgs,
-  type BuildRefreshTokenGrantReturn as OAuthBuildRefreshTokenGrantReturn,
-  validateTokenRequest as oauthValidateTokenRequest,
-  validateAuthorizationCodeGrantRequest as oauthValidateAuthorizationCodeGrantRequest,
-  buildAuthorizationCodeGrant as oauthBuildAuthorizationCodeGrant,
-  buildRefreshTokenGrant as oauthBuildRefreshTokenGrant,
+  type NormalizedAuthorizationCodeGrantInput as OAuthNormalizedAuthorizationCodeGrantInput,
+  type NormalizedRefreshTokenGrantInput as OAuthNormalizedRefreshTokenGrantInput,
+  type NormalizedClientCredentialsGrantInput,
+  type IssueTokenGrantOptions as OAuthIssueTokenGrantOptions,
+  type IssueClientCredentialsGrantReturn,
+  issueAuthorizationCodeGrant as oauthIssueAuthorizationCodeGrant,
+  issueRefreshTokenGrant as oauthIssueRefreshTokenGrant,
   introspectAuthorizationCode,
   introspectRefreshToken,
 } from "../../../oauth";
 import { type IdTokenOptions, idTokenDefaults } from "./defaults";
-import type {
-  AuthorizationCodeClaims,
-  RefreshTokenClaims,
-  TokenSuccessResponse,
-} from "../../types";
+import type { AuthorizationCodeClaims, RefreshTokenClaims } from "../../types";
 import { computeTokenHash } from "./utils";
 
 export {
-  type BuildClientCredentialsGrantArgs,
-  type BuildClientCredentialsGrantReturn,
-  buildClientCredentialsGrant,
-  validateAuthorizationCodeClaims,
-  validateClientCredentialsGrantRequest,
-  validateRefreshTokenClaims,
-  validateTokenRequest,
+  type TokenGrantType,
+  type NormalizedClientCredentialsGrantInput,
+  type IssueClientCredentialsGrantReturn,
+  validateTokenGrantType,
+  issueClientCredentialsGrant,
 } from "../../../oauth/provider/internal/token";
 
-// #region type definitions
+// #region types
+
+export interface NormalizedAuthorizationCodeGrantInput
+  extends OAuthNormalizedAuthorizationCodeGrantInput {
+  idTokenExtraClaims?: Record<string, unknown>;
+}
+
+export interface NormalizedRefreshTokenGrantInput
+  extends OAuthNormalizedRefreshTokenGrantInput {
+  idTokenExtraClaims?: Record<string, unknown>;
+}
+
+export type NormalizedTokenInput =
+  | NormalizedAuthorizationCodeGrantInput
+  | NormalizedRefreshTokenGrantInput
+  | NormalizedClientCredentialsGrantInput;
+
+export interface IssueTokenGrantOptions extends OAuthIssueTokenGrantOptions {
+  idTokenOptions: IdTokenOptions;
+}
+
+export type IssueAuthorizationCodeGrantReturn = Result<
+  TokenSuccessResponse,
+  {
+    accessTokenClaims: AccessTokenClaims;
+    refreshTokenClaims: RefreshTokenClaims;
+    idTokenClaims: IdTokenClaims;
+  },
+  TokenErrorResponse
+>;
+
+export type IssueRefreshTokenGrantReturn = Result<
+  TokenSuccessResponse,
+  {
+    accessTokenClaims: AccessTokenClaims;
+    refreshTokenClaims: RefreshTokenClaims;
+    idTokenClaims: IdTokenClaims;
+  },
+  TokenErrorResponse
+>;
+
+export type IssueTokenGrantReturn =
+  | IssueAuthorizationCodeGrantReturn
+  | IssueClientCredentialsGrantReturn
+  | IssueRefreshTokenGrantReturn;
 
 interface BuildIDTokenArgs {
   claims: Omit<IdTokenClaims, "iat" | "exp" | "at_hash">;
@@ -44,40 +84,9 @@ interface BuildIDTokenArgs {
   currentDate?: Date;
 }
 
-export interface BuildAuthorizationCodeGrantArgs
-  extends Omit<OAuthBuildAuthorizationCodeGrantArgs, "req"> {
-  req: Omit<AuthorizationCodeGrantRequest, "code"> & {
-    code: string | AuthorizationCodeClaims;
-  };
-  idTokenOptions: IdTokenOptions;
-  extraIdTokenClaims?: JWTClaims;
-}
+// #endregion types
 
-export interface BuildAuthorizationCodeGrantReturn
-  extends OAuthBuildAuthorizationCodeGrantReturn {
-  res: TokenSuccessResponse;
-  idTokenClaims: IdTokenClaims;
-}
-
-export interface BuildRefreshTokenGrantArgs
-  extends Omit<OAuthBuildRefreshTokenGrantArgs, "req"> {
-  req: Omit<RefreshTokenGrantRequest, "refresh_token"> & {
-    refresh_token: string | RefreshTokenClaims;
-  };
-  idTokenOptions: IdTokenOptions;
-  extraIdTokenClaims?: JWTClaims;
-}
-
-export interface BuildRefreshTokenGrantReturn
-  extends Omit<OAuthBuildRefreshTokenGrantReturn, "refreshTokenClaims"> {
-  res: TokenSuccessResponse;
-  idTokenClaims: IdTokenClaims;
-  refreshTokenClaims: RefreshTokenClaims;
-}
-
-// #endregion
-
-// #region Grant-Specific Builders
+// #region internals
 
 async function buildIdToken(args: BuildIDTokenArgs): Promise<{
   id_token: string;
@@ -112,146 +121,140 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
   return { id_token, idTokenClaims };
 }
 
-export async function buildAuthorizationCodeGrant(
-  args: BuildAuthorizationCodeGrantArgs,
-): Promise<BuildAuthorizationCodeGrantReturn> {
-  const {
-    req,
-    authorizationCodeOptions,
-    accessTokenOptions,
-    refreshTokenOptions,
-    idTokenOptions,
-    extraAccessTokenClaims,
-    extraRefreshTokenClaims,
-    extraIdTokenClaims,
-    iss,
-    randomJti,
-    currentDate = new Date(),
-  } = args;
+// #endregion internals
 
-  oauthValidateTokenRequest(req, iss);
-  oauthValidateAuthorizationCodeGrantRequest(req, iss);
+// #region runtime
+
+export async function issueAuthorizationCodeGrant(
+  args: NormalizedAuthorizationCodeGrantInput,
+  options: IssueTokenGrantOptions,
+): Promise<IssueAuthorizationCodeGrantReturn> {
+  const { iss, authorizationCodeOptions, idTokenOptions, currentDate } =
+    options;
 
   const codeClaims =
-    typeof req.code === "string"
+    typeof args.code === "string"
       ? await introspectAuthorizationCode<AuthorizationCodeClaims>({
-          token: req.code,
+          token: args.code,
           iss,
           options: authorizationCodeOptions,
         })
-      : req.code;
+      : args.code;
 
   // Build OAuth tokens first
-  const {
-    res: oauthRes,
-    accessTokenClaims,
-    refreshTokenClaims,
-  } = await oauthBuildAuthorizationCodeGrant({
-    req: {
-      ...req,
-      code: codeClaims, // pass the claims to avoid double introspection
+  const oauthRes = await oauthIssueAuthorizationCodeGrant(
+    {
+      ...args,
+      code: codeClaims,
+      refreshTokenExtraClaims: {
+        ...args.refreshTokenExtraClaims,
+        ...(codeClaims.nonce ? { nonce: codeClaims.nonce } : {}),
+      },
     },
-    authorizationCodeOptions,
-    accessTokenOptions,
-    refreshTokenOptions,
-    extraAccessTokenClaims,
-    extraRefreshTokenClaims: {
-      ...extraRefreshTokenClaims,
-      ...(codeClaims.nonce ? { nonce: codeClaims.nonce } : {}),
-    },
-    iss,
-    randomJti,
-    currentDate,
-  });
+    options,
+  );
+
+  if (!oauthRes.success) {
+    return { success: false, error: oauthRes.error };
+  }
+  const { access_token, refresh_token, expires_in } = oauthRes.value;
+  const { accessTokenClaims, refreshTokenClaims } = oauthRes.artifacts!;
 
   // Then build ID Token
   const { id_token, idTokenClaims } = await buildIdToken({
     claims: {
-      ...extraIdTokenClaims,
+      ...args.idTokenExtraClaims,
       iss,
-      aud: req.client_id,
+      aud: args.client_id,
       sub: accessTokenClaims.sub,
       nonce: codeClaims.nonce,
     },
-    access_token: oauthRes.access_token,
+    access_token,
     options: idTokenOptions,
     currentDate,
   });
 
   return {
-    res: { ...oauthRes, id_token },
-    accessTokenClaims,
-    refreshTokenClaims,
-    idTokenClaims,
+    success: true,
+    value: {
+      access_token,
+      token_type: "Bearer",
+      expires_in,
+      scope: accessTokenClaims.scope,
+      refresh_token,
+      id_token,
+    },
+    artifacts: {
+      accessTokenClaims: accessTokenClaims,
+      refreshTokenClaims: refreshTokenClaims,
+      idTokenClaims,
+    },
   };
 }
 
-export async function buildRefreshTokenGrant(
-  args: BuildRefreshTokenGrantArgs,
-): Promise<BuildRefreshTokenGrantReturn> {
-  const {
-    req,
-    idTokenOptions,
-    accessTokenOptions,
-    refreshTokenOptions,
-    extraIdTokenClaims,
-    extraAccessTokenClaims,
-    extraRefreshTokenClaims,
-    iss,
-    randomJti,
-    currentDate = new Date(),
-  } = args;
+export async function issueRefreshTokenGrant(
+  args: NormalizedRefreshTokenGrantInput,
+  options: IssueTokenGrantOptions,
+): Promise<IssueRefreshTokenGrantReturn> {
+  const { iss, refreshTokenOptions, idTokenOptions, currentDate } = options;
 
   const oldRTClaims =
-    typeof req.refresh_token === "string"
+    typeof args.refresh_token === "string"
       ? await introspectRefreshToken<RefreshTokenClaims>({
-          token: req.refresh_token,
+          token: args.refresh_token,
           iss,
           options: refreshTokenOptions,
         })
-      : req.refresh_token;
+      : args.refresh_token;
 
   // Build OAuth tokens first
-  const {
-    res: oauthRes,
-    accessTokenClaims,
-    refreshTokenClaims,
-  } = await oauthBuildRefreshTokenGrant({
-    req: {
-      ...req,
-      refresh_token: oldRTClaims, // pass the claims to avoid double introspection
+  const oauthRes = await oauthIssueRefreshTokenGrant(
+    {
+      ...args,
+      refresh_token: oldRTClaims,
+      refreshTokenExtraClaims: {
+        ...args.refreshTokenExtraClaims,
+        ...(oldRTClaims.nonce ? { nonce: oldRTClaims.nonce } : {}),
+      },
     },
-    accessTokenOptions,
-    refreshTokenOptions,
-    extraAccessTokenClaims,
-    extraRefreshTokenClaims: {
-      ...extraRefreshTokenClaims,
-      ...(oldRTClaims.nonce ? { nonce: oldRTClaims.nonce } : {}),
-    },
-    iss,
-    randomJti,
-    currentDate,
-  });
+    options,
+  );
+
+  if (!oauthRes.success) {
+    return { success: false, error: oauthRes.error };
+  }
+  const { access_token, refresh_token, expires_in, scope } = oauthRes.value;
+  const { accessTokenClaims, refreshTokenClaims } = oauthRes.artifacts!;
 
   // Then build ID Token
   const { id_token, idTokenClaims } = await buildIdToken({
     claims: {
-      ...extraIdTokenClaims,
+      ...args.idTokenExtraClaims,
       iss,
-      aud: accessTokenClaims.aud,
+      aud: args.client_id,
       sub: accessTokenClaims.sub,
-      ...(oldRTClaims.nonce ? { nonce: oldRTClaims.nonce } : {}),
+      nonce: oldRTClaims.nonce,
     },
-    access_token: oauthRes.access_token,
+    access_token,
     options: idTokenOptions,
     currentDate,
   });
 
   return {
-    res: { ...oauthRes, id_token },
-    accessTokenClaims,
-    refreshTokenClaims,
-    idTokenClaims,
+    success: true,
+    value: {
+      access_token,
+      token_type: "Bearer",
+      expires_in,
+      scope,
+      refresh_token,
+      id_token,
+    },
+    artifacts: {
+      accessTokenClaims,
+      refreshTokenClaims,
+      idTokenClaims,
+    },
   };
 }
 

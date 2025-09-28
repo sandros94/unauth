@@ -1,18 +1,19 @@
 import { computeExpiresInSeconds } from "unjwt/utils";
-import type { JWTClaims } from "unjwt";
 import { encrypt } from "unjwt/jwe";
 import { sign } from "unjwt/jws";
 
 import type {
+  Result,
   TokenRequest,
+  TokenErrorCode,
   TokenErrorResponse,
+  TokenSuccessResponse,
   AuthorizationCodeClaims,
   AccessTokenClaims,
   RefreshTokenClaims,
   AuthorizationCodeGrantRequest,
   ClientCredentialsGrantRequest,
   RefreshTokenGrantRequest,
-  TokenSuccessResponse,
 } from "../../types";
 
 import { OAuthError } from "../error";
@@ -29,435 +30,515 @@ import {
 } from "./introspect";
 import { isScopeSubset, validatePKCE } from "./utils";
 
-// #region type definitions
+// #region types
 
-/**
- * Arguments for handling the `authorization_code` grant flow.
- */
-export interface BuildAuthorizationCodeGrantArgs {
-  req: Omit<AuthorizationCodeGrantRequest, "code"> & {
-    code: string | AuthorizationCodeClaims;
-  };
+export type TokenGrantType =
+  | "authorization_code"
+  | "refresh_token"
+  | "client_credentials";
+
+export interface NormalizedAuthorizationCodeGrantInput {
+  type: "authorization_code";
+  client_id: string;
+  code: string | AuthorizationCodeClaims;
+  code_verifier: string;
+  accessTokenExtraClaims?: Record<string, unknown>;
+  refreshTokenExtraClaims?: Record<string, unknown>;
+}
+
+export interface NormalizedClientCredentialsGrantInput {
+  type: "client_credentials";
+  client_id: string;
+  resource: string | string[];
+  scope?: string;
+  accessTokenExtraClaims?: Record<string, unknown>;
+}
+
+export interface NormalizedRefreshTokenGrantInput {
+  type: "refresh_token";
+  client_id: string;
+  refresh_token: string | RefreshTokenClaims;
+  requested_scope?: string;
+  accessTokenExtraClaims?: Record<string, unknown>;
+  refreshTokenExtraClaims?: Record<string, unknown>;
+}
+
+export type NormalizedTokenInput =
+  | NormalizedAuthorizationCodeGrantInput
+  | NormalizedRefreshTokenGrantInput
+  | NormalizedClientCredentialsGrantInput;
+
+export interface IssueTokenGrantOptions {
+  iss: string;
   authorizationCodeOptions: AuthorizationCodeOptions;
   accessTokenOptions: AccessTokenOptions;
   refreshTokenOptions: RefreshTokenOptions;
-  extraAccessTokenClaims?: JWTClaims;
-  extraRefreshTokenClaims?: JWTClaims;
-  /**
-   * Issuer to include in error responses (if any).
-   */
-  iss: string;
   /**
    * A function to generate a unique identifier for tokens.
    */
   randomJti?: () => string;
   /**
-   * Date of the request (for expiration, etc.).
+   * Date to use when computing NumericDate claims, defaults to `new Date()`.
    */
   currentDate?: Date;
 }
 
-/**
- * Return values from handling the `authorization_code` grant flow.
- */
-export interface BuildAuthorizationCodeGrantReturn {
-  res: TokenSuccessResponse;
-  accessTokenClaims: AccessTokenClaims;
-  refreshTokenClaims: RefreshTokenClaims;
+export type IssueAuthorizationCodeGrantReturn = Result<
+  TokenSuccessResponse,
+  {
+    accessTokenClaims: AccessTokenClaims;
+    refreshTokenClaims: RefreshTokenClaims;
+  },
+  TokenErrorResponse
+>;
+
+export type IssueClientCredentialsGrantReturn = Result<
+  TokenSuccessResponse,
+  {
+    accessTokenClaims: AccessTokenClaims;
+  },
+  TokenErrorResponse
+>;
+
+export type IssueRefreshTokenGrantReturn = Result<
+  TokenSuccessResponse,
+  {
+    accessTokenClaims: AccessTokenClaims;
+    refreshTokenClaims: RefreshTokenClaims;
+  },
+  TokenErrorResponse
+>;
+
+export type IssueTokenGrantReturn =
+  | IssueAuthorizationCodeGrantReturn
+  | IssueClientCredentialsGrantReturn
+  | IssueRefreshTokenGrantReturn;
+
+// #endregion types
+
+// #region internals
+
+function tokenError(
+  code: TokenErrorCode | (string & {}),
+  description: string,
+  details: Omit<TokenErrorResponse, "error" | "error_description"> & {
+    cause?: unknown;
+  } = {},
+): TokenErrorResponse {
+  return new OAuthError({
+    ...details,
+    error: code,
+    error_description: description,
+  }).toJSON();
 }
 
-/**
- * Arguments for handling the `client_credentials` grant flow.
- */
-export interface BuildClientCredentialsGrantArgs {
-  req: ClientCredentialsGrantRequest;
-  accessTokenOptions: AccessTokenOptions;
-  extraAccessTokenClaims?: JWTClaims;
-  /**
-   * Issuer to include in error responses (if any).
-   */
-  iss: string;
-  /**
-   * A function to generate a unique identifier for tokens.
-   */
-  randomJti?: () => string;
-  /**
-   * Date of the request (for expiration, etc.).
-   */
-  currentDate?: Date;
-}
-
-/**
- * Return values from handling the `client_credentials` grant flow.
- */
-export interface BuildClientCredentialsGrantReturn {
-  res: TokenSuccessResponse;
-  accessTokenClaims: AccessTokenClaims;
-}
-
-/**
- * Arguments for handling the `refresh_token` grant flow.
- */
-export interface BuildRefreshTokenGrantArgs {
-  req: Omit<RefreshTokenGrantRequest, "refresh_token"> & {
-    refresh_token: string | RefreshTokenClaims;
-  };
-  accessTokenOptions: AccessTokenOptions;
-  refreshTokenOptions: RefreshTokenOptions;
-  extraAccessTokenClaims?: JWTClaims;
-  extraRefreshTokenClaims?: JWTClaims;
-  /**
-   * Issuer to include in error responses (if any).
-   */
-  iss: string;
-  /**
-   * A function to generate a unique identifier for tokens.
-   */
-  randomJti?: () => string;
-  /**
-   * Date of the request (for expiration, etc.).
-   */
-  currentDate?: Date;
-}
-
-/**
- * Return values from handling the `refresh_token` grant flow.
- */
-export interface BuildRefreshTokenGrantReturn {
-  res: TokenSuccessResponse;
-  accessTokenClaims: AccessTokenClaims;
-  refreshTokenClaims: RefreshTokenClaims;
-}
-
-// #endregion type definitions
-
-// #region validation functions
-
-function isTokenRequest(value: unknown): value is TokenRequest {
-  if (typeof value !== "object" || value == null) return false;
-  const v = value as TokenRequest;
+function isTokenRequest(req: unknown): req is TokenRequest {
+  if (typeof req !== "object" || req == null) return false;
+  const v = req as TokenRequest;
 
   // Only check for `grant_type` presence here.
   return typeof v.grant_type === "string";
 }
 
 function isAuthorizationCodeGrantRequest(
-  value: TokenRequest,
-): value is AuthorizationCodeGrantRequest {
-  return value.grant_type === "authorization_code";
+  req: TokenRequest,
+): req is AuthorizationCodeGrantRequest {
+  return req.grant_type === "authorization_code";
 }
 
 function isClientCredentialsGrantRequest(
-  value: TokenRequest,
-): value is ClientCredentialsGrantRequest {
-  return value.grant_type === "client_credentials";
+  req: TokenRequest,
+): req is ClientCredentialsGrantRequest {
+  return req.grant_type === "client_credentials";
 }
 
 function isRefreshTokenGrantRequest(
-  value: TokenRequest,
-): value is RefreshTokenGrantRequest {
-  return value.grant_type === "refresh_token";
+  req: TokenRequest,
+): req is RefreshTokenGrantRequest {
+  return req.grant_type === "refresh_token";
 }
 
-export function validateAuthorizationCodeGrantRequest(
-  req: BuildAuthorizationCodeGrantArgs["req"],
-  iss: string,
-): void {
-  if (
-    !req.code ||
-    (typeof req.code !== "string" && typeof req.code !== "object")
-  ) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing authorization code",
-      iss,
-    });
-  }
-
-  if (!req.client_id || typeof req.client_id !== "string") {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing or invalid client_id",
-      iss,
-    });
-  }
-
-  if (!req.code_verifier || typeof req.code_verifier !== "string") {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing PKCE code_verifier",
-      iss,
-    });
-  }
-
-  return;
-}
-
-export function validateClientCredentialsGrantRequest(
-  req: Pick<ClientCredentialsGrantRequest, "client_id" | "scope" | "resource">,
-  iss: string,
-): void {
-  if (!req.client_id || typeof req.client_id !== "string") {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing or invalid client_id",
-      iss,
-    });
-  }
-
-  if (
-    !req.resource ||
-    (Array.isArray(req.resource) && req.resource.length === 0)
-  ) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing resource in client_credentials request",
-      iss,
-    });
-  }
-
-  if ("scope" in req && req.scope != null && typeof req.scope !== "string") {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Invalid scope type",
-      iss,
-    });
-  }
-
-  return;
-}
-
-export function validateRefreshTokenGrantRequest(
-  req: BuildRefreshTokenGrantArgs["req"],
-  iss: string,
-): void {
-  if (
-    !req.refresh_token ||
-    (typeof req.refresh_token !== "string" &&
-      typeof req.refresh_token !== "object")
-  ) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing refresh_token",
-      iss,
-    });
-  }
-
-  if (!req.client_id || typeof req.client_id !== "string") {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing or invalid client_id",
-      iss,
-    });
-  }
-
-  if ("scope" in req && req.scope != null && typeof req.scope !== "string") {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Invalid scope type",
-      iss,
-    });
-  }
-
-  return;
-}
-
-export function validateTokenRequest(
-  req: unknown,
-  iss: string,
-): TokenRequest | TokenErrorResponse {
-  if (!isTokenRequest(req)) {
-    return new OAuthError({
-      error: "invalid_request",
-      error_description: "Invalid token request",
-      iss,
-    }).toJSON();
-  }
-
-  if (
-    isAuthorizationCodeGrantRequest(req) ||
-    isClientCredentialsGrantRequest(req) ||
-    isRefreshTokenGrantRequest(req)
-  ) {
-    return req;
-  }
-
-  return new OAuthError({
-    error: "unsupported_grant_type",
-    error_description: `Unsupported grant_type: ${(req as TokenRequest).grant_type}`,
-    iss,
-  }).toJSON();
-}
-
-export async function validateAuthorizationCodeClaims(args: {
-  claims: AuthorizationCodeClaims;
-  req: Pick<AuthorizationCodeGrantRequest, "client_id" | "code_verifier">;
-  iss: string;
-}): Promise<void> {
-  const { claims, req, iss } = args;
-
+async function validateAuthorizationCodeClaims(
+  claims: AuthorizationCodeClaims,
+  input: NormalizedAuthorizationCodeGrantInput,
+  errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
+): Promise<
+  Result<NormalizedAuthorizationCodeGrantInput, undefined, TokenErrorResponse>
+> {
   if (!claims || !("sub" in claims) || !claims.sub) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Invalid authorization code: missing subject (sub)",
-      iss,
-    });
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_grant",
+        "Invalid authorization code: missing subject (sub)",
+        errorDetails,
+      ),
+    };
   }
 
-  if (claims.client_id !== req.client_id) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Authorization code was issued to a different client",
-      iss,
-    });
+  if (claims.client_id !== input.client_id) {
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_grant",
+        "Authorization code was issued to a different client",
+        errorDetails,
+      ),
+    };
   }
 
   // TODO: Per RFC 8707, resource maps to aud, but RFC 9068 is both required but also accept a fallback registered for the client?
   const aud = claims.resource;
   if (!aud || (Array.isArray(aud) && aud.length === 0)) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Missing resource in authorization code",
-      iss,
-    });
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_grant",
+        "Missing resource in authorization code",
+        errorDetails,
+      ),
+    };
   }
 
   if (!claims.code_challenge || !claims.code_challenge_method) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing code_challenge in authorization session",
-      iss,
-    });
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_request",
+        "Missing PKCE code_challenge or code_challenge_method in authorization code",
+        errorDetails,
+      ),
+    };
   }
 
   if (
     claims.code_challenge_method !== "plain" &&
     claims.code_challenge_method !== "S256"
   ) {
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: "Unsupported code_challenge_method",
-      iss,
-    });
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_request",
+        "Unsupported code_challenge_method in authorization code",
+        errorDetails,
+      ),
+    };
   }
 
   const pkceIsValid = await validatePKCE(
-    req.code_verifier,
+    input.code_verifier,
     claims.code_challenge,
     claims.code_challenge_method,
   );
 
-  if (!pkceIsValid) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Invalid PKCE code_verifier",
-      iss,
-    });
-  }
+  return pkceIsValid
+    ? { success: true, value: input }
+    : {
+        success: false,
+        error: tokenError(
+          "invalid_grant",
+          "Invalid PKCE code_verifier",
+          errorDetails,
+        ),
+      };
 }
 
-export async function validateRefreshTokenClaims(args: {
-  claims: RefreshTokenClaims;
-  req: Pick<RefreshTokenGrantRequest, "client_id" | "scope">;
-  iss: string;
-}): Promise<void> {
-  const { claims, req, iss } = args;
-
+async function validateRefreshTokenClaims(
+  claims: RefreshTokenClaims,
+  input: NormalizedRefreshTokenGrantInput,
+  errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
+): Promise<
+  Result<NormalizedRefreshTokenGrantInput, undefined, TokenErrorResponse>
+> {
   if (!claims || !("sub" in claims) || !claims.sub) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Invalid refresh token: missing subject (sub)",
-      iss,
-    });
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_grant",
+        "Invalid refresh token: missing subject (sub)",
+        errorDetails,
+      ),
+    };
   }
 
   if (!claims.client_id) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Invalid refresh token: missing client binding",
-      iss,
-    });
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_grant",
+        "Invalid refresh token: missing client binding",
+        errorDetails,
+      ),
+    };
   }
 
-  // 2. Validate client binding
-  if (req.client_id && claims.client_id !== req.client_id) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Refresh token was issued to a different client",
-      iss,
-    });
+  if (input.client_id && claims.client_id !== input.client_id) {
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_grant",
+        "Refresh token was issued to a different client",
+        errorDetails,
+      ),
+    };
   }
 
-  // 3. Validate scope
+  // Validate new requested scope
   const originalScope = claims.scope;
-  const requestedScope = req.scope;
+  const requestedScope = input.requested_scope;
   if (
     requestedScope &&
     originalScope &&
     !isScopeSubset(requestedScope, originalScope)
   ) {
-    throw new OAuthError({
-      error: "invalid_scope",
-      error_description: "Requested scope exceeds original grant",
-      iss,
-    });
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_scope",
+        "Requested scope exceeds original grant",
+        errorDetails,
+      ),
+    };
   }
 
   // TODO: Per RFC 8707, resource maps to aud, but RFC 9068 is both required but also accept a fallback registered for the client?
   const aud = claims.resource;
   if (!aud || (Array.isArray(aud) && aud.length === 0)) {
-    throw new OAuthError({
-      error: "invalid_grant",
-      error_description: "Missing resource in authorization code",
-      iss,
-    });
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_grant",
+        "Missing resource in refresh token",
+        errorDetails,
+      ),
+    };
   }
+
+  return { success: true, value: input };
 }
 
-// #endregion validation functions
+function validateAuthorizationCodeGrantRequest(
+  input: NormalizedAuthorizationCodeGrantInput,
+  errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
+): Result<
+  NormalizedAuthorizationCodeGrantInput,
+  undefined,
+  TokenErrorResponse
+> {
+  if (
+    !input.code ||
+    (typeof input.code !== "string" && typeof input.code !== "object")
+  ) {
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_request",
+        "Missing authorization code",
+        errorDetails,
+      ),
+    };
+  }
 
-// #region Grant-Specific Builders
+  if (!input.code_verifier || typeof input.code_verifier !== "string") {
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_request",
+        "Missing PKCE code_verifier",
+        errorDetails,
+      ),
+    };
+  }
+
+  return {
+    success: true,
+    value: input,
+  };
+}
+
+function validateClientCredentialsGrantRequest(
+  input: NormalizedClientCredentialsGrantInput,
+  errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
+): Result<
+  NormalizedClientCredentialsGrantInput,
+  undefined,
+  TokenErrorResponse
+> {
+  if (
+    !input.resource ||
+    (Array.isArray(input.resource) && input.resource.length === 0)
+  ) {
+    return {
+      success: false,
+      error: tokenError("invalid_request", "Missing resource", errorDetails),
+    };
+  }
+
+  if (
+    "scope" in input &&
+    input.scope != null &&
+    typeof input.scope !== "string"
+  ) {
+    return {
+      success: false,
+      error: tokenError("invalid_request", "Invalid scope type", errorDetails),
+    };
+  }
+
+  return {
+    success: true,
+    value: input,
+  };
+}
+
+function validateRefreshTokenGrantRequest(
+  input: NormalizedRefreshTokenGrantInput,
+  errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
+): Result<NormalizedRefreshTokenGrantInput, undefined, TokenErrorResponse> {
+  if (
+    !input.refresh_token ||
+    (typeof input.refresh_token !== "string" &&
+      typeof input.refresh_token !== "object")
+  ) {
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_request",
+        "Missing refresh_token",
+        errorDetails,
+      ),
+    };
+  }
+
+  // requested_scope is optional and can be undefined
+  // but if present it must be a subset of the original scope
+  // which will be validated later during processing
+
+  return {
+    success: true,
+    value: input,
+  };
+}
+
+// #endregion internals
+
+// #region validations
+
+export function validateTokenGrantType(
+  req: TokenRequest & {
+    accessTokenExtraClaims?: Record<string, unknown>;
+    refreshTokenExtraClaims?: Record<string, unknown>;
+  },
+  errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
+): Result<NormalizedTokenInput, undefined, TokenErrorResponse> {
+  if (!isTokenRequest(req)) {
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_request",
+        "Invalid token request",
+        errorDetails,
+      ),
+    };
+  }
+
+  if (!req.client_id || typeof req.client_id !== "string") {
+    return {
+      success: false,
+      error: tokenError(
+        "invalid_request",
+        "Missing or invalid client_id",
+        errorDetails,
+      ),
+    };
+  }
+
+  if (isAuthorizationCodeGrantRequest(req)) {
+    return validateAuthorizationCodeGrantRequest({
+      type: "authorization_code",
+      client_id: req.client_id,
+      code: req.code,
+      code_verifier: req.code_verifier,
+      accessTokenExtraClaims: req.accessTokenExtraClaims,
+      refreshTokenExtraClaims: req.refreshTokenExtraClaims,
+    });
+  }
+
+  if (isClientCredentialsGrantRequest(req)) {
+    return validateClientCredentialsGrantRequest({
+      type: "client_credentials",
+      client_id: req.client_id,
+      resource: req.resource,
+      scope: req.scope,
+      accessTokenExtraClaims: req.accessTokenExtraClaims,
+    });
+  }
+
+  if (isRefreshTokenGrantRequest(req)) {
+    return validateRefreshTokenGrantRequest({
+      type: "refresh_token",
+      client_id: req.client_id,
+      refresh_token: req.refresh_token,
+      requested_scope: req.scope,
+      accessTokenExtraClaims: req.accessTokenExtraClaims,
+      refreshTokenExtraClaims: req.refreshTokenExtraClaims,
+    });
+  }
+
+  return {
+    success: false,
+    error: tokenError(
+      "unsupported_grant_type",
+      `Unsupported grant_type: ${(req as TokenRequest).grant_type}`,
+      errorDetails,
+    ),
+  };
+}
+
+// #endregion validations
+
+// #region runtime
 
 /**
- * Builds the `authorization_code` grant flow.
+ * Issues the `authorization_code` grant.
  */
-export async function buildAuthorizationCodeGrant(
-  args: BuildAuthorizationCodeGrantArgs,
-): Promise<BuildAuthorizationCodeGrantReturn> {
+export async function issueAuthorizationCodeGrant(
+  args: NormalizedAuthorizationCodeGrantInput,
+  options: IssueTokenGrantOptions,
+): Promise<IssueAuthorizationCodeGrantReturn> {
   const {
-    req,
+    iss,
     authorizationCodeOptions,
     accessTokenOptions,
     refreshTokenOptions,
-    iss,
-    extraAccessTokenClaims,
-    extraRefreshTokenClaims,
-  } = args;
-
-  validateTokenRequest(req, iss);
-  validateAuthorizationCodeGrantRequest(req, iss);
+  } = options;
 
   const codeClaims =
-    typeof req.code === "string"
+    typeof args.code === "string"
       ? await introspectAuthorizationCode({
-          token: req.code,
+          token: args.code,
           iss,
           options: authorizationCodeOptions,
         })
-      : req.code;
+      : args.code;
 
-  await validateAuthorizationCodeClaims({
-    claims: codeClaims,
-    req,
-    iss,
-  });
+  const validatedClaims = await validateAuthorizationCodeClaims(
+    codeClaims,
+    args,
+  );
+
+  if (!validatedClaims.success) {
+    return { success: false, error: validatedClaims.error };
+  }
+  const { accessTokenExtraClaims, refreshTokenExtraClaims } =
+    validatedClaims.value;
 
   const atOpts = accessTokenDefaults(accessTokenOptions);
   const rtOpts = refreshTokenDefaults(refreshTokenOptions);
 
-  const randomJti = args.randomJti || crypto.randomUUID;
+  const randomJti = options.randomJti || crypto.randomUUID;
   const currentDate =
-    (args.currentDate ||
+    (options.currentDate ||
       atOpts.signOptions.currentDate ||
       rtOpts.encryptOptions.currentDate) ??
     new Date();
@@ -465,25 +546,25 @@ export async function buildAuthorizationCodeGrant(
   const expiresIn = computeExpiresInSeconds(atOpts.signOptions.expiresIn);
 
   const atClaims: AccessTokenClaims = {
-    ...extraAccessTokenClaims,
+    ...accessTokenExtraClaims,
     jti: randomJti(),
     iss,
     sub: codeClaims.sub,
     aud: codeClaims.resource,
     exp: iat + expiresIn,
     iat,
-    client_id: req.client_id,
+    client_id: codeClaims.client_id,
     scope: codeClaims.scope,
   };
 
   const rtClaims: RefreshTokenClaims = {
-    ...extraRefreshTokenClaims,
+    ...refreshTokenExtraClaims,
     jti: randomJti(),
     iss,
     sub: codeClaims.sub,
     exp: iat + computeExpiresInSeconds(rtOpts.encryptOptions.expiresIn),
     iat,
-    client_id: req.client_id,
+    client_id: codeClaims.client_id,
     resource: codeClaims.resource,
     scope: codeClaims.scope,
   };
@@ -505,47 +586,49 @@ export async function buildAuthorizationCodeGrant(
   ]);
 
   return {
-    res: {
+    success: true,
+    value: {
       access_token,
       token_type: "Bearer",
       expires_in: expiresIn,
       scope: atClaims.scope,
       refresh_token,
     },
-    accessTokenClaims: atClaims,
-    refreshTokenClaims: rtClaims,
+    artifacts: {
+      accessTokenClaims: atClaims,
+      refreshTokenClaims: rtClaims,
+    },
   };
 }
 
 /**
- * Builds the `client_credentials` grant flow.
+ * Issues the `client_credentials` grant.
  */
-export async function buildClientCredentialsGrant(
-  args: BuildClientCredentialsGrantArgs,
-): Promise<BuildClientCredentialsGrantReturn> {
-  const { req, accessTokenOptions, extraAccessTokenClaims, iss } = args;
-
-  validateTokenRequest(req, iss);
-  validateClientCredentialsGrantRequest(req, iss);
+export async function issueClientCredentialsGrant(
+  args: NormalizedClientCredentialsGrantInput,
+  options: IssueTokenGrantOptions,
+): Promise<IssueClientCredentialsGrantReturn> {
+  const { client_id, resource, scope, accessTokenExtraClaims } = args;
+  const { iss, accessTokenOptions } = options;
 
   const atOpts = accessTokenDefaults(accessTokenOptions);
 
-  const randomJti = args.randomJti || crypto.randomUUID;
+  const randomJti = options.randomJti || crypto.randomUUID;
   const currentDate =
-    (args.currentDate || atOpts.signOptions.currentDate) ?? new Date();
+    (options.currentDate || atOpts.signOptions.currentDate) ?? new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
   const expiresIn = computeExpiresInSeconds(atOpts.signOptions.expiresIn);
 
   const atClaims: AccessTokenClaims = {
-    ...extraAccessTokenClaims,
+    ...accessTokenExtraClaims,
     jti: randomJti(),
     iss,
-    sub: req.client_id,
-    aud: req.resource,
+    sub: client_id,
+    aud: resource,
     exp: iat + expiresIn,
     iat,
-    client_id: req.client_id,
-    scope: req.scope,
+    client_id: client_id,
+    scope: scope,
   };
 
   const access_token = await sign(atClaims, atOpts.privateKey, {
@@ -555,65 +638,65 @@ export async function buildClientCredentialsGrant(
   });
 
   return {
-    res: {
+    success: true,
+    value: {
       access_token,
       token_type: "Bearer",
       expires_in: expiresIn,
       scope: atClaims.scope,
+      refresh_token: undefined,
     },
-    accessTokenClaims: atClaims,
+    artifacts: {
+      accessTokenClaims: atClaims,
+    },
   };
 }
 
 /**
- * Builds the `refresh_token` grant flow.
+ * Issues the `refresh_token` grant.
  */
-export async function buildRefreshTokenGrant(
-  args: BuildRefreshTokenGrantArgs,
-): Promise<BuildRefreshTokenGrantReturn> {
-  const {
-    req,
-    accessTokenOptions,
-    refreshTokenOptions,
-    extraAccessTokenClaims,
-    extraRefreshTokenClaims,
-    iss,
-  } = args;
-
-  validateTokenRequest(req, iss);
-  validateRefreshTokenGrantRequest(req, iss);
+export async function issueRefreshTokenGrant(
+  args: NormalizedRefreshTokenGrantInput,
+  options: IssueTokenGrantOptions,
+): Promise<IssueRefreshTokenGrantReturn> {
+  const { iss, accessTokenOptions, refreshTokenOptions } = options;
 
   const refreshTokenClaims =
-    typeof req.refresh_token === "string"
+    typeof args.refresh_token === "string"
       ? await introspectRefreshToken({
-          token: req.refresh_token,
+          token: args.refresh_token,
           iss,
           options: refreshTokenOptions,
         })
-      : req.refresh_token;
+      : args.refresh_token;
 
-  await validateRefreshTokenClaims({
-    claims: refreshTokenClaims,
-    req,
-    iss,
-  });
+  const validatedClaims = await validateRefreshTokenClaims(
+    refreshTokenClaims,
+    args,
+  );
+
+  if (!validatedClaims.success) {
+    return { success: false, error: validatedClaims.error };
+  }
+  const { requested_scope, accessTokenExtraClaims, refreshTokenExtraClaims } =
+    validatedClaims.value;
 
   const atOpts = accessTokenDefaults(accessTokenOptions);
   const rtOpts = refreshTokenDefaults(refreshTokenOptions);
 
   // 5. Build new tokens (implementing refresh token rotation)
-  const randomJti = args.randomJti || crypto.randomUUID;
+  const randomJti = options.randomJti || crypto.randomUUID;
   const currentDate =
-    (args.currentDate ||
+    (options.currentDate ||
       atOpts.signOptions.currentDate ||
       rtOpts.encryptOptions.currentDate) ??
     new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
   const expiresIn = computeExpiresInSeconds(atOpts.signOptions.expiresIn);
-  const newScope = req.scope || refreshTokenClaims.scope;
+  const newScope = requested_scope || refreshTokenClaims.scope;
 
   const newAccessTokenClaims: AccessTokenClaims = {
-    ...extraAccessTokenClaims,
+    ...accessTokenExtraClaims,
     jti: randomJti(),
     iss,
     sub: refreshTokenClaims.sub,
@@ -625,7 +708,7 @@ export async function buildRefreshTokenGrant(
   };
 
   const newRefreshTokenClaims: RefreshTokenClaims = {
-    ...extraRefreshTokenClaims,
+    ...refreshTokenExtraClaims,
     jti: randomJti(),
     iss,
     sub: refreshTokenClaims.sub,
@@ -653,16 +736,19 @@ export async function buildRefreshTokenGrant(
   ]);
 
   return {
-    res: {
+    success: true,
+    value: {
       access_token,
       token_type: "Bearer",
       expires_in: expiresIn,
       scope: newScope,
       refresh_token: new_refresh_token,
     },
-    accessTokenClaims: newAccessTokenClaims,
-    refreshTokenClaims: newRefreshTokenClaims,
+    artifacts: {
+      accessTokenClaims: newAccessTokenClaims,
+      refreshTokenClaims: newRefreshTokenClaims,
+    },
   };
 }
 
-// #endregion Grant-Specific Builders
+// #endregion runtime
