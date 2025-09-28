@@ -326,7 +326,7 @@ describe("OAuth Provider", () => {
         iss,
         options: accessTokenOptions,
       });
-      expect(at.payload.sub).toBe("user");
+      expect(at.sub).toBe("user");
       // We don't decrypt refresh token (JWE) here to keep tests algorithm-agnostic
       expect(typeof tg.res.refresh_token).toBe("string");
     });
@@ -451,8 +451,8 @@ describe("OAuth Provider", () => {
         iss,
         options: accessTokenOptions,
       });
-      expect(at.payload.sub).toBe("user");
-      expect(at.payload.aud).toBe("api");
+      expect(at.sub).toBe("user");
+      expect(at.aud).toBe("api");
 
       // Do not decrypt refresh token (JWE); assert it exists
       expect(typeof out.res.refresh_token).toBe("string");
@@ -478,9 +478,9 @@ describe("OAuth Provider", () => {
         iss,
         options: accessTokenOptions,
       });
-      expect(at.payload.sub).toBe("svc");
-      expect(at.payload.client_id).toBe("svc");
-      expect(at.payload.scope).toBe("s1 s2");
+      expect(at.sub).toBe("svc");
+      expect(at.client_id).toBe("svc");
+      expect(at.scope).toBe("s1 s2");
     });
 
     it("buildRefreshTokenGrant rotates refresh token and narrows scope", async () => {
@@ -515,7 +515,7 @@ describe("OAuth Provider", () => {
         iss,
         options: accessTokenOptions,
       });
-      expect(at.payload.scope).toBe("read");
+      expect(at.scope).toBe("read");
       // Do not decrypt new refresh token (JWE); assert it exists
       expect(typeof out.res.refresh_token).toBe("string");
     });

@@ -259,7 +259,7 @@ describe("OIDC Provider", () => {
         iss,
         options: accessTokenOptions,
       });
-      expect(at2.payload.sub).toBe("u");
+      expect(at2.sub).toBe("u");
     });
   });
 });
