@@ -12,6 +12,7 @@ export type {
   Result,
   Failure,
   Success,
+  AuthorizeRequest,
   AccessTokenClaims,
   RefreshTokenClaims,
   AuthorizeSuccessResponse,

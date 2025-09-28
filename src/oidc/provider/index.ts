@@ -4,40 +4,38 @@ export { OAuthError } from "../../oauth";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
-import type {
-  TokenRequest,
-  TokenErrorResponse,
-  ResolvedAccessTokenOptions,
-  ResolvedAuthorizationCodeOptions,
-  ResolvedRefreshTokenOptions,
-} from "../../oauth";
-import { OAuthProvider, OAuthError } from "../../oauth";
+import { deepFreeze } from "../../utils";
 
-import type { IdTokenClaims } from "../types";
+import { OAuthProvider } from "../../oauth";
+
+import type {
+  Result,
+  IdTokenClaims,
+  AuthorizeRequest,
+  AuthorizeErrorResponse,
+} from "../types";
 import type {
   OIDCProviderOptions,
   ResolvedIdTokenOptions,
-  BuildAuthorizationCodeArgs,
-  BuildAuthorizationCodeGrantArgs,
-  BuildAuthorizationCodeGrantReturn,
-  BuildClientCredentialsGrantReturn,
-  BuildAuthorizationCodeReturn,
   BuildOIDCDiscoveryArgs,
-  BuildRefreshTokenGrantReturn,
   OIDCDiscoveryDocument,
   OIDCUserInfoProfile,
+  NormalizedAuthorizeInput,
+  IssueAuthorizationCodeReturn,
+  NormalizedAuthorizationCodeGrantInput,
+  IssueAuthorizationCodeGrantReturn,
+  NormalizedRefreshTokenGrantInput,
+  IssueRefreshTokenGrantReturn,
 } from "./internal";
 import {
   oidcProviderDefaults,
-  validateRedirectUri,
-  validateTokenRequest,
   buildOIDCDiscoveryDocument,
-  buildAuthorizationCode,
-  buildAuthorizationCodeGrant,
-  buildClientCredentialsGrant,
-  buildRefreshTokenGrant,
   buildUserInfo,
   introspectIdToken,
+  validateAuthorizeRequest,
+  issueAuthorizationCode,
+  issueAuthorizationCodeGrant,
+  issueRefreshTokenGrant,
 } from "./internal";
 
 /**
@@ -49,26 +47,36 @@ import {
  * is purely ergonomic and does not add new logic.
  */
 export class OIDCProvider extends OAuthProvider {
-  private readonly authorizationCodeOptions: ResolvedAuthorizationCodeOptions;
-  private readonly refreshTokenOptions: ResolvedRefreshTokenOptions;
-  private readonly accessTokenOptions: ResolvedAccessTokenOptions;
-  private readonly idTokenOptions: ResolvedIdTokenOptions;
-  private readonly randomJtiFn: () => string;
-  readonly idTokenJwkSet: JWKSet;
-  override readonly jwkSet: JWKSet;
+  private _it: ResolvedIdTokenOptions;
+  private _idTokenJwkSet: JWKSet;
+  private _mergedJwkSet: JWKSet;
 
   constructor(args: OIDCProviderOptions) {
     const { idTokenOptions, ...defaults } = oidcProviderDefaults(args);
-
     super(defaults);
-    this.authorizationCodeOptions = defaults.authorizationCodeOptions;
-    this.refreshTokenOptions = defaults.refreshTokenOptions;
-    this.accessTokenOptions = defaults.accessTokenOptions;
-    this.randomJtiFn = defaults.randomJti;
-    this.idTokenJwkSet = getPublicKeys(idTokenOptions.publicKey);
-    this.jwkSet = mergeUniqueKids(this.accessTokenJwkSet, this.idTokenJwkSet);
 
-    this.idTokenOptions = idTokenOptions;
+    this._it = idTokenOptions;
+    this._idTokenJwkSet = getPublicKeys(idTokenOptions.publicKey);
+    this._mergedJwkSet = mergeUniqueKids(super.jwkSet, this._idTokenJwkSet);
+  }
+
+  get idTokenOptions() {
+    return deepFreeze(this._it);
+  }
+  override get jwkSet() {
+    return {
+      keys: [...this._mergedJwkSet.keys],
+    };
+  }
+  override get options() {
+    return {
+      iss: this.issuer,
+      authorizationCodeOptions: this.authorizationCodeOptions,
+      accessTokenOptions: this.accessTokenOptions,
+      refreshTokenOptions: this.refreshTokenOptions,
+      idTokenOptions: this.idTokenOptions,
+      randomJti: this.randomJti,
+    };
   }
 
   // Discovery
@@ -76,7 +84,7 @@ export class OIDCProvider extends OAuthProvider {
   override discovery(
     options?: Omit<BuildOIDCDiscoveryArgs, "issuer">,
   ): OIDCDiscoveryDocument {
-    return buildOIDCDiscoveryDocument({ ...options, issuer: this.iss });
+    return buildOIDCDiscoveryDocument({ ...options, issuer: this.issuer });
   }
 
   buildUserInfo<T extends Record<string, unknown>>(
@@ -87,101 +95,35 @@ export class OIDCProvider extends OAuthProvider {
 
   // Authorize
 
-  override async authorize(
-    args: Pick<BuildAuthorizationCodeArgs, "req" | "claims">,
-    registeredRedirectUris: string | string[],
-  ): Promise<BuildAuthorizationCodeReturn> {
-    const redirect_uri = validateRedirectUri(
-      args.req,
-      registeredRedirectUris,
-      this.iss,
-    );
+  override validateAuthorizeRequest(
+    req: AuthorizeRequest,
+    errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
+  ): Result<
+    Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri">,
+    undefined,
+    AuthorizeErrorResponse
+  > {
+    return validateAuthorizeRequest(req, errorDetails);
+  }
 
-    if (typeof redirect_uri !== "string") {
-      throw new OAuthError(redirect_uri);
-    }
-
-    return buildAuthorizationCode({
-      req: {
-        ...args.req,
-        redirect_uri,
-      },
-      claims: args.claims,
-      iss: this.iss,
-      randomJti: this.randomJtiFn,
-      options: this.authorizationCodeOptions,
-    });
+  override issueAuthorizationCode(
+    args: NormalizedAuthorizeInput,
+  ): Promise<IssueAuthorizationCodeReturn> {
+    return issueAuthorizationCode(args, this.options);
   }
 
   // Token
 
-  override async token(
-    req: TokenRequest,
-    extra?: {
-      currentDate?: Date;
-      accessTokenClaims?: BuildAuthorizationCodeGrantArgs["extraAccessTokenClaims"];
-      refreshTokenClaims?: BuildAuthorizationCodeGrantArgs["extraRefreshTokenClaims"];
-      idTokenClaims?: BuildAuthorizationCodeGrantArgs["extraIdTokenClaims"];
-    },
-  ): Promise<
-    | BuildAuthorizationCodeGrantReturn
-    | BuildClientCredentialsGrantReturn
-    | BuildRefreshTokenGrantReturn
-    | { res: TokenErrorResponse }
-  > {
-    const _req = validateTokenRequest(req, this.iss);
+  override issueAuthorizationCodeGrant(
+    args: NormalizedAuthorizationCodeGrantInput,
+  ): Promise<IssueAuthorizationCodeGrantReturn> {
+    return issueAuthorizationCodeGrant(args, this.options);
+  }
 
-    if ("error" in _req) {
-      return { res: _req };
-    }
-
-    switch (req.grant_type) {
-      case "authorization_code": {
-        return buildAuthorizationCodeGrant({
-          req,
-          currentDate: extra?.currentDate,
-          extraAccessTokenClaims: extra?.accessTokenClaims,
-          extraRefreshTokenClaims: extra?.refreshTokenClaims,
-          extraIdTokenClaims: extra?.idTokenClaims,
-          iss: this.iss,
-          randomJti: this.randomJtiFn,
-          authorizationCodeOptions: this.authorizationCodeOptions,
-          accessTokenOptions: this.accessTokenOptions,
-          refreshTokenOptions: this.refreshTokenOptions,
-          idTokenOptions: this.idTokenOptions,
-        });
-      }
-      case "client_credentials": {
-        return buildClientCredentialsGrant({
-          req,
-          currentDate: extra?.currentDate,
-          extraAccessTokenClaims: extra?.accessTokenClaims,
-          iss: this.iss,
-          randomJti: this.randomJtiFn,
-          accessTokenOptions: this.accessTokenOptions,
-        });
-      }
-      case "refresh_token": {
-        return buildRefreshTokenGrant({
-          req,
-          currentDate: extra?.currentDate,
-          extraAccessTokenClaims: extra?.accessTokenClaims,
-          extraRefreshTokenClaims: extra?.refreshTokenClaims,
-          extraIdTokenClaims: extra?.idTokenClaims,
-          iss: this.iss,
-          randomJti: this.randomJtiFn,
-          accessTokenOptions: this.accessTokenOptions,
-          refreshTokenOptions: this.refreshTokenOptions,
-          idTokenOptions: this.idTokenOptions,
-        });
-      }
-      default: {
-        throw new OAuthError({
-          error: "unsupported_grant_type",
-          error_description: `The grant_type '${(req as TokenRequest).grant_type}' is not supported.`,
-        });
-      }
-    }
+  override issueRefreshTokenGrant(
+    args: NormalizedRefreshTokenGrantInput,
+  ): Promise<IssueRefreshTokenGrantReturn> {
+    return issueRefreshTokenGrant(args, this.options);
   }
 
   // Introspection
@@ -189,7 +131,7 @@ export class OIDCProvider extends OAuthProvider {
   introspectIdToken(token: string): Promise<IdTokenClaims> {
     return introspectIdToken({
       token,
-      iss: this.iss,
+      iss: this.issuer,
       options: this.idTokenOptions,
     });
   }

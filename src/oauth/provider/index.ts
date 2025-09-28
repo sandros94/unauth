@@ -4,11 +4,15 @@ export * from "./internal";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
-import { OAuthError } from "./error";
+import { deepFreeze } from "../../utils";
+
 import type {
+  Result,
+  AuthorizeRequest,
+  AuthorizeErrorResponse,
+  AuthorizationCodeClaims,
   TokenRequest,
   TokenErrorResponse,
-  AuthorizationCodeClaims,
   AccessTokenClaims,
   RefreshTokenClaims,
 } from "../types";
@@ -19,27 +23,29 @@ import type {
   ResolvedAccessTokenOptions,
   ResolvedRefreshTokenOptions,
   BuildOAuthDiscoveryArgs,
-  BuildAuthorizationCodeArgs,
-  BuildAuthorizationCodeReturn,
-  BuildAuthorizationCodeGrantArgs,
-  BuildAuthorizationCodeGrantReturn,
-  BuildClientCredentialsGrantArgs,
-  BuildClientCredentialsGrantReturn,
-  BuildRefreshTokenGrantArgs,
-  BuildRefreshTokenGrantReturn,
+  NormalizedAuthorizeInput,
+  IssueAuthorizationCodeReturn,
+  NormalizedTokenInput,
+  NormalizedAuthorizationCodeGrantInput,
+  NormalizedClientCredentialsGrantInput,
+  NormalizedRefreshTokenGrantInput,
+  IssueAuthorizationCodeGrantReturn,
+  IssueClientCredentialsGrantReturn,
+  IssueRefreshTokenGrantReturn,
 } from "./internal";
 import {
   oauthProviderDefaults,
   buildOAuthDiscoveryDocument,
-  buildAuthorizationCode,
-  validateRedirectUri,
-  validateTokenRequest,
-  buildAuthorizationCodeGrant,
-  buildClientCredentialsGrant,
-  buildRefreshTokenGrant,
   introspectAuthorizationCode,
   introspectAccessToken,
   introspectRefreshToken,
+  validateRedirectUri,
+  validateAuthorizeRequest,
+  issueAuthorizationCode,
+  validateTokenGrantType,
+  issueAuthorizationCodeGrant,
+  issueClientCredentialsGrant,
+  issueRefreshTokenGrant,
 } from "./internal";
 
 /**
@@ -51,24 +57,51 @@ import {
  * is purely ergonomic and does not add new logic.
  */
 export class OAuthProvider {
-  readonly iss: string;
-  private readonly acOptions: ResolvedAuthorizationCodeOptions;
-  private readonly rtOptions: ResolvedRefreshTokenOptions;
-  private readonly atOptions: ResolvedAccessTokenOptions;
-  private readonly randomJti: () => string;
-  readonly accessTokenJwkSet: JWKSet;
-  readonly jwkSet: JWKSet;
+  private _ac: ResolvedAuthorizationCodeOptions;
+  private _rt: ResolvedRefreshTokenOptions;
+  private _at: ResolvedAccessTokenOptions;
+  private _iss: string;
+  private _randomJti: () => string;
+  private _jwkSet: JWKSet;
 
-  constructor(args: OAuthProviderOptions) {
-    const opts = oauthProviderDefaults(args);
+  constructor(opts: OAuthProviderOptions) {
+    const r = oauthProviderDefaults(opts);
+    this._iss = r.issuer;
+    this._randomJti = r.randomJti;
+    this._ac = r.authorizationCodeOptions;
+    this._rt = r.refreshTokenOptions;
+    this._at = r.accessTokenOptions;
+    this._jwkSet = getPublicKeys(r.accessTokenOptions.publicKey);
+  }
 
-    this.iss = opts.issuer;
-    this.randomJti = opts.randomJti;
-    this.acOptions = opts.authorizationCodeOptions;
-    this.rtOptions = opts.refreshTokenOptions;
-    this.atOptions = opts.accessTokenOptions;
-    this.accessTokenJwkSet = getPublicKeys(this.atOptions.publicKey);
-    this.jwkSet = this.accessTokenJwkSet;
+  get authorizationCodeOptions() {
+    return deepFreeze(this._ac);
+  }
+  get refreshTokenOptions() {
+    return deepFreeze(this._rt);
+  }
+  get accessTokenOptions() {
+    return deepFreeze(this._at);
+  }
+  get issuer() {
+    return this._iss;
+  }
+  get randomJti() {
+    return this._randomJti;
+  }
+  get jwkSet() {
+    return {
+      keys: [...this._jwkSet.keys],
+    };
+  }
+  get options() {
+    return {
+      iss: this.issuer,
+      authorizationCodeOptions: this.authorizationCodeOptions,
+      accessTokenOptions: this.accessTokenOptions,
+      refreshTokenOptions: this.refreshTokenOptions,
+      randomJti: this.randomJti,
+    };
   }
 
   // Discovery
@@ -76,101 +109,64 @@ export class OAuthProvider {
   discovery(
     options?: Omit<BuildOAuthDiscoveryArgs, "issuer">,
   ): OAuthDiscoveryDocument {
-    return buildOAuthDiscoveryDocument({ ...options, issuer: this.iss });
+    return buildOAuthDiscoveryDocument({ ...options, issuer: this.issuer });
   }
 
   // Authorize
 
-  async authorize(
-    args: Pick<BuildAuthorizationCodeArgs, "req" | "claims">,
-    registeredRedirectUris: string | string[],
-  ): Promise<BuildAuthorizationCodeReturn> {
-    const redirect_uri = validateRedirectUri(
-      args.req,
-      registeredRedirectUris,
-      this.iss,
-    );
+  validateRedirectUri(
+    redirect_uri: string | undefined,
+    allowedRedirectUris: string | string[],
+    errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
+  ): Result<string, undefined, AuthorizeErrorResponse> {
+    return validateRedirectUri(redirect_uri, allowedRedirectUris, errorDetails);
+  }
 
-    if (typeof redirect_uri !== "string") {
-      throw new OAuthError(redirect_uri);
-    }
+  validateAuthorizeRequest(
+    req: AuthorizeRequest,
+    errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
+  ): Result<
+    Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri">,
+    undefined,
+    AuthorizeErrorResponse
+  > {
+    return validateAuthorizeRequest(req, errorDetails);
+  }
 
-    return buildAuthorizationCode({
-      req: {
-        ...args.req,
-        redirect_uri,
-      },
-      claims: args.claims,
-      iss: this.iss,
-      randomJti: this.randomJti,
-      options: this.acOptions,
-    });
+  issueAuthorizationCode(
+    args: NormalizedAuthorizeInput,
+  ): Promise<IssueAuthorizationCodeReturn> {
+    return issueAuthorizationCode(args, this.options);
   }
 
   // Token
 
-  async token(
-    req: TokenRequest,
-    extra?: {
-      currentDate?: Date;
-      accessTokenClaims?: BuildAuthorizationCodeGrantArgs["extraAccessTokenClaims"];
-      refreshTokenClaims?: BuildAuthorizationCodeGrantArgs["extraRefreshTokenClaims"];
+  validateTokenGrantType(
+    req: TokenRequest & {
+      accessTokenExtraClaims?: Record<string, unknown>;
+      refreshTokenExtraClaims?: Record<string, unknown>;
     },
-  ): Promise<
-    | BuildAuthorizationCodeGrantReturn
-    | BuildClientCredentialsGrantReturn
-    | BuildRefreshTokenGrantReturn
-    | { res: TokenErrorResponse }
-  > {
-    const _req = validateTokenRequest(req, this.iss);
+    errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
+  ): Result<NormalizedTokenInput, undefined, TokenErrorResponse> {
+    return validateTokenGrantType(req, errorDetails);
+  }
 
-    if ("error" in _req) {
-      return { res: _req };
-    }
+  issueAuthorizationCodeGrant(
+    args: NormalizedAuthorizationCodeGrantInput,
+  ): Promise<IssueAuthorizationCodeGrantReturn> {
+    return issueAuthorizationCodeGrant(args, this.options);
+  }
 
-    switch (req.grant_type) {
-      case "authorization_code": {
-        return buildAuthorizationCodeGrant({
-          req: _req as BuildAuthorizationCodeGrantArgs["req"],
-          currentDate: extra?.currentDate,
-          extraAccessTokenClaims: extra?.accessTokenClaims,
-          extraRefreshTokenClaims: extra?.refreshTokenClaims,
-          iss: this.iss,
-          randomJti: this.randomJti,
-          authorizationCodeOptions: this.acOptions,
-          accessTokenOptions: this.atOptions,
-          refreshTokenOptions: this.rtOptions,
-        });
-      }
-      case "client_credentials": {
-        return buildClientCredentialsGrant({
-          req: _req as BuildClientCredentialsGrantArgs["req"],
-          currentDate: extra?.currentDate,
-          extraAccessTokenClaims: extra?.accessTokenClaims,
-          iss: this.iss,
-          randomJti: this.randomJti,
-          accessTokenOptions: this.atOptions,
-        });
-      }
-      case "refresh_token": {
-        return buildRefreshTokenGrant({
-          req: _req as BuildRefreshTokenGrantArgs["req"],
-          currentDate: extra?.currentDate,
-          extraAccessTokenClaims: extra?.accessTokenClaims,
-          extraRefreshTokenClaims: extra?.refreshTokenClaims,
-          iss: this.iss,
-          randomJti: this.randomJti,
-          accessTokenOptions: this.atOptions,
-          refreshTokenOptions: this.rtOptions,
-        });
-      }
-      default: {
-        throw new OAuthError({
-          error: "unsupported_grant_type",
-          error_description: `The grant_type '${(req as TokenRequest).grant_type}' is not supported.`,
-        });
-      }
-    }
+  issueClientCredentialsGrant(
+    args: NormalizedClientCredentialsGrantInput,
+  ): Promise<IssueClientCredentialsGrantReturn> {
+    return issueClientCredentialsGrant(args, this.options);
+  }
+
+  issueRefreshTokenGrant(
+    args: NormalizedRefreshTokenGrantInput,
+  ): Promise<IssueRefreshTokenGrantReturn> {
+    return issueRefreshTokenGrant(args, this.options);
   }
 
   // Introspection
@@ -178,24 +174,24 @@ export class OAuthProvider {
   introspectAuthorizationCode(token: string): Promise<AuthorizationCodeClaims> {
     return introspectAuthorizationCode({
       token,
-      iss: this.iss,
-      options: this.acOptions,
+      iss: this.issuer,
+      options: this.authorizationCodeOptions,
     });
   }
 
   introspectAccessToken(token: string): Promise<AccessTokenClaims> {
     return introspectAccessToken({
       token,
-      iss: this.iss,
-      options: this.atOptions,
+      iss: this.issuer,
+      options: this.accessTokenOptions,
     });
   }
 
   introspectRefreshToken(token: string): Promise<RefreshTokenClaims> {
     return introspectRefreshToken({
       token,
-      iss: this.iss,
-      options: this.rtOptions,
+      iss: this.issuer,
+      options: this.refreshTokenOptions,
     });
   }
 }

@@ -196,7 +196,12 @@ export async function issueRefreshTokenGrant(
   args: NormalizedRefreshTokenGrantInput,
   options: IssueTokenGrantOptions,
 ): Promise<IssueRefreshTokenGrantReturn> {
-  const { iss, refreshTokenOptions, idTokenOptions, currentDate } = options;
+  const {
+    iss,
+    refreshTokenOptions,
+    idTokenOptions,
+    currentDate = new Date(),
+  } = options;
 
   const oldRTClaims =
     typeof args.refresh_token === "string"
@@ -217,7 +222,10 @@ export async function issueRefreshTokenGrant(
         ...(oldRTClaims.nonce ? { nonce: oldRTClaims.nonce } : {}),
       },
     },
-    options,
+    {
+      ...options,
+      currentDate,
+    },
   );
 
   if (!oauthRes.success) {
