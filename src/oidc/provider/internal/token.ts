@@ -1,3 +1,4 @@
+import { computeExpiresInSeconds } from "unjwt/utils";
 import type { JWTClaims } from "unjwt";
 import { sign } from "unjwt/jws";
 
@@ -121,7 +122,7 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
   const idTokenClaims: IdTokenClaims = {
     ...claims,
     iat,
-    exp: iat + opts.signOptions.expiresIn,
+    exp: iat + computeExpiresInSeconds(opts.signOptions.expiresIn),
     at_hash,
   } as IdTokenClaims;
 

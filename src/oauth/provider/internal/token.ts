@@ -1,3 +1,4 @@
+import { computeExpiresInSeconds } from "unjwt/utils";
 import type { JWTClaims } from "unjwt";
 import { encrypt } from "unjwt/jwe";
 import { sign } from "unjwt/jws";
@@ -345,6 +346,7 @@ export async function buildAuthorizationCodeGrant(
       rtOpts.encryptOptions.currentDate) ??
     new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
+  const expiresIn = computeExpiresInSeconds(atOpts.signOptions.expiresIn);
 
   const atClaims: AccessTokenClaims = {
     ...extraAccessTokenClaims,
@@ -352,7 +354,7 @@ export async function buildAuthorizationCodeGrant(
     iss,
     sub: codeClaims.sub,
     aud: codeClaims.resource,
-    exp: iat + atOpts.signOptions.expiresIn,
+    exp: iat + expiresIn,
     iat,
     client_id: req.client_id,
     scope: codeClaims.scope,
@@ -363,7 +365,7 @@ export async function buildAuthorizationCodeGrant(
     jti: randomJti(),
     iss,
     sub: codeClaims.sub,
-    exp: iat + rtOpts.encryptOptions.expiresIn,
+    exp: iat + computeExpiresInSeconds(rtOpts.encryptOptions.expiresIn),
     iat,
     client_id: req.client_id,
     resource: codeClaims.resource,
@@ -390,7 +392,7 @@ export async function buildAuthorizationCodeGrant(
     res: {
       access_token,
       token_type: "Bearer",
-      expires_in: atOpts.signOptions.expiresIn,
+      expires_in: expiresIn,
       scope: atClaims.scope,
       refresh_token,
     },
@@ -413,6 +415,7 @@ export async function buildClientCredentialsGrant(
   const currentDate =
     (args.currentDate || atOpts.signOptions.currentDate) ?? new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
+  const expiresIn = computeExpiresInSeconds(atOpts.signOptions.expiresIn);
 
   const atClaims: AccessTokenClaims = {
     ...extraAccessTokenClaims,
@@ -420,7 +423,7 @@ export async function buildClientCredentialsGrant(
     iss,
     sub: req.client_id,
     aud: req.resource,
-    exp: iat + atOpts.signOptions.expiresIn,
+    exp: iat + expiresIn,
     iat,
     client_id: req.client_id,
     scope: req.scope,
@@ -436,7 +439,7 @@ export async function buildClientCredentialsGrant(
     res: {
       access_token,
       token_type: "Bearer",
-      expires_in: atOpts.signOptions.expiresIn,
+      expires_in: expiresIn,
       scope: atClaims.scope,
     },
     accessTokenClaims: atClaims,
@@ -470,6 +473,7 @@ export async function buildRefreshTokenGrant(
       rtOpts.encryptOptions.currentDate) ??
     new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
+  const expiresIn = computeExpiresInSeconds(atOpts.signOptions.expiresIn);
   const newScope = req.scope || refreshTokenClaims.scope;
 
   const newAccessTokenClaims: AccessTokenClaims = {
@@ -478,7 +482,7 @@ export async function buildRefreshTokenGrant(
     iss,
     sub: refreshTokenClaims.sub,
     aud: refreshTokenClaims.resource,
-    exp: iat + atOpts.signOptions.expiresIn,
+    exp: iat + expiresIn,
     iat,
     client_id: refreshTokenClaims.client_id,
     scope: newScope,
@@ -489,7 +493,7 @@ export async function buildRefreshTokenGrant(
     jti: randomJti(),
     iss,
     sub: refreshTokenClaims.sub,
-    exp: iat + rtOpts.encryptOptions.expiresIn,
+    exp: iat + computeExpiresInSeconds(rtOpts.encryptOptions.expiresIn),
     iat,
     client_id: refreshTokenClaims.client_id,
     resource: refreshTokenClaims.resource,
@@ -516,7 +520,7 @@ export async function buildRefreshTokenGrant(
     res: {
       access_token,
       token_type: "Bearer",
-      expires_in: atOpts.signOptions.expiresIn,
+      expires_in: expiresIn,
       scope: newScope,
       refresh_token: new_refresh_token,
     },

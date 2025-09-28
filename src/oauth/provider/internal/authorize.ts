@@ -1,4 +1,5 @@
 import { type JWTClaims, encrypt } from "unjwt/jwe";
+import { computeExpiresInSeconds } from "unjwt/utils";
 import { secureCompare } from "unsecure";
 
 import type {
@@ -250,7 +251,7 @@ export async function buildAuthorizationCode(
         jti: randomJti(),
         iss,
         iat,
-        exp: iat + opts.encryptOptions.expiresIn,
+        exp: iat + computeExpiresInSeconds(opts.encryptOptions.expiresIn),
         client_id: req.client_id,
         redirect_uri: req.redirect_uri,
         code_challenge: req.code_challenge,
