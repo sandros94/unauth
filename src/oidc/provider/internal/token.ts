@@ -4,7 +4,6 @@ import { sign } from "unjwt/jws";
 
 import type { IdTokenClaims } from "../../types";
 import {
-  type TokenErrorResponse,
   type AuthorizationCodeGrantRequest,
   type BuildAuthorizationCodeGrantArgs as OAuthBuildAuthorizationCodeGrantArgs,
   type BuildAuthorizationCodeGrantReturn as OAuthBuildAuthorizationCodeGrantReturn,
@@ -79,19 +78,19 @@ export async function validateAuthorizationCodeClaims(args: {
   claims: AuthorizationCodeClaims;
   req: AuthorizationCodeGrantRequest;
   iss: string;
-}): Promise<TokenErrorResponse | undefined> {
+}): Promise<void> {
   const { claims, req, iss } = args;
 
   // OIDC requirements: ensure nonce presence propagated in codeClaims
   if (!claims.nonce) {
-    return new OAuthError({
+    throw new OAuthError({
       error: "invalid_grant",
       error_description: "Missing nonce in authorization code claims",
       iss,
-    }).toJSON();
+    });
   }
 
-  return oauthValidateAuthorizationCodeClaims({
+  await oauthValidateAuthorizationCodeClaims({
     claims,
     req,
     iss,
@@ -137,7 +136,7 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
 
 export async function buildAuthorizationCodeGrant(
   args: BuildAuthorizationCodeGrantArgs,
-): Promise<BuildAuthorizationCodeGrantReturn | TokenErrorResponse> {
+): Promise<BuildAuthorizationCodeGrantReturn> {
   const {
     req,
     codeClaims,
@@ -196,7 +195,7 @@ export async function buildAuthorizationCodeGrant(
 
 export async function buildRefreshTokenGrant(
   args: BuildRefreshTokenGrantArgs,
-): Promise<BuildRefreshTokenGrantReturn | TokenErrorResponse> {
+): Promise<BuildRefreshTokenGrantReturn> {
   const {
     req,
     refreshTokenClaims: oldRTClaims,

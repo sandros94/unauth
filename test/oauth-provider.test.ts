@@ -324,20 +324,16 @@ describe("OAuth Provider", () => {
     });
 
     it("validateTokenRequest checks grant_type", () => {
-      // @ts-expect-error intentional broken request
-      expect((validateTokenRequest({}, iss) as { error: string }).error).toBe(
-        "invalid_request",
-      );
-      expect(
-        // @ts-expect-error intentional wrong grant_type
-        validateTokenRequest({ grant_type: "foobar" }, iss).error,
-      ).toBe("invalid_request");
-      expect(
+      expect(() => validateTokenRequest({}, iss)).toThrowError(OAuthError);
+      expect(() =>
+        validateTokenRequest({ grant_type: "foobar" }, iss),
+      ).toThrowError(OAuthError);
+      expect(() =>
         validateTokenRequest(
           { grant_type: "client_credentials", client_id: "c", resource: "r" },
           iss,
         ),
-      ).toBeUndefined();
+      ).not.toThrow();
     });
 
     it("validateAuthorizationCodeClaims validates PKCE and bindings", async () => {
@@ -369,22 +365,22 @@ describe("OAuth Provider", () => {
       const badSub = { ...good };
       // @ts-expect-error deleting required field
       delete badSub.sub;
-      expect(
-        await validateAuthorizationCodeClaims({
+      await expect(
+        validateAuthorizationCodeClaims({
           claims: badSub,
           req,
           iss,
         }),
-      ).toMatchObject({ error: "invalid_grant" });
+      ).rejects.toMatchObject({ error: "invalid_grant" });
 
       const badClient = { ...good, client_id: "other" };
-      expect(
-        await validateAuthorizationCodeClaims({
+      await expect(
+        validateAuthorizationCodeClaims({
           claims: badClient,
           req,
           iss,
         }),
-      ).toMatchObject({ error: "invalid_grant" });
+      ).rejects.toMatchObject({ error: "invalid_grant" });
 
       await expect(
         validateAuthorizationCodeClaims({

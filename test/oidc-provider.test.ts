@@ -195,12 +195,13 @@ describe("OIDC Provider", () => {
         resource: "api",
         scope: "openid",
       };
-      const res = await validateAuthorizationCodeClaims({
-        claims: claimsMissingNonce,
-        req,
-        iss,
-      });
-      expect(res).toMatchObject({ error: "invalid_grant" });
+      await expect(
+        validateAuthorizationCodeClaims({
+          claims: claimsMissingNonce,
+          req,
+          iss,
+        }),
+      ).rejects.toMatchObject({ error: "invalid_grant" });
     });
 
     it("authorization_code grant returns id_token with at_hash matching alg", async () => {

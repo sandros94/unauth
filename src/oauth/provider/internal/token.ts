@@ -11,7 +11,6 @@ import type {
   AuthorizationCodeGrantRequest,
   ClientCredentialsGrantRequest,
   RefreshTokenGrantRequest,
-  TokenErrorResponse,
   TokenSuccessResponse,
 } from "../../types";
 
@@ -141,50 +140,127 @@ function isTokenRequest(value: unknown): value is TokenRequest {
 function isAuthorizationCodeGrantRequest(
   value: TokenRequest,
 ): value is AuthorizationCodeGrantRequest {
-  return (
-    value.grant_type === "authorization_code" &&
-    "code" in value &&
-    typeof value.code === "string" &&
-    "client_id" in value &&
-    typeof value.client_id === "string" &&
-    "code_verifier" in value &&
-    typeof value.code_verifier === "string"
-  );
+  return value.grant_type === "authorization_code";
 }
 
 function isClientCredentialsGrantRequest(
   value: TokenRequest,
 ): value is ClientCredentialsGrantRequest {
-  return (
-    value.grant_type === "client_credentials" &&
-    "client_id" in value &&
-    typeof value.client_id === "string" &&
-    (!("scope" in value) || typeof value.scope === "string")
-  );
+  return value.grant_type === "client_credentials";
 }
 
 function isRefreshTokenGrantRequest(
   value: TokenRequest,
 ): value is RefreshTokenGrantRequest {
-  return (
-    value.grant_type === "refresh_token" &&
-    "refresh_token" in value &&
-    typeof value.refresh_token === "string" &&
-    "client_id" in value &&
-    typeof value.client_id === "string" &&
-    (!("scope" in value) || typeof value.scope === "string")
-  );
+  return value.grant_type === "refresh_token";
+}
+
+export function validateAuthorizationCodeGrantRequest(
+  req: AuthorizationCodeGrantRequest,
+  iss: string,
+): void {
+  if (!req.code || typeof req.code !== "string") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing authorization code",
+      iss,
+    });
+  }
+
+  if (!req.client_id || typeof req.client_id !== "string") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing or invalid client_id",
+      iss,
+    });
+  }
+
+  if (!req.code_verifier || typeof req.code_verifier !== "string") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing PKCE code_verifier",
+      iss,
+    });
+  }
+
+  return;
+}
+
+export function validateClientCredentialsGrantRequest(
+  req: ClientCredentialsGrantRequest,
+  iss: string,
+): void {
+  if (!req.client_id || typeof req.client_id !== "string") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing or invalid client_id",
+      iss,
+    });
+  }
+
+  if (
+    !req.resource ||
+    (Array.isArray(req.resource) && req.resource.length === 0)
+  ) {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing resource in client_credentials request",
+      iss,
+    });
+  }
+
+  if ("scope" in req && req.scope != null && typeof req.scope !== "string") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Invalid scope type",
+      iss,
+    });
+  }
+
+  return;
+}
+
+export function validateRefreshTokenGrantRequest(
+  req: RefreshTokenGrantRequest,
+  iss: string,
+): void {
+  if (!req.refresh_token || typeof req.refresh_token !== "string") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing refresh_token",
+      iss,
+    });
+  }
+
+  if (!req.client_id || typeof req.client_id !== "string") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Missing or invalid client_id",
+      iss,
+    });
+  }
+
+  if ("scope" in req && req.scope != null && typeof req.scope !== "string") {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Invalid scope type",
+      iss,
+    });
+  }
+
+  return;
 }
 
 export function validateTokenRequest(
-  req: TokenRequest,
+  req: unknown,
   iss: string,
-): TokenErrorResponse | undefined {
+): asserts req is TokenRequest {
   if (!isTokenRequest(req)) {
-    return new OAuthError({
+    throw new OAuthError({
       error: "invalid_request",
       error_description: "Invalid token request",
-    }).toJSON();
+      iss,
+    });
   }
 
   if (
@@ -192,46 +268,46 @@ export function validateTokenRequest(
     isClientCredentialsGrantRequest(req) ||
     isRefreshTokenGrantRequest(req)
   ) {
-    // No additional validation needed here, all required fields are present
-    return undefined;
+    return;
   }
 
-  return new OAuthError({
+  throw new OAuthError({
     error: "unsupported_grant_type",
     error_description: `Unsupported grant_type: ${(req as TokenRequest).grant_type}`,
     iss,
-  }).toJSON();
+  });
 }
 
 export async function validateAuthorizationCodeClaims(args: {
   claims: AuthorizationCodeClaims;
   req: AuthorizationCodeGrantRequest;
   iss: string;
-}): Promise<TokenErrorResponse | undefined> {
+}): Promise<void> {
   const { claims, req, iss } = args;
 
   if (!claims || !("sub" in claims) || !claims.sub) {
-    return new OAuthError({
+    throw new OAuthError({
       error: "invalid_grant",
       error_description: "Invalid authorization code: missing subject (sub)",
       iss,
-    }).toJSON();
+    });
   }
 
   if (claims.client_id !== req.client_id) {
-    return new OAuthError({
+    throw new OAuthError({
       error: "invalid_grant",
       error_description: "Authorization code was issued to a different client",
       iss,
-    }).toJSON();
+    });
   }
 
   // TODO: Per RFC 8707, resource maps to aud, but RFC 9068 is both required but also accept a fallback registered for the client?
   const aud = claims.resource;
-  if (!aud) {
+  if (!aud || (Array.isArray(aud) && aud.length === 0)) {
     throw new OAuthError({
       error: "invalid_grant",
       error_description: "Missing resource in authorization code",
+      iss,
     });
   }
 
@@ -239,6 +315,18 @@ export async function validateAuthorizationCodeClaims(args: {
     throw new OAuthError({
       error: "invalid_request",
       error_description: "Missing code_challenge in authorization session",
+      iss,
+    });
+  }
+
+  if (
+    claims.code_challenge_method !== "plain" &&
+    claims.code_challenge_method !== "S256"
+  ) {
+    throw new OAuthError({
+      error: "invalid_request",
+      error_description: "Unsupported code_challenge_method",
+      iss,
     });
   }
 
@@ -252,33 +340,33 @@ export async function validateAuthorizationCodeClaims(args: {
     throw new OAuthError({
       error: "invalid_grant",
       error_description: "Invalid PKCE code_verifier",
+      iss,
     });
   }
-
-  return undefined;
-}
-
-export function validateClientCredentialsGrantRequest(
-  req: ClientCredentialsGrantRequest,
-  iss: string,
-): TokenErrorResponse | undefined {
-  if (!("client_id" in req) || typeof req.client_id !== "string") {
-    return new OAuthError({
-      error: "invalid_request",
-      error_description: "Missing or invalid client_id",
-      iss,
-    }).toJSON();
-  }
-
-  return undefined;
 }
 
 export async function validateRefreshTokenClaims(args: {
   claims: RefreshTokenClaims;
   req: RefreshTokenGrantRequest;
   iss: string;
-}): Promise<TokenErrorResponse | undefined> {
+}): Promise<void> {
   const { claims, req, iss } = args;
+
+  if (!claims || !("sub" in claims) || !claims.sub) {
+    throw new OAuthError({
+      error: "invalid_grant",
+      error_description: "Invalid refresh token: missing subject (sub)",
+      iss,
+    });
+  }
+
+  if (!claims.client_id) {
+    throw new OAuthError({
+      error: "invalid_grant",
+      error_description: "Invalid refresh token: missing client binding",
+      iss,
+    });
+  }
 
   // 2. Validate client binding
   if (req.client_id && claims.client_id !== req.client_id) {
@@ -306,15 +394,13 @@ export async function validateRefreshTokenClaims(args: {
 
   // TODO: Per RFC 8707, resource maps to aud, but RFC 9068 is both required but also accept a fallback registered for the client?
   const aud = claims.resource;
-  if (!aud) {
+  if (!aud || (Array.isArray(aud) && aud.length === 0)) {
     throw new OAuthError({
       error: "invalid_grant",
       error_description: "Missing resource in authorization code",
       iss,
     });
   }
-
-  return undefined;
 }
 
 // #endregion validation functions
@@ -336,6 +422,16 @@ export async function buildAuthorizationCodeGrant(
     extraAccessTokenClaims,
     extraRefreshTokenClaims,
   } = args;
+
+  validateTokenRequest(req, iss);
+  validateAuthorizationCodeGrantRequest(req, iss);
+
+  await validateAuthorizationCodeClaims({
+    claims: codeClaims,
+    req,
+    iss,
+  });
+
   const atOpts = accessTokenDefaults(accessTokenOptions);
   const rtOpts = refreshTokenDefaults(refreshTokenOptions);
 
@@ -409,6 +505,9 @@ export async function buildClientCredentialsGrant(
 ): Promise<BuildClientCredentialsGrantReturn> {
   const { req, accessTokenOptions, extraAccessTokenClaims, iss } = args;
 
+  validateTokenRequest(req, iss);
+  validateClientCredentialsGrantRequest(req, iss);
+
   const atOpts = accessTokenDefaults(accessTokenOptions);
 
   const randomJti = args.randomJti || crypto.randomUUID;
@@ -461,6 +560,15 @@ export async function buildRefreshTokenGrant(
     extraRefreshTokenClaims,
     iss,
   } = args;
+
+  validateTokenRequest(req, iss);
+  validateRefreshTokenGrantRequest(req, iss);
+
+  await validateRefreshTokenClaims({
+    claims: refreshTokenClaims,
+    req,
+    iss,
+  });
 
   const atOpts = accessTokenDefaults(accessTokenOptions);
   const rtOpts = refreshTokenDefaults(refreshTokenOptions);

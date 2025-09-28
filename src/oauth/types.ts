@@ -169,8 +169,8 @@ export interface RefreshTokenGrantRequest {
  */
 export type TokenRequest =
   | AuthorizationCodeGrantRequest
-  | RefreshTokenGrantRequest
-  | ClientCredentialsGrantRequest;
+  | ClientCredentialsGrantRequest
+  | RefreshTokenGrantRequest;
 
 /**
  * Represents a successful response from the token endpoint.
