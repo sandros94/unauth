@@ -33,6 +33,14 @@ import {
   introspectIdToken,
 } from "./internal";
 
+/**
+ * OIDCProvider
+ *
+ * A thin convenience wrapper over the low-level helpers exported from this module.
+ * It shares a common issuer and token options across authorize, token, and
+ * introspection helpers. All standalone helpers remain exported above; this class
+ * is purely ergonomic and does not add new logic.
+ */
 export class OIDCProvider extends OAuthProvider {
   private readonly authorizationCodeOptions: ResolvedAuthorizationCodeOptions;
   private readonly refreshTokenOptions: ResolvedRefreshTokenOptions;
