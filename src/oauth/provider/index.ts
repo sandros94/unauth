@@ -71,11 +71,7 @@ export class OAuthProvider {
     req: Pick<AuthorizeRequest, "redirect_uri" | "state">,
     registeredRedirectUris: string | string[],
   ) {
-    return validateRedirectUri(
-      req,
-      registeredRedirectUris,
-      this.iss,
-    );
+    return validateRedirectUri(req, registeredRedirectUris, this.iss);
   }
 
   async authorizationCode(
@@ -99,17 +95,21 @@ export class OAuthProvider {
   async authorizationCodeGrant(
     args: Omit<
       BuildAuthorizationCodeGrantArgs,
-      "iss" | "randomJti" | "accessTokenOptions" | "refreshTokenOptions"
+      | "iss"
+      | "randomJti"
+      | "authorizationCodeOptions"
+      | "accessTokenOptions"
+      | "refreshTokenOptions"
     >,
   ) {
     return buildAuthorizationCodeGrant({
       req: args.req,
-      codeClaims: args.codeClaims,
       currentDate: args.currentDate,
       extraAccessTokenClaims: args.extraAccessTokenClaims,
       extraRefreshTokenClaims: args.extraRefreshTokenClaims,
       iss: this.iss,
       randomJti: this.randomJti,
+      authorizationCodeOptions: this.acOptions,
       accessTokenOptions: this.atOptions,
       refreshTokenOptions: this.rtOptions,
     });
@@ -140,7 +140,6 @@ export class OAuthProvider {
     return buildRefreshTokenGrant({
       req: args.req,
       currentDate: args.currentDate,
-      refreshTokenClaims: args.refreshTokenClaims,
       extraAccessTokenClaims: args.extraAccessTokenClaims,
       extraRefreshTokenClaims: args.extraRefreshTokenClaims,
       iss: this.iss,

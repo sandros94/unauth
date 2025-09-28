@@ -5,6 +5,7 @@ import { sign } from "unjwt/jws";
 import type { IdTokenClaims } from "../../types";
 import {
   type AuthorizationCodeGrantRequest,
+  type RefreshTokenGrantRequest,
   type BuildAuthorizationCodeGrantArgs as OAuthBuildAuthorizationCodeGrantArgs,
   type BuildAuthorizationCodeGrantReturn as OAuthBuildAuthorizationCodeGrantReturn,
   type BuildRefreshTokenGrantArgs as OAuthBuildRefreshTokenGrantArgs,
@@ -12,8 +13,11 @@ import {
   validateTokenRequest as oauthValidateTokenRequest,
   validateAuthorizationCodeGrantRequest as oauthValidateAuthorizationCodeGrantRequest,
   validateAuthorizationCodeClaims as oauthValidateAuthorizationCodeClaims,
+  validateRefreshTokenClaims as oauthValidateRefreshTokenClaims,
   buildAuthorizationCodeGrant as oauthBuildAuthorizationCodeGrant,
   buildRefreshTokenGrant as oauthBuildRefreshTokenGrant,
+  introspectAuthorizationCode,
+  introspectRefreshToken,
   OAuthError,
 } from "../../../oauth";
 import { type IdTokenOptions, idTokenDefaults } from "./defaults";
@@ -29,7 +33,6 @@ export {
   type BuildClientCredentialsGrantReturn,
   buildClientCredentialsGrant,
   validateClientCredentialsGrantRequest,
-  validateRefreshTokenClaims,
   validateTokenRequest,
 } from "../../../oauth/provider/internal/token";
 
@@ -43,8 +46,10 @@ interface BuildIDTokenArgs {
 }
 
 export interface BuildAuthorizationCodeGrantArgs
-  extends Omit<OAuthBuildAuthorizationCodeGrantArgs, "codeClaims"> {
-  codeClaims: AuthorizationCodeClaims;
+  extends Omit<OAuthBuildAuthorizationCodeGrantArgs, "req"> {
+  req: Omit<AuthorizationCodeGrantRequest, "code"> & {
+    code: string | AuthorizationCodeClaims;
+  };
   idTokenOptions: IdTokenOptions;
   extraIdTokenClaims?: JWTClaims;
 }
@@ -56,11 +61,10 @@ export interface BuildAuthorizationCodeGrantReturn
 }
 
 export interface BuildRefreshTokenGrantArgs
-  extends Omit<
-    OAuthBuildRefreshTokenGrantArgs,
-    "codeClaims" | "refreshTokenClaims"
-  > {
-  refreshTokenClaims: RefreshTokenClaims;
+  extends Omit<OAuthBuildRefreshTokenGrantArgs, "req"> {
+  req: Omit<RefreshTokenGrantRequest, "refresh_token"> & {
+    refresh_token: string | RefreshTokenClaims;
+  };
   idTokenOptions: IdTokenOptions;
   extraIdTokenClaims?: JWTClaims;
 }
@@ -78,7 +82,7 @@ export interface BuildRefreshTokenGrantReturn
 
 export async function validateAuthorizationCodeClaims(args: {
   claims: AuthorizationCodeClaims;
-  req: AuthorizationCodeGrantRequest;
+  req: Pick<AuthorizationCodeGrantRequest, "client_id" | "code_verifier">;
   iss: string;
 }): Promise<void> {
   const { claims, req, iss } = args;
@@ -93,6 +97,29 @@ export async function validateAuthorizationCodeClaims(args: {
   }
 
   await oauthValidateAuthorizationCodeClaims({
+    claims,
+    req,
+    iss,
+  });
+}
+
+export async function validateRefreshTokenClaims(args: {
+  claims: RefreshTokenClaims;
+  req: Pick<RefreshTokenGrantRequest, "client_id" | "scope">;
+  iss: string;
+}): Promise<void> {
+  const { claims, req, iss } = args;
+
+  // OIDC requirements: ensure nonce presence propagated in codeClaims
+  if (!claims.nonce) {
+    throw new OAuthError({
+      error: "invalid_grant",
+      error_description: "Missing nonce in authorization code claims",
+      iss,
+    });
+  }
+
+  await oauthValidateRefreshTokenClaims({
     claims,
     req,
     iss,
@@ -141,7 +168,7 @@ export async function buildAuthorizationCodeGrant(
 ): Promise<BuildAuthorizationCodeGrantReturn> {
   const {
     req,
-    codeClaims,
+    authorizationCodeOptions,
     accessTokenOptions,
     refreshTokenOptions,
     idTokenOptions,
@@ -156,6 +183,17 @@ export async function buildAuthorizationCodeGrant(
   oauthValidateTokenRequest(req, iss);
   oauthValidateAuthorizationCodeGrantRequest(req, iss);
 
+  const codeClaims =
+    typeof req.code === "string"
+      ? (
+          await introspectAuthorizationCode<AuthorizationCodeClaims>({
+            token: req.code,
+            iss,
+            options: authorizationCodeOptions,
+          })
+        ).payload
+      : req.code;
+
   // Validate authorization code claims
   await validateAuthorizationCodeClaims({
     claims: codeClaims,
@@ -169,8 +207,11 @@ export async function buildAuthorizationCodeGrant(
     accessTokenClaims,
     refreshTokenClaims,
   } = await oauthBuildAuthorizationCodeGrant({
-    req,
-    codeClaims,
+    req: {
+      ...req,
+      code: codeClaims, // pass the claims to avoid double introspection
+    },
+    authorizationCodeOptions,
     accessTokenOptions,
     refreshTokenOptions,
     extraAccessTokenClaims,
@@ -210,7 +251,6 @@ export async function buildRefreshTokenGrant(
 ): Promise<BuildRefreshTokenGrantReturn> {
   const {
     req,
-    refreshTokenClaims: oldRTClaims,
     idTokenOptions,
     accessTokenOptions,
     refreshTokenOptions,
@@ -222,14 +262,34 @@ export async function buildRefreshTokenGrant(
     currentDate = new Date(),
   } = args;
 
+  const oldRTClaims =
+    typeof req.refresh_token === "string"
+      ? (
+          await introspectRefreshToken<RefreshTokenClaims>({
+            token: req.refresh_token,
+            iss,
+            options: refreshTokenOptions,
+          })
+        ).payload
+      : req.refresh_token;
+
+  // Validate refresh token claims
+  await validateRefreshTokenClaims({
+    claims: oldRTClaims,
+    req,
+    iss,
+  });
+
   // Build OAuth tokens first
   const {
     res: oauthRes,
     accessTokenClaims,
     refreshTokenClaims,
   } = await oauthBuildRefreshTokenGrant({
-    req,
-    refreshTokenClaims: oldRTClaims,
+    req: {
+      ...req,
+      refresh_token: oldRTClaims, // pass the claims to avoid double introspection
+    },
     accessTokenOptions,
     refreshTokenOptions,
     extraAccessTokenClaims,

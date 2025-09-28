@@ -16,11 +16,16 @@ import type {
 
 import { OAuthError } from "../error";
 import {
+  type AuthorizationCodeOptions,
   type AccessTokenOptions,
   type RefreshTokenOptions,
   accessTokenDefaults,
   refreshTokenDefaults,
 } from "./defaults";
+import {
+  introspectAuthorizationCode,
+  introspectRefreshToken,
+} from "./introspect";
 import { isScopeSubset, validatePKCE } from "./utils";
 
 // #region type definitions
@@ -29,8 +34,10 @@ import { isScopeSubset, validatePKCE } from "./utils";
  * Arguments for handling the `authorization_code` grant flow.
  */
 export interface BuildAuthorizationCodeGrantArgs {
-  req: AuthorizationCodeGrantRequest;
-  codeClaims: AuthorizationCodeClaims;
+  req: Omit<AuthorizationCodeGrantRequest, "code"> & {
+    code: string | AuthorizationCodeClaims;
+  };
+  authorizationCodeOptions: AuthorizationCodeOptions;
   accessTokenOptions: AccessTokenOptions;
   refreshTokenOptions: RefreshTokenOptions;
   extraAccessTokenClaims?: JWTClaims;
@@ -91,8 +98,9 @@ export interface BuildClientCredentialsGrantReturn {
  * Arguments for handling the `refresh_token` grant flow.
  */
 export interface BuildRefreshTokenGrantArgs {
-  req: RefreshTokenGrantRequest;
-  refreshTokenClaims: RefreshTokenClaims;
+  req: Omit<RefreshTokenGrantRequest, "refresh_token"> & {
+    refresh_token: string | RefreshTokenClaims;
+  };
   accessTokenOptions: AccessTokenOptions;
   refreshTokenOptions: RefreshTokenOptions;
   extraAccessTokenClaims?: JWTClaims;
@@ -187,7 +195,7 @@ export function validateAuthorizationCodeGrantRequest(
 }
 
 export function validateClientCredentialsGrantRequest(
-  req: ClientCredentialsGrantRequest,
+  req: Pick<ClientCredentialsGrantRequest, "client_id" | "scope" | "resource">,
   iss: string,
 ): void {
   if (!req.client_id || typeof req.client_id !== "string") {
@@ -280,7 +288,7 @@ export function validateTokenRequest(
 
 export async function validateAuthorizationCodeClaims(args: {
   claims: AuthorizationCodeClaims;
-  req: AuthorizationCodeGrantRequest;
+  req: Pick<AuthorizationCodeGrantRequest, "client_id" | "code_verifier">;
   iss: string;
 }): Promise<void> {
   const { claims, req, iss } = args;
@@ -347,7 +355,7 @@ export async function validateAuthorizationCodeClaims(args: {
 
 export async function validateRefreshTokenClaims(args: {
   claims: RefreshTokenClaims;
-  req: RefreshTokenGrantRequest;
+  req: Pick<RefreshTokenGrantRequest, "client_id" | "scope">;
   iss: string;
 }): Promise<void> {
   const { claims, req, iss } = args;
@@ -415,7 +423,7 @@ export async function buildAuthorizationCodeGrant(
 ): Promise<BuildAuthorizationCodeGrantReturn> {
   const {
     req,
-    codeClaims,
+    authorizationCodeOptions,
     accessTokenOptions,
     refreshTokenOptions,
     iss,
@@ -425,6 +433,17 @@ export async function buildAuthorizationCodeGrant(
 
   validateTokenRequest(req, iss);
   validateAuthorizationCodeGrantRequest(req, iss);
+
+  const codeClaims =
+    typeof req.code === "string"
+      ? (
+          await introspectAuthorizationCode({
+            token: req.code,
+            iss,
+            options: authorizationCodeOptions,
+          })
+        ).payload
+      : req.code;
 
   await validateAuthorizationCodeClaims({
     claims: codeClaims,
@@ -553,7 +572,6 @@ export async function buildRefreshTokenGrant(
 ): Promise<BuildRefreshTokenGrantReturn> {
   const {
     req,
-    refreshTokenClaims,
     accessTokenOptions,
     refreshTokenOptions,
     extraAccessTokenClaims,
@@ -563,6 +581,17 @@ export async function buildRefreshTokenGrant(
 
   validateTokenRequest(req, iss);
   validateRefreshTokenGrantRequest(req, iss);
+
+  const refreshTokenClaims =
+    typeof req.refresh_token === "string"
+      ? (
+          await introspectRefreshToken({
+            token: req.refresh_token,
+            iss,
+            options: refreshTokenOptions,
+          })
+        ).payload
+      : req.refresh_token;
 
   await validateRefreshTokenClaims({
     claims: refreshTokenClaims,

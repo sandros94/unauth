@@ -20,15 +20,17 @@ import {
 } from "./defaults";
 
 // Utility to introspect refresh tokens while validating their claims
-export async function introspectAuthorizationCode(args: {
+export async function introspectAuthorizationCode<
+  T extends AuthorizationCodeClaims,
+>(args: {
   token: string;
   iss: string;
   options: AuthorizationCodeOptions;
-}): Promise<JWEDecryptResult<AuthorizationCodeClaims>> {
+}): Promise<JWEDecryptResult<T>> {
   const { token, iss, options } = args;
   const opts = authorizationCodeDefaults(options);
 
-  return decrypt<AuthorizationCodeClaims>(token, opts.privateKey, {
+  return decrypt<T>(token, opts.privateKey, {
     issuer: iss,
     typ: "ac+jwt",
     maxTokenAge: opts.encryptOptions.expiresIn,
@@ -37,16 +39,16 @@ export async function introspectAuthorizationCode(args: {
 }
 
 // Utility to introspect access tokens while validating their claims
-export async function introspectAccessToken(args: {
+export async function introspectAccessToken<T extends AccessTokenClaims>(args: {
   token: string;
   iss: string;
   options: AccessTokenOptions;
-}): Promise<JWSVerifyResult<AccessTokenClaims>> {
+}): Promise<JWSVerifyResult<T>> {
   const { token, iss, options } = args;
   const opts = accessTokenDefaults(options);
   const key = preferPublicKey(opts);
 
-  return verify<AccessTokenClaims>(token, key, {
+  return verify<T>(token, key, {
     issuer: iss,
     typ: "at+jwt",
     maxTokenAge: opts.signOptions.expiresIn,
@@ -55,15 +57,17 @@ export async function introspectAccessToken(args: {
 }
 
 // Utility to introspect refresh tokens while validating their claims
-export async function introspectRefreshToken(args: {
+export async function introspectRefreshToken<
+  T extends RefreshTokenClaims,
+>(args: {
   token: string;
   iss: string;
   options: RefreshTokenOptions;
-}): Promise<JWEDecryptResult<RefreshTokenClaims>> {
+}): Promise<JWEDecryptResult<T>> {
   const { token, iss, options } = args;
   const opts = refreshTokenDefaults(options);
 
-  return decrypt<RefreshTokenClaims>(token, opts.privateKey, {
+  return decrypt<T>(token, opts.privateKey, {
     issuer: iss,
     typ: "rt+jwt",
     maxTokenAge: opts.encryptOptions.expiresIn,

@@ -8,16 +8,16 @@ import { type IdTokenOptions, idTokenDefaults } from "./defaults";
 export * from "../../../oauth/provider/internal/introspect";
 
 // Utility to introspect id tokens while validating their claims
-export async function introspectIdToken(args: {
+export async function introspectIdToken<T extends IdTokenClaims>(args: {
   token: string;
   iss: string;
   options: IdTokenOptions;
-}): Promise<JWSVerifyResult<IdTokenClaims>> {
+}): Promise<JWSVerifyResult<T>> {
   const { token, iss, options } = args;
   const opts = idTokenDefaults(options);
   const key = preferPublicKey(opts);
 
-  return verify<IdTokenClaims>(token, key, {
+  return verify<T>(token, key, {
     issuer: iss,
     typ: "id+jwt",
     maxTokenAge: opts.signOptions.expiresIn,

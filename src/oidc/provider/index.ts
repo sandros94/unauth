@@ -100,6 +100,7 @@ export class OIDCProvider extends OAuthProvider {
       BuildAuthorizationCodeGrantArgs,
       | "iss"
       | "randomJti"
+      | "authorizationCodeOptions"
       | "accessTokenOptions"
       | "refreshTokenOptions"
       | "idTokenOptions"
@@ -107,13 +108,13 @@ export class OIDCProvider extends OAuthProvider {
   ): Promise<BuildAuthorizationCodeGrantReturn> {
     return buildAuthorizationCodeGrant({
       req: args.req,
-      codeClaims: args.codeClaims,
       currentDate: args.currentDate,
       extraIdTokenClaims: args.extraIdTokenClaims,
       extraAccessTokenClaims: args.extraAccessTokenClaims,
       extraRefreshTokenClaims: args.extraRefreshTokenClaims,
       iss: this.iss,
       randomJti: this.randomJtiFn,
+      authorizationCodeOptions: this.authorizationCodeOptions,
       accessTokenOptions: this.accessTokenOptions,
       refreshTokenOptions: this.refreshTokenOptions,
       idTokenOptions: this.idTokenOptions,
@@ -133,7 +134,6 @@ export class OIDCProvider extends OAuthProvider {
     return buildRefreshTokenGrant({
       req: args.req,
       currentDate: args.currentDate,
-      refreshTokenClaims: args.refreshTokenClaims,
       extraIdTokenClaims: args.extraIdTokenClaims,
       extraAccessTokenClaims: args.extraAccessTokenClaims,
       extraRefreshTokenClaims: args.extraRefreshTokenClaims,
