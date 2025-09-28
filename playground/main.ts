@@ -3,8 +3,8 @@ import { generateJWK } from "unauth/utils";
 import {
   type AuthorizeRequest,
   type TokenRequest,
+  type IssueTokenReturn,
   OIDCProvider,
-  OAuthError,
 } from "unauth/oidc";
 
 const app = new H3();
@@ -51,35 +51,38 @@ app.get("/callback", (event) => {
 app.get("/authorize", async (event) => {
   const req = getQuery<AuthorizeRequest>(event);
 
-  const redirect = await provider
-    .authorize(
-      {
-        req,
-        claims: {
-          sub: "user-123", // Authenticate your user here and set the subject (sub) claim
-        },
-      },
-      "http://localhost:3000/callback",
-    )
-    .catch((error_) => {
-      if (error_ instanceof OAuthError) {
-        const error = error_.toJSON();
-        throw new HTTPError({
-          status: 402,
-          statusText: "OAuth Error",
-          cause: new Error(`${error.error}: ${error.error_description}`),
-        });
-      }
-      throw new HTTPError({
-        status: 500,
-        statusText: "Internal Server Error",
-        cause: error_,
-      });
+  const validation = provider.validateAuthorizeRequest(req);
+
+  if (!validation.success) {
+    throw new HTTPError({
+      status: 400,
+      statusText: "Invalid request",
+      cause: new Error(
+        `${validation.error.error}: ${validation.error.error_description}`,
+      ),
     });
+  }
+  const normalized = validation.value;
+
+  const redirect = await provider.issueAuthorizationCode({
+    ...normalized,
+    subject: "user-123",
+    redirect_uri: "http://localhost:3000/callback",
+  });
+
+  if (!redirect.success) {
+    throw new HTTPError({
+      status: 400,
+      statusText: "Invalid request",
+      cause: new Error(
+        `${redirect.error.error}: ${redirect.error.error_description}`,
+      ),
+    });
+  }
 
   return new Response(null, {
     status: 302,
-    headers: { Location: redirect },
+    headers: { Location: redirect.value },
   });
 });
 
@@ -90,23 +93,48 @@ app.post("/token", async (event) => {
 
   if (!req) throw HTTPError.status(400, "Invalid or missing request body");
 
-  const grant = await provider.token(req).catch((error_) => {
-    if (error_ instanceof OAuthError) {
-      const error = error_.toJSON();
+  const validation = provider.validateTokenRequest(req);
+
+  if (!validation.success) {
+    throw new HTTPError({
+      status: 400,
+      statusText: "Invalid request",
+      cause: new Error(
+        `${validation.error.error}: ${validation.error.error_description}`,
+      ),
+    });
+  }
+  const normalized = validation.value;
+
+  let tokenGrant: IssueTokenReturn;
+  switch (normalized.grant_type) {
+    case "authorization_code": {
+      tokenGrant = await provider.issueAuthorizationCodeGrant(normalized);
+      break;
+    }
+    case "client_credentials": {
+      tokenGrant = await provider.issueClientCredentialsGrant(normalized);
+      break;
+    }
+    case "refresh_token": {
+      tokenGrant = await provider.issueRefreshTokenGrant(normalized);
+      break;
+    }
+    default: {
       throw new HTTPError({
-        status: 402,
-        statusText: "OAuth Error",
-        cause: new Error(`${error.error}: ${error.error_description}`),
+        status: 400,
+        statusText: "Invalid grant type",
       });
     }
-    throw new HTTPError({
-      status: 500,
-      statusText: "Internal Server Error",
-      cause: error_,
-    });
-  });
+  }
 
-  return grant.res;
+  return tokenGrant.success
+    ? tokenGrant.value
+    : new Response(JSON.stringify(tokenGrant.error), {
+        status: 400,
+        statusText: "Invalid request",
+        headers: { "Content-Type": "application/json" },
+      });
 });
 
 // UserInfo endpoint (GET)
