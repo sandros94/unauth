@@ -5,6 +5,7 @@ import { sign } from "unjwt/jws";
 
 import type {
   TokenRequest,
+  TokenErrorResponse,
   AuthorizationCodeClaims,
   AccessTokenClaims,
   RefreshTokenClaims,
@@ -136,13 +137,8 @@ function isTokenRequest(value: unknown): value is TokenRequest {
   if (typeof value !== "object" || value == null) return false;
   const v = value as TokenRequest;
 
-  // Only check for `grant_type` presence and type here.
-  return (
-    typeof v.grant_type === "string" &&
-    ["authorization_code", "refresh_token", "client_credentials"].includes(
-      v.grant_type,
-    )
-  );
+  // Only check for `grant_type` presence here.
+  return typeof v.grant_type === "string";
 }
 
 function isAuthorizationCodeGrantRequest(
@@ -269,13 +265,13 @@ export function validateRefreshTokenGrantRequest(
 export function validateTokenRequest(
   req: unknown,
   iss: string,
-): req is TokenRequest {
+): TokenRequest | TokenErrorResponse {
   if (!isTokenRequest(req)) {
-    throw new OAuthError({
+    return new OAuthError({
       error: "invalid_request",
       error_description: "Invalid token request",
       iss,
-    });
+    }).toJSON();
   }
 
   if (
@@ -283,14 +279,14 @@ export function validateTokenRequest(
     isClientCredentialsGrantRequest(req) ||
     isRefreshTokenGrantRequest(req)
   ) {
-    return true;
+    return req;
   }
 
-  throw new OAuthError({
+  return new OAuthError({
     error: "unsupported_grant_type",
     error_description: `Unsupported grant_type: ${(req as TokenRequest).grant_type}`,
     iss,
-  });
+  }).toJSON();
 }
 
 export async function validateAuthorizationCodeClaims(args: {

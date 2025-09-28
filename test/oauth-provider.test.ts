@@ -332,16 +332,26 @@ describe("OAuth Provider", () => {
     });
 
     it("validateTokenRequest checks grant_type", () => {
-      expect(() => validateTokenRequest({}, iss)).toThrowError(OAuthError);
-      expect(() =>
-        validateTokenRequest({ grant_type: "foobar" }, iss),
-      ).toThrowError(OAuthError);
-      expect(() =>
-        validateTokenRequest(
-          { grant_type: "client_credentials", client_id: "c", resource: "r" },
-          iss,
-        ),
-      ).not.toThrow();
+      const invalidReq = validateTokenRequest({}, iss);
+      expect(invalidReq).toMatchObject({ error: "invalid_request" });
+
+      const invalidGrantType = validateTokenRequest(
+        { grant_type: "foobar" },
+        iss,
+      );
+      expect(invalidGrantType).toMatchObject({
+        error: "unsupported_grant_type",
+      });
+
+      const req = validateTokenRequest(
+        { grant_type: "client_credentials", client_id: "c", resource: "r" },
+        iss,
+      );
+      expect(req).toMatchObject({
+        grant_type: "client_credentials",
+        client_id: "c",
+        resource: "r",
+      });
     });
 
     it("validateAuthorizationCodeClaims validates PKCE and bindings", async () => {

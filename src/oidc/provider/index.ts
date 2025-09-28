@@ -4,12 +4,14 @@ export { OAuthError } from "../../oauth";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
-import { OAuthProvider } from "../../oauth";
 import type {
+  TokenRequest,
+  TokenErrorResponse,
   ResolvedAccessTokenOptions,
   ResolvedAuthorizationCodeOptions,
   ResolvedRefreshTokenOptions,
-} from "../../oauth/provider/internal";
+} from "../../oauth";
+import { OAuthProvider, OAuthError } from "../../oauth";
 
 import type { IdTokenClaims } from "../types";
 import type {
@@ -18,18 +20,21 @@ import type {
   BuildAuthorizationCodeArgs,
   BuildAuthorizationCodeGrantArgs,
   BuildAuthorizationCodeGrantReturn,
+  BuildClientCredentialsGrantReturn,
   BuildAuthorizationCodeReturn,
   BuildOIDCDiscoveryArgs,
-  BuildRefreshTokenGrantArgs,
   BuildRefreshTokenGrantReturn,
   OIDCDiscoveryDocument,
   OIDCUserInfoProfile,
 } from "./internal";
 import {
   oidcProviderDefaults,
+  validateRedirectUri,
+  validateTokenRequest,
+  buildOIDCDiscoveryDocument,
   buildAuthorizationCode,
   buildAuthorizationCodeGrant,
-  buildOIDCDiscoveryDocument,
+  buildClientCredentialsGrant,
   buildRefreshTokenGrant,
   buildUserInfo,
   introspectIdToken,
@@ -82,11 +87,25 @@ export class OIDCProvider extends OAuthProvider {
 
   // Authorize
 
-  override async authorizationCode(
+  override async authorize(
     args: Pick<BuildAuthorizationCodeArgs, "req" | "claims">,
+    registeredRedirectUris: string | string[],
   ): Promise<BuildAuthorizationCodeReturn> {
+    const redirect_uri = validateRedirectUri(
+      args.req,
+      registeredRedirectUris,
+      this.iss,
+    );
+
+    if (typeof redirect_uri !== "string") {
+      throw new OAuthError(redirect_uri);
+    }
+
     return buildAuthorizationCode({
-      req: args.req,
+      req: {
+        ...args.req,
+        redirect_uri,
+      },
       claims: args.claims,
       iss: this.iss,
       randomJti: this.randomJtiFn,
@@ -96,54 +115,73 @@ export class OIDCProvider extends OAuthProvider {
 
   // Token
 
-  override async authorizationCodeGrant(
-    args: Omit<
-      BuildAuthorizationCodeGrantArgs,
-      | "iss"
-      | "randomJti"
-      | "authorizationCodeOptions"
-      | "accessTokenOptions"
-      | "refreshTokenOptions"
-      | "idTokenOptions"
-    >,
-  ): Promise<BuildAuthorizationCodeGrantReturn> {
-    return buildAuthorizationCodeGrant({
-      req: args.req,
-      currentDate: args.currentDate,
-      extraIdTokenClaims: args.extraIdTokenClaims,
-      extraAccessTokenClaims: args.extraAccessTokenClaims,
-      extraRefreshTokenClaims: args.extraRefreshTokenClaims,
-      iss: this.iss,
-      randomJti: this.randomJtiFn,
-      authorizationCodeOptions: this.authorizationCodeOptions,
-      accessTokenOptions: this.accessTokenOptions,
-      refreshTokenOptions: this.refreshTokenOptions,
-      idTokenOptions: this.idTokenOptions,
-    });
-  }
+  override async token(
+    req: TokenRequest,
+    extra?: {
+      currentDate?: Date;
+      accessTokenClaims?: BuildAuthorizationCodeGrantArgs["extraAccessTokenClaims"];
+      refreshTokenClaims?: BuildAuthorizationCodeGrantArgs["extraRefreshTokenClaims"];
+      idTokenClaims?: BuildAuthorizationCodeGrantArgs["extraIdTokenClaims"];
+    },
+  ): Promise<
+    | BuildAuthorizationCodeGrantReturn
+    | BuildClientCredentialsGrantReturn
+    | BuildRefreshTokenGrantReturn
+    | { res: TokenErrorResponse }
+  > {
+    const _req = validateTokenRequest(req, this.iss);
 
-  override async refreshTokenGrant(
-    args: Omit<
-      BuildRefreshTokenGrantArgs,
-      | "iss"
-      | "randomJti"
-      | "accessTokenOptions"
-      | "refreshTokenOptions"
-      | "idTokenOptions"
-    >,
-  ): Promise<BuildRefreshTokenGrantReturn> {
-    return buildRefreshTokenGrant({
-      req: args.req,
-      currentDate: args.currentDate,
-      extraIdTokenClaims: args.extraIdTokenClaims,
-      extraAccessTokenClaims: args.extraAccessTokenClaims,
-      extraRefreshTokenClaims: args.extraRefreshTokenClaims,
-      iss: this.iss,
-      randomJti: this.randomJtiFn,
-      accessTokenOptions: this.accessTokenOptions,
-      refreshTokenOptions: this.refreshTokenOptions,
-      idTokenOptions: this.idTokenOptions,
-    });
+    if ("error" in _req) {
+      return { res: _req };
+    }
+
+    switch (req.grant_type) {
+      case "authorization_code": {
+        return buildAuthorizationCodeGrant({
+          req,
+          currentDate: extra?.currentDate,
+          extraAccessTokenClaims: extra?.accessTokenClaims,
+          extraRefreshTokenClaims: extra?.refreshTokenClaims,
+          extraIdTokenClaims: extra?.idTokenClaims,
+          iss: this.iss,
+          randomJti: this.randomJtiFn,
+          authorizationCodeOptions: this.authorizationCodeOptions,
+          accessTokenOptions: this.accessTokenOptions,
+          refreshTokenOptions: this.refreshTokenOptions,
+          idTokenOptions: this.idTokenOptions,
+        });
+      }
+      case "client_credentials": {
+        return buildClientCredentialsGrant({
+          req,
+          currentDate: extra?.currentDate,
+          extraAccessTokenClaims: extra?.accessTokenClaims,
+          iss: this.iss,
+          randomJti: this.randomJtiFn,
+          accessTokenOptions: this.accessTokenOptions,
+        });
+      }
+      case "refresh_token": {
+        return buildRefreshTokenGrant({
+          req,
+          currentDate: extra?.currentDate,
+          extraAccessTokenClaims: extra?.accessTokenClaims,
+          extraRefreshTokenClaims: extra?.refreshTokenClaims,
+          extraIdTokenClaims: extra?.idTokenClaims,
+          iss: this.iss,
+          randomJti: this.randomJtiFn,
+          accessTokenOptions: this.accessTokenOptions,
+          refreshTokenOptions: this.refreshTokenOptions,
+          idTokenOptions: this.idTokenOptions,
+        });
+      }
+      default: {
+        throw new OAuthError({
+          error: "unsupported_grant_type",
+          error_description: `The grant_type '${(req as TokenRequest).grant_type}' is not supported.`,
+        });
+      }
+    }
   }
 
   // Introspection

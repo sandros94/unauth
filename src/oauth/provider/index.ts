@@ -4,10 +4,10 @@ export * from "./internal";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
+import { OAuthError } from "./error";
 import type {
-  AuthorizeRequest,
-  AuthorizeErrorResponse,
   TokenRequest,
+  TokenErrorResponse,
   AuthorizationCodeClaims,
   AccessTokenClaims,
   RefreshTokenClaims,
@@ -73,24 +73,33 @@ export class OAuthProvider {
 
   // Discovery
 
-  discovery(options?: Omit<BuildOAuthDiscoveryArgs, "issuer">): OAuthDiscoveryDocument {
+  discovery(
+    options?: Omit<BuildOAuthDiscoveryArgs, "issuer">,
+  ): OAuthDiscoveryDocument {
     return buildOAuthDiscoveryDocument({ ...options, issuer: this.iss });
   }
 
   // Authorize
 
-  validateAuthorizeRedirectUri(
-    req: Pick<AuthorizeRequest, "redirect_uri" | "state">,
-    registeredRedirectUris: string | string[],
-  ): string | AuthorizeErrorResponse {
-    return validateRedirectUri(req, registeredRedirectUris, this.iss);
-  }
-
-  async authorizationCode(
+  async authorize(
     args: Pick<BuildAuthorizationCodeArgs, "req" | "claims">,
+    registeredRedirectUris: string | string[],
   ): Promise<BuildAuthorizationCodeReturn> {
+    const redirect_uri = validateRedirectUri(
+      args.req,
+      registeredRedirectUris,
+      this.iss,
+    );
+
+    if (typeof redirect_uri !== "string") {
+      throw new OAuthError(redirect_uri);
+    }
+
     return buildAuthorizationCode({
-      req: args.req,
+      req: {
+        ...args.req,
+        redirect_uri,
+      },
       claims: args.claims,
       iss: this.iss,
       randomJti: this.randomJti,
@@ -100,65 +109,68 @@ export class OAuthProvider {
 
   // Token
 
-  validateTokenRequest(req: unknown): req is TokenRequest {
-    return validateTokenRequest(req, this.iss);
-  }
+  async token(
+    req: TokenRequest,
+    extra?: {
+      currentDate?: Date;
+      accessTokenClaims?: BuildAuthorizationCodeGrantArgs["extraAccessTokenClaims"];
+      refreshTokenClaims?: BuildAuthorizationCodeGrantArgs["extraRefreshTokenClaims"];
+    },
+  ): Promise<
+    | BuildAuthorizationCodeGrantReturn
+    | BuildClientCredentialsGrantReturn
+    | BuildRefreshTokenGrantReturn
+    | { res: TokenErrorResponse }
+  > {
+    const _req = validateTokenRequest(req, this.iss);
 
-  async authorizationCodeGrant(
-    args: Omit<
-      BuildAuthorizationCodeGrantArgs,
-      | "iss"
-      | "randomJti"
-      | "authorizationCodeOptions"
-      | "accessTokenOptions"
-      | "refreshTokenOptions"
-    >,
-  ): Promise<BuildAuthorizationCodeGrantReturn> {
-    return buildAuthorizationCodeGrant({
-      req: args.req,
-      currentDate: args.currentDate,
-      extraAccessTokenClaims: args.extraAccessTokenClaims,
-      extraRefreshTokenClaims: args.extraRefreshTokenClaims,
-      iss: this.iss,
-      randomJti: this.randomJti,
-      authorizationCodeOptions: this.acOptions,
-      accessTokenOptions: this.atOptions,
-      refreshTokenOptions: this.rtOptions,
-    });
-  }
+    if ("error" in _req) {
+      return { res: _req };
+    }
 
-  async clientCredentialsGrant(
-    args: Omit<
-      BuildClientCredentialsGrantArgs,
-      "iss" | "randomJti" | "accessTokenOptions"
-    >,
-  ): Promise<BuildClientCredentialsGrantReturn> {
-    return buildClientCredentialsGrant({
-      req: args.req,
-      currentDate: args.currentDate,
-      extraAccessTokenClaims: args.extraAccessTokenClaims,
-      iss: this.iss,
-      randomJti: this.randomJti,
-      accessTokenOptions: this.atOptions,
-    });
-  }
-
-  async refreshTokenGrant(
-    args: Omit<
-      BuildRefreshTokenGrantArgs,
-      "iss" | "randomJti" | "accessTokenOptions" | "refreshTokenOptions"
-    >,
-  ): Promise<BuildRefreshTokenGrantReturn> {
-    return buildRefreshTokenGrant({
-      req: args.req,
-      currentDate: args.currentDate,
-      extraAccessTokenClaims: args.extraAccessTokenClaims,
-      extraRefreshTokenClaims: args.extraRefreshTokenClaims,
-      iss: this.iss,
-      randomJti: this.randomJti,
-      accessTokenOptions: this.atOptions,
-      refreshTokenOptions: this.rtOptions,
-    });
+    switch (req.grant_type) {
+      case "authorization_code": {
+        return buildAuthorizationCodeGrant({
+          req: _req as BuildAuthorizationCodeGrantArgs["req"],
+          currentDate: extra?.currentDate,
+          extraAccessTokenClaims: extra?.accessTokenClaims,
+          extraRefreshTokenClaims: extra?.refreshTokenClaims,
+          iss: this.iss,
+          randomJti: this.randomJti,
+          authorizationCodeOptions: this.acOptions,
+          accessTokenOptions: this.atOptions,
+          refreshTokenOptions: this.rtOptions,
+        });
+      }
+      case "client_credentials": {
+        return buildClientCredentialsGrant({
+          req: _req as BuildClientCredentialsGrantArgs["req"],
+          currentDate: extra?.currentDate,
+          extraAccessTokenClaims: extra?.accessTokenClaims,
+          iss: this.iss,
+          randomJti: this.randomJti,
+          accessTokenOptions: this.atOptions,
+        });
+      }
+      case "refresh_token": {
+        return buildRefreshTokenGrant({
+          req: _req as BuildRefreshTokenGrantArgs["req"],
+          currentDate: extra?.currentDate,
+          extraAccessTokenClaims: extra?.accessTokenClaims,
+          extraRefreshTokenClaims: extra?.refreshTokenClaims,
+          iss: this.iss,
+          randomJti: this.randomJti,
+          accessTokenOptions: this.atOptions,
+          refreshTokenOptions: this.rtOptions,
+        });
+      }
+      default: {
+        throw new OAuthError({
+          error: "unsupported_grant_type",
+          error_description: `The grant_type '${(req as TokenRequest).grant_type}' is not supported.`,
+        });
+      }
+    }
   }
 
   // Introspection
