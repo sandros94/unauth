@@ -1,4 +1,4 @@
-import { H3, serve, HTTPError, getQuery, readBody } from "h3";
+import { H3, serve, HTTPError, getQuery, readBody } from "h3v2";
 import { generateJWK } from "unauth/utils";
 import {
   type AuthorizeRequest,
