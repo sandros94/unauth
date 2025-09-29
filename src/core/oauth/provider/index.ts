@@ -126,7 +126,9 @@ export class OAuthProvider {
     req: AuthorizeRequest,
     errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
   ): Result<
-    Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri">,
+    Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
+      redirect_uri?: string;
+    },
     undefined,
     AuthorizeErrorResponse
   > {

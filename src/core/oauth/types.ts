@@ -91,7 +91,7 @@ export interface AuthorizeRequest {
    * If multiple redirect_uris are registered for the client, the original request must contain a valid redirect_uri. Otherwise, if only one is registered it can be used as the default one.
    * If request contains a redirect_uri, it must be validated via exact match against the registered URIs.
    */
-  redirect_uri: string;
+  redirect_uri?: string;
   /**
    * An opaque value used by the client to maintain state between the request and callback. The authorization server includes this value when redirecting the user agent back to the client.
    */

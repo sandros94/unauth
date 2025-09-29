@@ -99,7 +99,9 @@ export class OIDCProvider extends OAuthProvider {
     req: AuthorizeRequest,
     errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
   ): Result<
-    Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri">,
+    Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
+      redirect_uri?: string;
+    },
     undefined,
     AuthorizeErrorResponse
   > {

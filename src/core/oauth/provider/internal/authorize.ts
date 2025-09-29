@@ -150,7 +150,9 @@ export function validateAuthorizeRequest(
   req: AuthorizeRequest,
   errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
 ): Result<
-  Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri">,
+  Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
+    redirect_uri?: string;
+  },
   undefined,
   AuthorizeErrorResponse
 > {
@@ -243,7 +245,7 @@ export function validateAuthorizeRequest(
 
   const {
     response_type: _rt,
-    redirect_uri: _ru, // This should be validated separately
+    redirect_uri, // This should be validated separately
     client_id,
     code_challenge,
     code_challenge_method,
@@ -256,6 +258,7 @@ export function validateAuthorizeRequest(
   return {
     success: true,
     value: {
+      redirect_uri,
       client_id,
       code_challenge,
       code_challenge_method,
