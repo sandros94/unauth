@@ -58,7 +58,7 @@ export function useOIDCProvider(
   async function getAccessToken(
     event: H3Event,
   ): Promise<AccessTokenClaims | null> {
-    const context = (event.context ||= {}).auth ||= {};
+    const context = ((event.context ||= {}).auth ||= {});
 
     if (context?.[accessTokenName]) {
       return context[accessTokenName];
@@ -80,7 +80,7 @@ export function useOIDCProvider(
   async function getRefreshToken(
     event: H3Event,
   ): Promise<RefreshTokenClaims | null> {
-    const context = (event.context ||= {}).auth ||= {};
+    const context = ((event.context ||= {}).auth ||= {});
 
     if (context?.[refreshTokenName]) {
       return context[refreshTokenName];
@@ -98,7 +98,7 @@ export function useOIDCProvider(
     return claims;
   }
   async function getIdToken(event: H3Event): Promise<IdTokenClaims | null> {
-    const context = (event.context ||= {}).auth ||= {};
+    const context = ((event.context ||= {}).auth ||= {});
 
     if (context?.[idTokenName]) {
       return context[idTokenName];
@@ -209,8 +209,11 @@ export function useOIDCProvider(
     }
     const normalized = validation.value;
 
-    const { accessTokenExtraClaims, refreshTokenExtraClaims, idTokenExtraClaims } =
-      await cb?.(normalized) ?? {};
+    const {
+      accessTokenExtraClaims,
+      refreshTokenExtraClaims,
+      idTokenExtraClaims,
+    } = (await cb?.(normalized)) ?? {};
 
     let tokenGrant: IssueTokenReturn;
     switch (normalized.grant_type) {
@@ -257,23 +260,29 @@ export function useOIDCProvider(
       });
     }
 
-    const context = (event.context ||= {}).auth ||= {};
+    const context = ((event.context ||= {}).auth ||= {});
     if (tokenGrant.artifacts?.accessTokenClaims !== undefined) {
-      Object.assign(context, { [accessTokenName]: tokenGrant.artifacts.accessTokenClaims });
+      Object.assign(context, {
+        [accessTokenName]: tokenGrant.artifacts.accessTokenClaims,
+      });
     }
     if (
       tokenGrant.artifacts &&
       "refreshTokenClaims" in tokenGrant.artifacts &&
       tokenGrant.artifacts?.refreshTokenClaims !== undefined
     ) {
-      Object.assign(context, { [refreshTokenName]: tokenGrant.artifacts.refreshTokenClaims });
+      Object.assign(context, {
+        [refreshTokenName]: tokenGrant.artifacts.refreshTokenClaims,
+      });
     }
     if (
       tokenGrant.artifacts &&
       "idTokenClaims" in tokenGrant.artifacts &&
       tokenGrant.artifacts?.idTokenClaims !== undefined
     ) {
-      Object.assign(context, { [idTokenName]: tokenGrant.artifacts.idTokenClaims });
+      Object.assign(context, {
+        [idTokenName]: tokenGrant.artifacts.idTokenClaims,
+      });
     }
 
     return tokenGrant.value;
@@ -297,7 +306,10 @@ export function useOIDCProvider(
   return {
     discovery: (options?: Omit<BuildOIDCDiscoveryArgs, "issuer">) => {
       // TODO: fix `getProvider().discovery` causing `this.issuer` to be undefined
-      return buildOIDCDiscoveryDocument({ ...options, issuer: getProvider().issuer })
+      return buildOIDCDiscoveryDocument({
+        ...options,
+        issuer: getProvider().issuer,
+      });
     },
     userInfo,
     jwkSet: getProvider().jwkSet,

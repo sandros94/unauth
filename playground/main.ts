@@ -31,37 +31,55 @@ const provider = useOIDCProvider({
 });
 
 // OpenID Provider Configuration (Discovery)
-router.get("/.well-known/openid-configuration", defineEventHandler(() => {
-  return provider.discovery();
-}));
+router.get(
+  "/.well-known/openid-configuration",
+  defineEventHandler(() => {
+    return provider.discovery();
+  }),
+);
 
 // JWKS (public keys)
-router.get("/.well-known/jwks.json", defineEventHandler(() => provider.jwkSet));
+router.get(
+  "/.well-known/jwks.json",
+  defineEventHandler(() => provider.jwkSet),
+);
 
 // Simple callback endpoint for manual testing; not used by the scripted test (which intercepts the Location header)
-router.get("/callback", defineEventHandler((event) => {
-  const q = getQuery<{ code?: string, state?: string }>(event);
-  return `Callback received. code=${q.code ?? "<none>"} state=${q.state ?? "<none>"}`;
-}));
+router.get(
+  "/callback",
+  defineEventHandler((event) => {
+    const q = getQuery<{ code?: string; state?: string }>(event);
+    return `Callback received. code=${q.code ?? "<none>"} state=${q.state ?? "<none>"}`;
+  }),
+);
 
-router.get("/authorize", defineEventHandler(async (event) => {
-  return provider.authorize(event, async (input, validateRedirectUri) => {
-    const redirect_uri = validateRedirectUri(input.redirect_uri, [
-      "http://localhost:3000/callback", // this is the one requested
-      "http://localhost:3000/alt-callback",
-    ]);
+router.get(
+  "/authorize",
+  defineEventHandler(async (event) => {
+    return provider.authorize(event, async (input, validateRedirectUri) => {
+      const redirect_uri = validateRedirectUri(input.redirect_uri, [
+        "http://localhost:3000/callback", // this is the one requested
+        "http://localhost:3000/alt-callback",
+      ]);
 
-    return {
-      subject: "user-123", // in a real app, you'd determine this from the user's session
-      redirect_uri,
-    }
-  });
-}));
+      return {
+        subject: "user-123", // in a real app, you'd determine this from the user's session
+        redirect_uri,
+      };
+    });
+  }),
+);
 
-router.post("/token", defineEventHandler(async (event) => {
-  return provider.token(event);
-}));
+router.post(
+  "/token",
+  defineEventHandler(async (event) => {
+    return provider.token(event);
+  }),
+);
 
-router.get("/userinfo", defineEventHandler(async (event) => {
-  return provider.userInfo(event);
-}));
+router.get(
+  "/userinfo",
+  defineEventHandler(async (event) => {
+    return provider.userInfo(event);
+  }),
+);

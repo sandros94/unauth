@@ -52,7 +52,7 @@ export function useOAuthProvider(
   async function getAccessToken(
     event: H3Event,
   ): Promise<AccessTokenClaims | null> {
-    const context = (event.context ||= {}).auth ||= {};
+    const context = ((event.context ||= {}).auth ||= {});
 
     if (context?.[accessTokenName]) {
       return context[accessTokenName];
@@ -74,7 +74,7 @@ export function useOAuthProvider(
   async function getRefreshToken(
     event: H3Event,
   ): Promise<RefreshTokenClaims | null> {
-    const context = (event.context ||= {}).auth ||= {};
+    const context = ((event.context ||= {}).auth ||= {});
 
     if (context?.[refreshTokenName]) {
       return context[refreshTokenName];
@@ -185,7 +185,7 @@ export function useOAuthProvider(
     const normalized = validation.value;
 
     const { accessTokenExtraClaims, refreshTokenExtraClaims } =
-      await cb?.(normalized) ?? {};
+      (await cb?.(normalized)) ?? {};
 
     let tokenGrant: IssueTokenReturn;
     switch (normalized.grant_type) {
@@ -230,16 +230,20 @@ export function useOAuthProvider(
       });
     }
 
-    const context = (event.context ||= {}).auth ||= {};
+    const context = ((event.context ||= {}).auth ||= {});
     if (tokenGrant.artifacts?.accessTokenClaims) {
-      Object.assign(context, { [accessTokenName]: tokenGrant.artifacts.accessTokenClaims });
+      Object.assign(context, {
+        [accessTokenName]: tokenGrant.artifacts.accessTokenClaims,
+      });
     }
     if (
       tokenGrant.artifacts &&
       "refreshTokenClaims" in tokenGrant.artifacts &&
       tokenGrant.artifacts?.refreshTokenClaims
     ) {
-      Object.assign(context, { [refreshTokenName]: tokenGrant.artifacts.refreshTokenClaims });
+      Object.assign(context, {
+        [refreshTokenName]: tokenGrant.artifacts.refreshTokenClaims,
+      });
     }
 
     return tokenGrant.value;
@@ -248,7 +252,10 @@ export function useOAuthProvider(
   return {
     discovery: (options?: Omit<BuildOAuthDiscoveryArgs, "issuer">) => {
       // TODO: fix `getProvider().discovery` causing `this.issuer` to be undefined
-      return buildOAuthDiscoveryDocument({ ...options, issuer: getProvider().issuer })
+      return buildOAuthDiscoveryDocument({
+        ...options,
+        issuer: getProvider().issuer,
+      });
     },
     jwkSet: getProvider().jwkSet,
     getAuthorizationCode,
