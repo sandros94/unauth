@@ -127,7 +127,91 @@ const accessClaims = await oauth.introspectAccessToken(
 
 ### Adapters
 
-- **H3**: For use with [H3](https://h3.dev)
+- **H3 v1**: For use with [H3 v1](https://v1.h3.dev)
+
+#### Minimal H3 v1 Example
+
+```ts
+import { createApp, createRouter, defineEventHandler, getQuery } from "h3";
+import { generateJWK, useOIDCProvider } from "unauth/h3";
+
+// Create an app instance
+export const app = createApp();
+
+// Create a new router and register it in app
+const router = createRouter();
+app.use(router);
+
+const [atJwk, idJwk] = await Promise.all([
+  generateJWK("RS256", { kid: "at-rsa-1" }),
+  generateJWK("RS256", { kid: "id-rsa-1" }),
+]);
+const provider = useOIDCProvider({
+  issuer: "http://localhost:3000",
+  authorizationCodeOptions: {
+    privateKey: "ac-secret",
+  },
+  refreshTokenOptions: {
+    privateKey: "rt-secret",
+  },
+  accessTokenOptions: atJwk,
+  idTokenOptions: idJwk,
+});
+
+// OpenID Provider Configuration (Discovery)
+router.get(
+  "/.well-known/openid-configuration",
+  defineEventHandler(() => {
+    return provider.discovery();
+  }),
+);
+
+// JWKS (public keys)
+router.get(
+  "/.well-known/jwks.json",
+  defineEventHandler(() => provider.jwkSet),
+);
+
+// Simple callback endpoint for manual testing
+router.get(
+  "/callback",
+  defineEventHandler((event) => {
+    const q = getQuery<{ code?: string; state?: string }>(event);
+    return `Callback received. code=${q.code ?? "<none>"} state=${q.state ?? "<none>"}`;
+  }),
+);
+
+router.get(
+  "/authorize",
+  defineEventHandler(async (event) => {
+    return provider.authorize(event, async (input, validateRedirectUri) => {
+      const redirect_uri = validateRedirectUri(input.redirect_uri, [
+        "http://localhost:3000/callback",     // The client must request one of these redirect URIs
+        "http://localhost:3000/alt-callback",
+      ]);
+
+      return {
+        subject: "user-123", // in a real app, you'd determine this from the user's session
+        redirect_uri,
+      };
+    });
+  }),
+);
+
+router.post(
+  "/token",
+  defineEventHandler(async (event) => {
+    return provider.token(event);
+  }),
+);
+
+router.get(
+  "/userinfo",
+  defineEventHandler(async (event) => {
+    return provider.userInfo(event);
+  }),
+);
+```
 
 ## Development
 
