@@ -44,44 +44,44 @@ import { OIDCProvider } from "unauth/oidc";
 
 // Configure the provider once during startup.
 const oidc = new OIDCProvider({
-	issuer: "https://auth.example.com",
-	authorizationCodeOptions: {
-		privateKey: process.env.AUTH_CODE_SECRET!,
-	},
-	refreshTokenOptions: {
-		privateKey: process.env.REFRESH_SECRET!,
-	},
-	accessTokenOptions: {
-		privateKey: ACCESS_TOKEN_PRIVATE_JWK,
-		publicKey: ACCESS_TOKEN_PUBLIC_JWK,
-	},
-	idTokenOptions: {
-		privateKey: ID_TOKEN_PRIVATE_JWK,
-		publicKey: ID_TOKEN_PUBLIC_JWK,
-	},
+  issuer: "https://auth.example.com",
+  authorizationCodeOptions: {
+    privateKey: process.env.AUTH_CODE_SECRET!,
+  },
+  refreshTokenOptions: {
+    privateKey: process.env.REFRESH_SECRET!,
+  },
+  accessTokenOptions: {
+    privateKey: ACCESS_TOKEN_PRIVATE_JWK,
+    publicKey: ACCESS_TOKEN_PUBLIC_JWK,
+  },
+  idTokenOptions: {
+    privateKey: ID_TOKEN_PRIVATE_JWK,
+    publicKey: ID_TOKEN_PUBLIC_JWK,
+  },
 });
 
 // In your authorize endpoint
 const authorize = oidc.validateAuthorizeRequest(req.query);
 if (!authorize.success) {
-	return redirectWithError(authorize.error);
+  return redirectWithError(authorize.error);
 }
 
 const code = await oidc.issueAuthorizationCode({
-	...authorize.value,
-	subject: "user-123",
-	redirect_uri: authorize.value.redirect_uri ?? DEFAULT_REDIRECT_URI,
+  ...authorize.value,
+  subject: "user-123",
+  redirect_uri: authorize.value.redirect_uri ?? DEFAULT_REDIRECT_URI,
 });
 
 // In your token endpoint
 const normalized = oidc.validateTokenRequest(req.body);
 if (!normalized.success) {
-	return sendError(normalized.error);
+  return sendError(normalized.error);
 }
 
 const grant = await oauth.issueTokenGrant(validation.value);
 if (!grant.success) {
-	return sendError(grant.error);
+  return sendError(grant.error);
 }
 
 const idToken = await oidc.introspectIdToken(grant.value.id_token);
@@ -93,32 +93,32 @@ const idToken = await oidc.introspectIdToken(grant.value.id_token);
 import { OAuthProvider } from "unauth/oauth";
 
 const oauth = new OAuthProvider({
-	issuer: "https://auth.example.com",
-	authorizationCodeOptions: {
-		privateKey: process.env.AUTH_CODE_SECRET!,
-	},
-	refreshTokenOptions: {
-		privateKey: process.env.REFRESH_SECRET!,
-	},
-	accessTokenOptions: {
-		privateKey: ACCESS_TOKEN_PRIVATE_JWK,
-		publicKey: ACCESS_TOKEN_PUBLIC_JWK,
-	},
+  issuer: "https://auth.example.com",
+  authorizationCodeOptions: {
+    privateKey: process.env.AUTH_CODE_SECRET!,
+  },
+  refreshTokenOptions: {
+    privateKey: process.env.REFRESH_SECRET!,
+  },
+  accessTokenOptions: {
+    privateKey: ACCESS_TOKEN_PRIVATE_JWK,
+    publicKey: ACCESS_TOKEN_PUBLIC_JWK,
+  },
 });
 
 const validation = oauth.validateTokenRequest(req.body);
 if (!validation.success) {
-	return sendError(validation.error);
+  return sendError(validation.error);
 }
 
 const grant = await oauth.issueTokenGrant(validation.value);
 if (!grant.success) {
-	return sendError(grant.error);
+  return sendError(grant.error);
 }
 
 // Later, verify tokens issued by the provider
 const accessClaims = await oauth.introspectAccessToken(
-	grant.value.access_token,
+  grant.value.access_token,
 );
 ```
 

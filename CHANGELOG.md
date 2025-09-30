@@ -1,8 +1,6 @@
 # Changelog
 
-
 ## v0.0.2
-
 
 ### 🚀 Enhancements
 
@@ -121,4 +119,3 @@
 
 - Sandro Circi ([@sandros94](https://github.com/sandros94))
 - Sandros94 ([@sandros94](https://github.com/sandros94))
-
