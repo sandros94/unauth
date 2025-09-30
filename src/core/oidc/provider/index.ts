@@ -4,6 +4,7 @@ export { OAuthError } from "../../oauth";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
+import type { MaybePromise } from "../../../types";
 import { deepFreeze } from "../../../utils";
 
 import { OAuthProvider } from "../../oauth";
@@ -13,6 +14,8 @@ import type {
   IdTokenClaims,
   AuthorizeRequest,
   AuthorizeErrorResponse,
+  AuthorizationCodeClaims,
+  RefreshTokenClaims,
 } from "../types";
 import type {
   OIDCProviderOptions,
@@ -22,10 +25,8 @@ import type {
   OIDCUserInfoProfile,
   NormalizedAuthorizeInput,
   IssueAuthorizationCodeReturn,
-  NormalizedAuthorizationCodeGrantInput,
-  IssueAuthorizationCodeGrantReturn,
-  NormalizedRefreshTokenGrantInput,
-  IssueRefreshTokenGrantReturn,
+  NormalizedTokenInput,
+  IssueTokenGrantReturn,
 } from "./internal";
 import {
   oidcProviderDefaults,
@@ -34,8 +35,7 @@ import {
   introspectIdToken,
   validateAuthorizeRequest,
   issueAuthorizationCode,
-  issueAuthorizationCodeGrant,
-  issueRefreshTokenGrant,
+  issueTokenGrant,
 } from "./internal";
 
 /**
@@ -116,16 +116,18 @@ export class OIDCProvider extends OAuthProvider {
 
   // Token
 
-  override issueAuthorizationCodeGrant(
-    args: NormalizedAuthorizationCodeGrantInput,
-  ): Promise<IssueAuthorizationCodeGrantReturn> {
-    return issueAuthorizationCodeGrant(args, this.options);
-  }
-
-  override issueRefreshTokenGrant(
-    args: NormalizedRefreshTokenGrantInput,
-  ): Promise<IssueRefreshTokenGrantReturn> {
-    return issueRefreshTokenGrant(args, this.options);
+  override issueTokenGrant(
+    args: NormalizedTokenInput & {
+      refreshTokenExtraClaims?: Record<string, unknown>;
+      idTokenExtraClaims?: Record<string, unknown>;
+    },
+    options?: {
+      introspectAuthorizationCode?: () => MaybePromise<AuthorizationCodeClaims>;
+      introspectRefreshToken?: () => MaybePromise<RefreshTokenClaims>;
+    },
+  ): Promise<IssueTokenGrantReturn> {
+    const opts = { ...this.options, ...options };
+    return issueTokenGrant(args, opts);
   }
 
   // Introspection

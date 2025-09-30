@@ -23,7 +23,7 @@ import {
 import type {
   NormalizedAuthorizeInput,
   IssueAuthorizationCodeOptions,
-  IssueTokenOptions,
+  IssueTokenGrantOptions,
   NormalizedAuthorizationCodeGrantInput,
   NormalizedRefreshTokenGrantInput,
 } from "../src/core/oidc/provider";
@@ -36,9 +36,9 @@ const makeOctJwk = (size = 32, alg?: string): JWK_oct => {
 const fixedDate = new Date("2024-01-01T00:00:00Z");
 
 const buildOidcOptions = (
-  overrides: Partial<IssueTokenOptions> = {},
-): IssueTokenOptions => {
-  const base: IssueTokenOptions = {
+  overrides: Partial<IssueTokenGrantOptions> = {},
+): IssueTokenGrantOptions => {
+  const base: IssueTokenGrantOptions = {
     iss: "https://issuer.example.com",
     authorizationCodeOptions: {
       privateKey: "ac-secret",

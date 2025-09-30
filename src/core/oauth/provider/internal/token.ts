@@ -2,6 +2,8 @@ import { computeExpiresInSeconds } from "unjwt/utils";
 import { encrypt } from "unjwt/jwe";
 import { sign } from "unjwt/jws";
 
+import type { MaybePromise } from "../../../../types";
+
 import type {
   Result,
   TokenRequest,
@@ -68,7 +70,7 @@ export type NormalizedTokenInput =
   | NormalizedRefreshTokenGrantInput
   | NormalizedClientCredentialsGrantInput;
 
-export interface IssueTokenOptions {
+export interface IssueTokenGrantOptions {
   iss: string;
   authorizationCodeOptions: AuthorizationCodeOptions;
   accessTokenOptions: AccessTokenOptions;
@@ -109,7 +111,7 @@ export type IssueRefreshTokenGrantReturn = Result<
   TokenErrorResponse
 >;
 
-export type IssueTokenReturn =
+export type IssueTokenGrantReturn =
   | IssueAuthorizationCodeGrantReturn
   | IssueClientCredentialsGrantReturn
   | IssueRefreshTokenGrantReturn;
@@ -500,11 +502,69 @@ export function validateTokenRequest(
 // #region runtime
 
 /**
+ * Issues the token grant.
+ */
+export async function issueTokenGrant(
+  args: NormalizedTokenInput & {
+    refreshTokenExtraClaims?: Record<string, unknown>;
+  },
+  options: IssueTokenGrantOptions & {
+    introspectAuthorizationCode?: () => MaybePromise<AuthorizationCodeClaims>;
+    introspectRefreshToken?: () => MaybePromise<RefreshTokenClaims>;
+  },
+): Promise<IssueTokenGrantReturn> {
+  const { introspectAuthorizationCode, introspectRefreshToken, ...opts } =
+    options;
+  let tokenGrant: IssueTokenGrantReturn;
+
+  switch (args.grant_type) {
+    case "authorization_code": {
+      const code = (await introspectAuthorizationCode?.()) || args.code;
+      tokenGrant = await issueAuthorizationCodeGrant(
+        {
+          ...args,
+          code,
+        },
+        opts,
+      );
+      break;
+    }
+    case "client_credentials": {
+      tokenGrant = await issueClientCredentialsGrant(args, opts);
+      break;
+    }
+    case "refresh_token": {
+      const refresh_token =
+        (await introspectRefreshToken?.()) || args.refresh_token;
+      tokenGrant = await issueRefreshTokenGrant(
+        {
+          ...args,
+          refresh_token,
+        },
+        opts,
+      );
+      break;
+    }
+    default: {
+      return {
+        success: false,
+        error: tokenError(
+          "unsupported_grant_type",
+          `Unsupported grant_type: ${(args as TokenRequest).grant_type}`,
+        ),
+      };
+    }
+  }
+
+  return tokenGrant;
+}
+
+/**
  * Issues the `authorization_code` grant.
  */
 export async function issueAuthorizationCodeGrant(
   args: NormalizedAuthorizationCodeGrantInput,
-  options: IssueTokenOptions,
+  options: IssueTokenGrantOptions,
 ): Promise<IssueAuthorizationCodeGrantReturn> {
   const {
     iss,
@@ -606,7 +666,7 @@ export async function issueAuthorizationCodeGrant(
  */
 export async function issueClientCredentialsGrant(
   args: NormalizedClientCredentialsGrantInput,
-  options: IssueTokenOptions,
+  options: IssueTokenGrantOptions,
 ): Promise<IssueClientCredentialsGrantReturn> {
   const { client_id, resource, scope, accessTokenExtraClaims } = args;
   const { iss, accessTokenOptions } = options;
@@ -657,7 +717,7 @@ export async function issueClientCredentialsGrant(
  */
 export async function issueRefreshTokenGrant(
   args: NormalizedRefreshTokenGrantInput,
-  options: IssueTokenOptions,
+  options: IssueTokenGrantOptions,
 ): Promise<IssueRefreshTokenGrantReturn> {
   const { iss, accessTokenOptions, refreshTokenOptions } = options;
 

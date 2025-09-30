@@ -34,7 +34,7 @@ import type {
   NormalizedAuthorizationCodeGrantInput,
   NormalizedClientCredentialsGrantInput,
   NormalizedRefreshTokenGrantInput,
-  IssueTokenOptions,
+  IssueTokenGrantOptions,
 } from "../src/core/oauth/provider";
 
 // Helpers
@@ -48,9 +48,9 @@ const makeOctJwk = (size = 32, alg?: string): JWK_oct => {
 const fixedDate = new Date("2024-01-01T00:00:00Z");
 
 const buildTokenOptions = (
-  overrides: Partial<IssueTokenOptions> = {},
-): IssueTokenOptions => {
-  const base: IssueTokenOptions = {
+  overrides: Partial<IssueTokenGrantOptions> = {},
+): IssueTokenGrantOptions => {
+  const base: IssueTokenGrantOptions = {
     iss: "https://issuer.example.com",
     authorizationCodeOptions: {
       privateKey: "ac-secret",

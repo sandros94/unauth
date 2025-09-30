@@ -11,7 +11,6 @@ import {
   type TokenRequest,
   type NormalizedAuthorizeInput,
   type NormalizedTokenInput,
-  type IssueTokenReturn,
   type BuildOIDCDiscoveryArgs,
   OIDCProvider,
   validateRedirectUri as _coreValidateRedirectUri,
@@ -49,9 +48,12 @@ export function useOIDCProvider(
 
   async function getAuthorizationCode(event: H3Event) {
     const req = await readBody<TokenRequest>(event).catch(() => undefined);
-    return req && "grant_type" in req && req.grant_type === "authorization_code"
+    return req &&
+      "grant_type" in req &&
+      req.grant_type === "authorization_code" &&
+      typeof req.code === "string"
       ? getProvider()
-          .issueAuthorizationCodeGrant(req)
+          .introspectAuthorizationCode(req.code)
           .catch(() => null)
       : null;
   }
@@ -215,40 +217,12 @@ export function useOIDCProvider(
       idTokenExtraClaims,
     } = (await cb?.(normalized)) ?? {};
 
-    let tokenGrant: IssueTokenReturn;
-    switch (normalized.grant_type) {
-      case "authorization_code": {
-        tokenGrant = await getProvider().issueAuthorizationCodeGrant({
-          ...normalized,
-          accessTokenExtraClaims,
-          refreshTokenExtraClaims,
-          idTokenExtraClaims,
-        });
-        break;
-      }
-      case "client_credentials": {
-        tokenGrant = await getProvider().issueClientCredentialsGrant({
-          ...normalized,
-          accessTokenExtraClaims,
-        });
-        break;
-      }
-      case "refresh_token": {
-        tokenGrant = await getProvider().issueRefreshTokenGrant({
-          ...normalized,
-          accessTokenExtraClaims,
-          refreshTokenExtraClaims,
-          idTokenExtraClaims,
-        });
-        break;
-      }
-      default: {
-        throw createError({
-          status: 400,
-          statusText: "Invalid grant type",
-        });
-      }
-    }
+    const tokenGrant = await getProvider().issueTokenGrant({
+      ...normalized,
+      accessTokenExtraClaims,
+      refreshTokenExtraClaims,
+      idTokenExtraClaims,
+    });
 
     if (!tokenGrant.success) {
       throw createError({

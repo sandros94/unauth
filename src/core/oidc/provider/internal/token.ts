@@ -1,8 +1,11 @@
 import { computeExpiresInSeconds } from "unjwt/utils";
 import { sign } from "unjwt/jws";
 
+import type { MaybePromise } from "../../../../types";
+
 import type {
   Result,
+  TokenRequest,
   TokenSuccessResponse,
   AccessTokenClaims,
   IdTokenClaims,
@@ -12,12 +15,14 @@ import {
   type NormalizedAuthorizationCodeGrantInput as OAuthNormalizedAuthorizationCodeGrantInput,
   type NormalizedRefreshTokenGrantInput as OAuthNormalizedRefreshTokenGrantInput,
   type NormalizedClientCredentialsGrantInput,
-  type IssueTokenOptions as OAuthIssueTokenOptions,
+  type IssueTokenGrantOptions as OAuthIssueTokenOptions,
   type IssueClientCredentialsGrantReturn,
   issueAuthorizationCodeGrant as oauthIssueAuthorizationCodeGrant,
   issueRefreshTokenGrant as oauthIssueRefreshTokenGrant,
+  issueClientCredentialsGrant as oauthIssueClientCredentialsGrant,
   introspectAuthorizationCode,
   introspectRefreshToken,
+  OAuthError,
 } from "../../../oauth";
 import { type IdTokenOptions, idTokenDefaults } from "./defaults";
 import type { AuthorizationCodeClaims, RefreshTokenClaims } from "../../types";
@@ -48,7 +53,7 @@ export type NormalizedTokenInput =
   | NormalizedRefreshTokenGrantInput
   | NormalizedClientCredentialsGrantInput;
 
-export interface IssueTokenOptions extends OAuthIssueTokenOptions {
+export interface IssueTokenGrantOptions extends OAuthIssueTokenOptions {
   idTokenOptions: IdTokenOptions;
 }
 
@@ -72,7 +77,7 @@ export type IssueRefreshTokenGrantReturn = Result<
   TokenErrorResponse
 >;
 
-export type IssueTokenReturn =
+export type IssueTokenGrantReturn =
   | IssueAuthorizationCodeGrantReturn
   | IssueClientCredentialsGrantReturn
   | IssueRefreshTokenGrantReturn;
@@ -125,9 +130,68 @@ async function buildIdToken(args: BuildIDTokenArgs): Promise<{
 
 // #region runtime
 
+/**
+ * Issues the token grant.
+ */
+export async function issueTokenGrant(
+  args: NormalizedTokenInput & {
+    refreshTokenExtraClaims?: Record<string, unknown>;
+    idTokenExtraClaims?: Record<string, unknown>;
+  },
+  options: IssueTokenGrantOptions & {
+    introspectAuthorizationCode?: () => MaybePromise<AuthorizationCodeClaims>;
+    introspectRefreshToken?: () => MaybePromise<RefreshTokenClaims>;
+  },
+): Promise<IssueTokenGrantReturn> {
+  const { introspectAuthorizationCode, introspectRefreshToken, ...opts } =
+    options;
+  let tokenGrant: IssueTokenGrantReturn;
+
+  switch (args.grant_type) {
+    case "authorization_code": {
+      const code = (await introspectAuthorizationCode?.()) || args.code;
+      tokenGrant = await issueAuthorizationCodeGrant(
+        {
+          ...args,
+          code,
+        },
+        opts,
+      );
+      break;
+    }
+    case "client_credentials": {
+      tokenGrant = await oauthIssueClientCredentialsGrant(args, opts);
+      break;
+    }
+    case "refresh_token": {
+      const refresh_token =
+        (await introspectRefreshToken?.()) || args.refresh_token;
+      tokenGrant = await issueRefreshTokenGrant(
+        {
+          ...args,
+          refresh_token,
+        },
+        opts,
+      );
+      break;
+    }
+    default: {
+      return {
+        success: false,
+        error: new OAuthError({
+          error: "unsupported_grant_type",
+          error_description: `Unsupported grant_type: ${(args as TokenRequest).grant_type}`,
+        }),
+      };
+    }
+  }
+
+  return tokenGrant;
+}
+
 export async function issueAuthorizationCodeGrant(
   args: NormalizedAuthorizationCodeGrantInput,
-  options: IssueTokenOptions,
+  options: IssueTokenGrantOptions,
 ): Promise<IssueAuthorizationCodeGrantReturn> {
   const { iss, authorizationCodeOptions, idTokenOptions, currentDate } =
     options;
@@ -194,7 +258,7 @@ export async function issueAuthorizationCodeGrant(
 
 export async function issueRefreshTokenGrant(
   args: NormalizedRefreshTokenGrantInput,
-  options: IssueTokenOptions,
+  options: IssueTokenGrantOptions,
 ): Promise<IssueRefreshTokenGrantReturn> {
   const {
     iss,

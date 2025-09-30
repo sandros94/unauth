@@ -79,10 +79,7 @@ if (!normalized.success) {
 	return sendError(normalized.error);
 }
 
-const grant = await oidc.issueAuthorizationCodeGrant({
-	...normalized.value,
-	subject: "user-123",
-});
+const grant = await oauth.issueTokenGrant(validation.value);
 if (!grant.success) {
 	return sendError(grant.error);
 }
@@ -114,10 +111,7 @@ if (!validation.success) {
 	return sendError(validation.error);
 }
 
-const grant = await oauth.issueAuthorizationCodeGrant({
-	...validation.value,
-	subject: "client-123",
-});
+const grant = await oauth.issueTokenGrant(validation.value);
 if (!grant.success) {
 	return sendError(grant.error);
 }

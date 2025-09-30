@@ -10,7 +10,6 @@ import {
   type TokenRequest,
   type NormalizedAuthorizeInput,
   type NormalizedTokenInput,
-  type IssueTokenReturn,
   type BuildOAuthDiscoveryArgs,
   OAuthProvider,
   validateRedirectUri as _coreValidateRedirectUri,
@@ -43,9 +42,12 @@ export function useOAuthProvider(
 
   async function getAuthorizationCode(event: H3Event) {
     const req = await readBody<TokenRequest>(event).catch(() => undefined);
-    return req && "grant_type" in req && req.grant_type === "authorization_code"
+    return req &&
+      "grant_type" in req &&
+      req.grant_type === "authorization_code" &&
+      typeof req.code === "string"
       ? getProvider()
-          .issueAuthorizationCodeGrant(req)
+          .introspectAuthorizationCode(req.code)
           .catch(() => null)
       : null;
   }
@@ -187,38 +189,11 @@ export function useOAuthProvider(
     const { accessTokenExtraClaims, refreshTokenExtraClaims } =
       (await cb?.(normalized)) ?? {};
 
-    let tokenGrant: IssueTokenReturn;
-    switch (normalized.grant_type) {
-      case "authorization_code": {
-        tokenGrant = await getProvider().issueAuthorizationCodeGrant({
-          ...normalized,
-          accessTokenExtraClaims,
-          refreshTokenExtraClaims,
-        });
-        break;
-      }
-      case "client_credentials": {
-        tokenGrant = await getProvider().issueClientCredentialsGrant({
-          ...normalized,
-          accessTokenExtraClaims,
-        });
-        break;
-      }
-      case "refresh_token": {
-        tokenGrant = await getProvider().issueRefreshTokenGrant({
-          ...normalized,
-          accessTokenExtraClaims,
-          refreshTokenExtraClaims,
-        });
-        break;
-      }
-      default: {
-        throw createError({
-          status: 400,
-          statusText: "Invalid grant type",
-        });
-      }
-    }
+    const tokenGrant = await getProvider().issueTokenGrant({
+      ...normalized,
+      accessTokenExtraClaims,
+      refreshTokenExtraClaims,
+    });
 
     if (!tokenGrant.success) {
       throw createError({

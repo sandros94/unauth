@@ -4,6 +4,7 @@ export * from "./internal";
 import type { JWK, JWKSet } from "unjwt";
 import { isPublicJWK } from "unjwt/utils";
 
+import type { MaybePromise } from "../../../types";
 import { deepFreeze } from "../../../utils";
 
 import type {
@@ -26,12 +27,7 @@ import type {
   NormalizedAuthorizeInput,
   IssueAuthorizationCodeReturn,
   NormalizedTokenInput,
-  NormalizedAuthorizationCodeGrantInput,
-  NormalizedClientCredentialsGrantInput,
-  NormalizedRefreshTokenGrantInput,
-  IssueAuthorizationCodeGrantReturn,
-  IssueClientCredentialsGrantReturn,
-  IssueRefreshTokenGrantReturn,
+  IssueTokenGrantReturn,
 } from "./internal";
 import {
   oauthProviderDefaults,
@@ -43,9 +39,7 @@ import {
   validateAuthorizeRequest,
   issueAuthorizationCode,
   validateTokenRequest,
-  issueAuthorizationCodeGrant,
-  issueClientCredentialsGrant,
-  issueRefreshTokenGrant,
+  issueTokenGrant,
 } from "./internal";
 
 /**
@@ -153,22 +147,17 @@ export class OAuthProvider {
     return validateTokenRequest(req, errorDetails);
   }
 
-  issueAuthorizationCodeGrant(
-    args: NormalizedAuthorizationCodeGrantInput,
-  ): Promise<IssueAuthorizationCodeGrantReturn> {
-    return issueAuthorizationCodeGrant(args, this.options);
-  }
-
-  issueClientCredentialsGrant(
-    args: NormalizedClientCredentialsGrantInput,
-  ): Promise<IssueClientCredentialsGrantReturn> {
-    return issueClientCredentialsGrant(args, this.options);
-  }
-
-  issueRefreshTokenGrant(
-    args: NormalizedRefreshTokenGrantInput,
-  ): Promise<IssueRefreshTokenGrantReturn> {
-    return issueRefreshTokenGrant(args, this.options);
+  issueTokenGrant(
+    args: NormalizedTokenInput & {
+      refreshTokenExtraClaims?: Record<string, unknown>;
+    },
+    options?: {
+      introspectAuthorizationCode?: () => MaybePromise<AuthorizationCodeClaims>;
+      introspectRefreshToken?: () => MaybePromise<RefreshTokenClaims>;
+    },
+  ): Promise<IssueTokenGrantReturn> {
+    const opts = { ...this.options, ...options };
+    return issueTokenGrant(args, opts);
   }
 
   // Introspection

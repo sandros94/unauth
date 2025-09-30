@@ -3,7 +3,7 @@ import { generateJWK } from "unauth/utils";
 import {
   type AuthorizeRequest,
   type TokenRequest,
-  type IssueTokenReturn,
+  type IssueTokenGrantReturn,
   OIDCProvider,
 } from "unauth/oidc";
 
@@ -106,7 +106,7 @@ app.post("/token", async (event) => {
   }
   const normalized = validation.value;
 
-  let tokenGrant: IssueTokenReturn;
+  let tokenGrant: IssueTokenGrantReturn;
   switch (normalized.grant_type) {
     case "authorization_code": {
       tokenGrant = await provider.issueAuthorizationCodeGrant(normalized);
