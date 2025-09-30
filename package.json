@@ -40,7 +40,8 @@
   ],
   "scripts": {
     "build": "unbuild",
-    "dev": "node --experimental-strip-types --watch ./playground/main.ts",
+    "dev": "npx --yes listhen -w ./playground/main.ts",
+    "dev:v2": "node --experimental-strip-types --watch ./playground/main-v2.ts",
     "lint": "eslint . && prettier -c .",
     "lint:fix": "automd && eslint . --fix && prettier -w .",
     "prepack": "pnpm build",
