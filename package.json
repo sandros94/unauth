@@ -1,6 +1,6 @@
 {
   "name": "unauth",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Low-level OIDC utilities",
   "repository": "sandros94/unauth",
   "license": "MIT",

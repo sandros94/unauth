@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.3
+
+[compare changes](https://github.com/sandros94/unauth/compare/v0.0.2...v0.0.3)
+
+### 🩹 Fixes
+
+- Simplify token grant utility ([65979d0](https://github.com/sandros94/unauth/commit/65979d0))
+
+### 📖 Documentation
+
+- Basic use ([582a95e](https://github.com/sandros94/unauth/commit/582a95e))
+
+### ❤️ Contributors
+
+- Sandro Circi ([@sandros94](https://github.com/sandros94))
+
 ## v0.0.2
 
 ### 🚀 Enhancements
