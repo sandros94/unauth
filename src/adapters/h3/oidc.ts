@@ -217,12 +217,22 @@ export function useOIDCProvider(
       idTokenExtraClaims,
     } = (await cb?.(normalized)) ?? {};
 
-    const tokenGrant = await getProvider().issueTokenGrant({
-      ...normalized,
-      accessTokenExtraClaims,
-      refreshTokenExtraClaims,
-      idTokenExtraClaims,
-    });
+    const tokenGrant = await getProvider().issueTokenGrant(
+      {
+        ...normalized,
+        accessTokenExtraClaims,
+        refreshTokenExtraClaims,
+        idTokenExtraClaims,
+      },
+      {
+        async introspectAuthorizationCode() {
+          return (await getAuthorizationCode(event)) || undefined;
+        },
+        async introspectRefreshToken() {
+          return (await getRefreshToken(event)) || undefined;
+        },
+      },
+    );
 
     if (!tokenGrant.success) {
       throw createError({

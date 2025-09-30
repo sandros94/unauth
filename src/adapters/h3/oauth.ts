@@ -189,11 +189,21 @@ export function useOAuthProvider(
     const { accessTokenExtraClaims, refreshTokenExtraClaims } =
       (await cb?.(normalized)) ?? {};
 
-    const tokenGrant = await getProvider().issueTokenGrant({
-      ...normalized,
-      accessTokenExtraClaims,
-      refreshTokenExtraClaims,
-    });
+    const tokenGrant = await getProvider().issueTokenGrant(
+      {
+        ...normalized,
+        accessTokenExtraClaims,
+        refreshTokenExtraClaims,
+      },
+      {
+        async introspectAuthorizationCode() {
+          return (await getAuthorizationCode(event)) || undefined;
+        },
+        async introspectRefreshToken() {
+          return (await getRefreshToken(event)) || undefined;
+        },
+      },
+    );
 
     if (!tokenGrant.success) {
       throw createError({

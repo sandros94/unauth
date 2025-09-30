@@ -152,8 +152,12 @@ export class OAuthProvider {
       refreshTokenExtraClaims?: Record<string, unknown>;
     },
     options?: {
-      introspectAuthorizationCode?: () => MaybePromise<AuthorizationCodeClaims>;
-      introspectRefreshToken?: () => MaybePromise<RefreshTokenClaims>;
+      introspectAuthorizationCode?: () => MaybePromise<
+        AuthorizationCodeClaims | undefined
+      >;
+      introspectRefreshToken?: () => MaybePromise<
+        RefreshTokenClaims | undefined
+      >;
     },
   ): Promise<IssueTokenGrantReturn> {
     const opts = { ...this.options, ...options };

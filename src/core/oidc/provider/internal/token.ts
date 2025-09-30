@@ -139,8 +139,10 @@ export async function issueTokenGrant(
     idTokenExtraClaims?: Record<string, unknown>;
   },
   options: IssueTokenGrantOptions & {
-    introspectAuthorizationCode?: () => MaybePromise<AuthorizationCodeClaims>;
-    introspectRefreshToken?: () => MaybePromise<RefreshTokenClaims>;
+    introspectAuthorizationCode?: () => MaybePromise<
+      AuthorizationCodeClaims | undefined
+    >;
+    introspectRefreshToken?: () => MaybePromise<RefreshTokenClaims | undefined>;
   },
 ): Promise<IssueTokenGrantReturn> {
   const { introspectAuthorizationCode, introspectRefreshToken, ...opts } =
