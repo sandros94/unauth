@@ -71,7 +71,16 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
-    "h3": "^1.15.4"
+    "cookie-es": "^1.2.2 || ^2.0.0",
+    "h3": "^1.15.4 || ^2.0.0-rc.0 || ^2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "cookie-es": {
+      "optional": true
+    },
+    "h3": {
+      "optional": true
+    }
   },
   "pnpm": {
     "ignoredBuiltDependencies": [

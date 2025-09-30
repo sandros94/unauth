@@ -10,8 +10,11 @@ overrides:
 importers:
   .:
     dependencies:
+      cookie-es:
+        specifier: ^1.2.2 || ^2.0.0
+        version: 2.0.0
       h3:
-        specifier: ^1.15.4
+        specifier: ^1.15.4 || ^2.0.0-rc.0 || ^2.0.0
         version: 1.15.4
       unjwt:
         specifier: ^0.5.20

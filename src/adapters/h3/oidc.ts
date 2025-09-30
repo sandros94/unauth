@@ -1,4 +1,13 @@
-import { type H3Event, getCookie, getQuery, readBody, createError } from "h3";
+import { computeExpiresInSeconds } from "unjwt/utils";
+import type { CookieSerializeOptions } from "cookie-es";
+import {
+  type H3Event,
+  createError,
+  getQuery,
+  readBody,
+  getCookie,
+  setCookie,
+} from "h3";
 
 import type { MaybePromise } from "../../types";
 
@@ -26,8 +35,11 @@ export function useOIDCProvider(
   options: OIDCProviderOptions & {
     defaults?: {
       accessTokenName?: string;
+      accessTokenCookieOptions?: CookieSerializeOptions;
       refreshTokenName?: string;
+      refreshTokenCookieOptions?: CookieSerializeOptions;
       idTokenName?: string;
+      idTokenCookieOptions?: CookieSerializeOptions;
     };
   },
 ) {
@@ -269,7 +281,39 @@ export function useOIDCProvider(
       });
     }
 
-    return tokenGrant.value;
+    const { refresh_token, ...grant } = tokenGrant.value;
+    if (refresh_token) {
+      setCookie(event, refreshTokenName, refresh_token, {
+        ...defaults?.refreshTokenCookieOptions,
+        httpOnly: defaults?.refreshTokenCookieOptions?.httpOnly ?? true,
+        sameSite: defaults?.refreshTokenCookieOptions?.sameSite ?? "lax",
+        maxAge:
+          defaults?.refreshTokenCookieOptions?.maxAge ??
+          computeExpiresInSeconds(
+            getProvider().refreshTokenOptions.encryptOptions.expiresIn,
+          ),
+      });
+    }
+    if (grant.access_token) {
+      setCookie(event, accessTokenName, grant.access_token, {
+        ...defaults?.accessTokenCookieOptions,
+        sameSite: defaults?.accessTokenCookieOptions?.sameSite ?? "lax",
+        maxAge: defaults?.accessTokenCookieOptions?.maxAge ?? grant.expires_in,
+      });
+    }
+    if ("id_token" in grant && grant.id_token) {
+      setCookie(event, idTokenName, grant.id_token, {
+        ...defaults?.idTokenCookieOptions,
+        sameSite: defaults?.idTokenCookieOptions?.sameSite ?? "lax",
+        maxAge:
+          defaults?.idTokenCookieOptions?.maxAge ??
+          computeExpiresInSeconds(
+            getProvider().idTokenOptions.signOptions.expiresIn,
+          ),
+      });
+    }
+
+    return grant;
   }
 
   async function userInfo(event: H3Event) {
