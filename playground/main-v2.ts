@@ -3,7 +3,6 @@ import { generateJWK } from "unauth/utils";
 import {
   type AuthorizeRequest,
   type TokenRequest,
-  type IssueTokenGrantReturn,
   OIDCProvider,
 } from "unauth/oidc";
 
@@ -106,27 +105,7 @@ app.post("/token", async (event) => {
   }
   const normalized = validation.value;
 
-  let tokenGrant: IssueTokenGrantReturn;
-  switch (normalized.grant_type) {
-    case "authorization_code": {
-      tokenGrant = await provider.issueAuthorizationCodeGrant(normalized);
-      break;
-    }
-    case "client_credentials": {
-      tokenGrant = await provider.issueClientCredentialsGrant(normalized);
-      break;
-    }
-    case "refresh_token": {
-      tokenGrant = await provider.issueRefreshTokenGrant(normalized);
-      break;
-    }
-    default: {
-      throw new HTTPError({
-        status: 400,
-        statusText: "Invalid grant type",
-      });
-    }
-  }
+  const tokenGrant = await provider.issueTokenGrant(normalized);
 
   return tokenGrant.success
     ? tokenGrant.value

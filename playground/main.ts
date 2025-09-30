@@ -20,14 +20,8 @@ const provider = useOIDCProvider({
   refreshTokenOptions: {
     privateKey: "rt-secret",
   },
-  accessTokenOptions: {
-    privateKey: atJwk.privateKey,
-    publicKey: atJwk.publicKey,
-  },
-  idTokenOptions: {
-    privateKey: idJwk.privateKey,
-    publicKey: idJwk.publicKey,
-  },
+  accessTokenOptions: atJwk,
+  idTokenOptions: idJwk,
 });
 
 // OpenID Provider Configuration (Discovery)
