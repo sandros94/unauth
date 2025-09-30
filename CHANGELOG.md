@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.4
+
+[compare changes](https://github.com/sandros94/unauth/compare/v0.0.3...v0.0.4)
+
+### 🩹 Fixes
+
+- **h3:** Store tokens in cookies by default ([fdb3741](https://github.com/sandros94/unauth/commit/fdb3741))
+
+### 📖 Documentation
+
+- Support `generateJWK` example ([39c1a6a](https://github.com/sandros94/unauth/commit/39c1a6a))
+
+### ❤️ Contributors
+
+- Sandro Circi ([@sandros94](https://github.com/sandros94))
+
 ## v0.0.3
 
 [compare changes](https://github.com/sandros94/unauth/compare/v0.0.2...v0.0.3)
