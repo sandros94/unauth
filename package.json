@@ -26,6 +26,10 @@
     "./utils": {
       "types": "./dist/utils.d.mts",
       "default": "./dist/utils.mjs"
+    },
+    "./h3": {
+      "types": "./dist/h3.d.mts",
+      "default": "./dist/h3.mjs"
     }
   },
   "main": "./dist/index.mjs",
