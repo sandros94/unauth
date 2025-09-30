@@ -45,24 +45,23 @@ import { OIDCProvider } from "https://esm.sh/unauth/oidc";
 
 ```ts
 import { OIDCProvider } from "unauth/oidc";
+import { generateJWK } from "unauth/utils";
 
 // Configure the provider once during startup.
-const oidc = new OIDCProvider({
+const [atJwk, idJwk] = await Promise.all([
+  generateJWK("RS256", { kid: "at-rsa-1" }),
+  generateJWK("RS256", { kid: "id-rsa-1" }),
+]);
+const oidc = useOIDCProvider({
   issuer: "https://auth.example.com",
   authorizationCodeOptions: {
-    privateKey: process.env.AUTH_CODE_SECRET!,
+    privateKey: "ac-secret",
   },
   refreshTokenOptions: {
-    privateKey: process.env.REFRESH_SECRET!,
+    privateKey: "rt-secret",
   },
-  accessTokenOptions: {
-    privateKey: ACCESS_TOKEN_PRIVATE_JWK,
-    publicKey: ACCESS_TOKEN_PUBLIC_JWK,
-  },
-  idTokenOptions: {
-    privateKey: ID_TOKEN_PRIVATE_JWK,
-    publicKey: ID_TOKEN_PUBLIC_JWK,
-  },
+  accessTokenOptions: atJwk,
+  idTokenOptions: idJwk,
 });
 
 // In your authorize endpoint
@@ -95,19 +94,19 @@ const idToken = await oidc.introspectIdToken(grant.value.id_token);
 
 ```ts
 import { OAuthProvider } from "unauth/oauth";
+import { generateJWK } from "unauth/utils";
 
-const oauth = new OAuthProvider({
+// Configure the provider once during startup.
+const atJwk = await generateJWK("RS256", { kid: "at-rsa-1" });
+const oauth = useOAuthProvider({
   issuer: "https://auth.example.com",
   authorizationCodeOptions: {
-    privateKey: process.env.AUTH_CODE_SECRET!,
+    privateKey: "ac-secret",
   },
   refreshTokenOptions: {
-    privateKey: process.env.REFRESH_SECRET!,
+    privateKey: "rt-secret",
   },
-  accessTokenOptions: {
-    privateKey: ACCESS_TOKEN_PRIVATE_JWK,
-    publicKey: ACCESS_TOKEN_PUBLIC_JWK,
-  },
+  accessTokenOptions: atJwk,
 });
 
 const validation = oauth.validateTokenRequest(req.body);
@@ -190,7 +189,7 @@ router.get(
   defineEventHandler(async (event) => {
     return provider.authorize(event, async (input, validateRedirectUri) => {
       const redirect_uri = validateRedirectUri(input.redirect_uri, [
-        "http://localhost:3000/callback",     // The client must request one of these redirect URIs
+        "http://localhost:3000/callback", // The client must request one of these redirect URIs
         "http://localhost:3000/alt-callback",
       ]);
 
