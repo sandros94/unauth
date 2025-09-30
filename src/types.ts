@@ -74,7 +74,7 @@ type RemoveAtPath<
     : T;
 
 export type Require<T extends object, P extends DotPathKeys<T>> = ParseType<
-  UnionToIntersection<PathToObject<P, DotPathValue<T, P>> & T>
+  UnionToIntersection<PathToObject<P, DotPathValue<T, P>> & RemoveAtPath<T, P>>
 >;
 
 export type Optional<T extends object, P extends DotPathKeys<T>> = ParseType<
