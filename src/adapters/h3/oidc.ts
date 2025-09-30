@@ -12,8 +12,10 @@ import {
   type NormalizedAuthorizeInput,
   type NormalizedTokenInput,
   type IssueTokenReturn,
+  type BuildOIDCDiscoveryArgs,
   OIDCProvider,
   validateRedirectUri as _coreValidateRedirectUri,
+  buildOIDCDiscoveryDocument,
 } from "../../core/oidc";
 
 const DEFAULT_AT_NAME = "access_token";
@@ -293,7 +295,10 @@ export function useOIDCProvider(
   }
 
   return {
-    discovery: getProvider().discovery,
+    discovery: (options?: Omit<BuildOIDCDiscoveryArgs, "issuer">) => {
+      // TODO: fix `getProvider().discovery` causing `this.issuer` to be undefined
+      return buildOIDCDiscoveryDocument({ ...options, issuer: getProvider().issuer })
+    },
     userInfo,
     jwkSet: getProvider().jwkSet,
     getAuthorizationCode,

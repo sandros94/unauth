@@ -11,8 +11,10 @@ import {
   type NormalizedAuthorizeInput,
   type NormalizedTokenInput,
   type IssueTokenReturn,
+  type BuildOAuthDiscoveryArgs,
   OAuthProvider,
   validateRedirectUri as _coreValidateRedirectUri,
+  buildOAuthDiscoveryDocument,
 } from "../../core/oauth";
 
 const DEFAULT_AT_NAME = "access_token";
@@ -244,7 +246,10 @@ export function useOAuthProvider(
   }
 
   return {
-    discovery: getProvider().discovery,
+    discovery: (options?: Omit<BuildOAuthDiscoveryArgs, "issuer">) => {
+      // TODO: fix `getProvider().discovery` causing `this.issuer` to be undefined
+      return buildOAuthDiscoveryDocument({ ...options, issuer: getProvider().issuer })
+    },
     jwkSet: getProvider().jwkSet,
     getAuthorizationCode,
     getAccessToken,
