@@ -3,7 +3,7 @@ import type { CookieSerializeOptions } from "cookie-es";
 import { createHooks } from "hookable";
 import {
   type H3Event,
-  createError,
+  setResponseStatus,
   getQuery,
   readBody,
   getCookie,
@@ -27,9 +27,36 @@ import {
   type BuildOIDCDiscoveryArgs,
   type OIDCUserInfoProfile,
   OIDCProvider,
-  validateRedirectUri as _coreValidateRedirectUri,
   buildOIDCDiscoveryDocument,
 } from "../../core/oidc";
+export { validateRedirectUri } from "../../core/oidc";
+
+export interface H3OIDCProviderOptions extends OIDCProviderOptions {
+  defaults?: {
+    accessTokenName?: string;
+    accessTokenCookieOptions?: CookieSerializeOptions;
+    refreshTokenName?: string;
+    refreshTokenCookieOptions?: CookieSerializeOptions;
+    idTokenName?: string;
+    idTokenCookieOptions?: CookieSerializeOptions;
+  };
+}
+
+export type AuthorizeCallback = (
+  input: Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
+    redirect_uri?: string;
+  },
+) => MaybePromise<{
+  subject: string;
+  redirect_uri: string;
+  extraClaims?: Record<string, unknown>;
+}>;
+
+export type TokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
+  accessTokenExtraClaims?: Record<string, unknown>;
+  refreshTokenExtraClaims?: Record<string, unknown>;
+  idTokenExtraClaims?: Record<string, unknown>;
+}>;
 
 export interface OIDCHooks {
   authorizeRequest: (
@@ -66,18 +93,7 @@ const DEFAULT_RT_NAME = "refresh_token";
 const DEFAULT_IT_NAME = "id_token";
 
 let _oidcProvider: OIDCProvider | null = null;
-export function useOIDCProvider(
-  options: OIDCProviderOptions & {
-    defaults?: {
-      accessTokenName?: string;
-      accessTokenCookieOptions?: CookieSerializeOptions;
-      refreshTokenName?: string;
-      refreshTokenCookieOptions?: CookieSerializeOptions;
-      idTokenName?: string;
-      idTokenCookieOptions?: CookieSerializeOptions;
-    };
-  },
-) {
+export function useOIDCProvider(options: H3OIDCProviderOptions) {
   const { defaults, ...opts } = options;
   const {
     accessTokenName = DEFAULT_AT_NAME,
@@ -168,61 +184,40 @@ export function useOIDCProvider(
     return claims;
   }
 
-  async function authorize(
-    event: H3Event,
-    cb: (
-      input: Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
-        redirect_uri?: string;
-      },
-      validateRedirectUri: (
-        redirectUri: string | undefined,
-        registeredUris: string | string[],
-      ) => string,
-    ) => MaybePromise<{
-      subject: string;
-      redirect_uri: string;
-      extraClaims?: Record<string, unknown>;
-    }>,
-  ) {
+  async function authorize(event: H3Event, cb: AuthorizeCallback) {
     const req = getQuery<AuthorizeRequest>(event);
 
     const validation = getProvider().validateAuthorizeRequest(req);
     if (!validation.success) {
       await oidcHooks.callHookParallel("authorizeFailed", validation, event);
 
-      throw createError({
-        status: 400,
-        statusText: "Invalid request",
-        cause: new Error(
-          `${validation.error.error}: ${validation.error.error_description}`,
-        ),
-      });
+      setResponseStatus(event, 400, validation.error.error);
+      return validation.error;
     }
     const normalized = validation.value;
 
-    const { subject, redirect_uri, extraClaims } = await cb(
-      normalized,
-      validateRedirectUri,
-    );
-    if (!redirect_uri) {
+    let cbReturn =
+      (cb as AuthorizeCallback | undefined)?.(normalized) || undefined;
+    if (cbReturn instanceof Promise) {
+      cbReturn = await cbReturn.catch(() => undefined);
+    }
+    if (!cbReturn || !cbReturn.subject || !cbReturn.redirect_uri) {
+      const error = {
+        error: "server_error",
+        error_description:
+          "Server implementation error: missing return values for authorize endpoint",
+      } as const;
       await oidcHooks.callHookParallel(
         "authorizeFailed",
-        {
-          success: false,
-          error: {
-            error: "invalid_request",
-            error_description: "The redirect_uri must be provided",
-          },
-        },
+        { success: false, error },
         event,
       );
 
-      throw createError({
-        status: 400,
-        statusText: "Missing redirect_uri",
-        cause: new Error("The redirect_uri must be provided"),
-      });
+      setResponseStatus(event, 400, error.error);
+      return error;
     }
+
+    const { subject, redirect_uri, extraClaims } = cbReturn;
 
     await oidcHooks.callHookParallel(
       "authorizeRequest",
@@ -244,13 +239,8 @@ export function useOIDCProvider(
     if (!redirect.success) {
       await oidcHooks.callHookParallel("authorizeFailed", redirect, event);
 
-      throw createError({
-        status: 400,
-        statusText: "Invalid request",
-        cause: new Error(
-          `${redirect.error.error}: ${redirect.error.error_description}`,
-        ),
-      });
+      setResponseStatus(event, 400, redirect.error.error);
+      return redirect.error;
     }
 
     await oidcHooks.callHookParallel("authorizeIssued", redirect, event);
@@ -261,33 +251,22 @@ export function useOIDCProvider(
     });
   }
 
-  async function token(
-    event: H3Event,
-    cb?: (input: NormalizedTokenInput) => MaybePromise<{
-      accessTokenExtraClaims?: Record<string, unknown>;
-      refreshTokenExtraClaims?: Record<string, unknown>;
-      idTokenExtraClaims?: Record<string, unknown>;
-    }>,
-  ) {
+  async function token(event: H3Event, cb?: TokenCallback) {
     const req = await readBody<TokenRequest>(event).catch(() => undefined);
     if (!req) {
-      throw createError({
-        status: 400,
-        statusText: "Invalid or missing request body",
-      });
+      setResponseStatus(event, 400, "Invalid or missing request body");
+      return {
+        error: "invalid_request",
+        error_description: "Invalid or missing request body",
+      };
     }
 
     const validation = getProvider().validateTokenRequest(req);
     if (!validation.success) {
       await oidcHooks.callHookParallel("tokenFailed", validation, event);
 
-      throw createError({
-        status: 400,
-        statusText: "Invalid request",
-        cause: new Error(
-          `${validation.error.error}: ${validation.error.error_description}`,
-        ),
-      });
+      setResponseStatus(event, 400, validation.error.error);
+      return validation.error;
     }
     const normalized = validation.value;
 
@@ -319,13 +298,8 @@ export function useOIDCProvider(
     if (!tokenGrant.success) {
       await oidcHooks.callHookParallel("tokenFailed", tokenGrant, event);
 
-      throw createError({
-        status: 400,
-        statusText: tokenGrant.error.error,
-        cause: new Error(
-          `${tokenGrant.error.error}: ${tokenGrant.error.error_description}`,
-        ),
-      });
+      setResponseStatus(event, 400, tokenGrant.error.error);
+      return tokenGrant.error;
     }
 
     const context = ((event.context ||= Object.create(null)).unauth ||=
@@ -397,10 +371,11 @@ export function useOIDCProvider(
   ) {
     const at = await getAccessToken(event);
     if (!at) {
-      throw createError({
-        status: 401,
-        statusText: "Unauthorized",
-      });
+      setResponseStatus(event, 401, "Unauthorized");
+      return {
+        error: "invalid_token",
+        error_description: "Access token is missing or invalid",
+      };
     }
 
     const profile = await cb?.(at);
@@ -428,23 +403,4 @@ export function useOIDCProvider(
     authorize,
     token,
   };
-}
-
-export function validateRedirectUri(
-  redirectUri: string | undefined,
-  registeredUris: string | string[],
-): string {
-  const validated = _coreValidateRedirectUri(redirectUri, registeredUris);
-
-  if (!validated.success) {
-    throw createError({
-      status: 400,
-      statusText: "Invalid redirect_uri",
-      cause: new Error(
-        `${validated.error.error}: ${validated.error.error_description}`,
-      ),
-    });
-  }
-
-  return validated.value;
 }

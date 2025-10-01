@@ -3,7 +3,7 @@ import type { CookieSerializeOptions } from "cookie-es";
 import { createHooks } from "hookable";
 import {
   type H3Event,
-  createError,
+  setResponseStatus,
   getQuery,
   readBody,
   getCookie,
@@ -25,9 +25,33 @@ import {
   type IssueTokenGrantReturn,
   type BuildOAuthDiscoveryArgs,
   OAuthProvider,
-  validateRedirectUri as _coreValidateRedirectUri,
   buildOAuthDiscoveryDocument,
 } from "../../core/oauth";
+export { validateRedirectUri } from "../../core/oauth";
+
+export interface H3OAuthProviderOptions extends OAuthProviderOptions {
+  defaults?: {
+    accessTokenName?: string;
+    accessTokenCookieOptions?: CookieSerializeOptions;
+    refreshTokenName?: string;
+    refreshTokenCookieOptions?: CookieSerializeOptions;
+  };
+}
+
+export type AuthorizeCallback = (
+  input: Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
+    redirect_uri?: string;
+  },
+) => MaybePromise<{
+  subject: string;
+  redirect_uri: string;
+  extraClaims?: Record<string, unknown>;
+}>;
+
+export type TokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
+  accessTokenExtraClaims?: Record<string, unknown>;
+  refreshTokenExtraClaims?: Record<string, unknown>;
+}>;
 
 export interface OAuthHooks {
   authorizeRequest: (
@@ -63,16 +87,7 @@ const DEFAULT_AT_NAME = "access_token";
 const DEFAULT_RT_NAME = "refresh_token";
 
 let _oauthProvider: OAuthProvider | null = null;
-export function useOAuthProvider(
-  options: OAuthProviderOptions & {
-    defaults?: {
-      accessTokenName?: string;
-      accessTokenCookieOptions?: CookieSerializeOptions;
-      refreshTokenName?: string;
-      refreshTokenCookieOptions?: CookieSerializeOptions;
-    };
-  },
-) {
+export function useOAuthProvider(options: H3OAuthProviderOptions) {
   const { defaults, ...opts } = options;
   const {
     accessTokenName = DEFAULT_AT_NAME,
@@ -141,61 +156,40 @@ export function useOAuthProvider(
     return claims;
   }
 
-  async function authorize(
-    event: H3Event,
-    cb: (
-      input: Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
-        redirect_uri?: string;
-      },
-      validateRedirectUri: (
-        redirectUri: string | undefined,
-        registeredUris: string | string[],
-      ) => string,
-    ) => MaybePromise<{
-      subject: string;
-      redirect_uri: string;
-      extraClaims?: Record<string, unknown>;
-    }>,
-  ) {
+  async function authorize(event: H3Event, cb: AuthorizeCallback) {
     const req = getQuery<AuthorizeRequest>(event);
 
     const validation = getProvider().validateAuthorizeRequest(req);
     if (!validation.success) {
       await oauthHooks.callHookParallel("authorizeFailed", validation, event);
 
-      throw createError({
-        status: 400,
-        statusText: "Invalid request",
-        cause: new Error(
-          `${validation.error.error}: ${validation.error.error_description}`,
-        ),
-      });
+      setResponseStatus(event, 400, validation.error.error);
+      return validation.error;
     }
     const normalized = validation.value;
 
-    const { subject, redirect_uri, extraClaims } = await cb(
-      normalized,
-      validateRedirectUri,
-    );
-    if (!redirect_uri) {
+    let cbReturn =
+      (cb as AuthorizeCallback | undefined)?.(normalized) || undefined;
+    if (cbReturn instanceof Promise) {
+      cbReturn = await cbReturn.catch(() => undefined);
+    }
+    if (!cbReturn || !cbReturn.subject || !cbReturn.redirect_uri) {
+      const error = {
+        error: "server_error",
+        error_description:
+          "Server implementation error: missing return values for authorize endpoint",
+      } as const;
       await oauthHooks.callHookParallel(
         "authorizeFailed",
-        {
-          success: false,
-          error: {
-            error: "invalid_request",
-            error_description: "The redirect_uri must be provided",
-          },
-        },
+        { success: false, error },
         event,
       );
 
-      throw createError({
-        status: 400,
-        statusText: "Missing redirect_uri",
-        cause: new Error("The redirect_uri must be provided"),
-      });
+      setResponseStatus(event, 400, error.error);
+      return error;
     }
+
+    const { subject, redirect_uri, extraClaims } = cbReturn;
 
     await oauthHooks.callHookParallel(
       "authorizeRequest",
@@ -217,13 +211,8 @@ export function useOAuthProvider(
     if (!redirect.success) {
       await oauthHooks.callHookParallel("authorizeFailed", redirect, event);
 
-      throw createError({
-        status: 400,
-        statusText: "Invalid request",
-        cause: new Error(
-          `${redirect.error.error}: ${redirect.error.error_description}`,
-        ),
-      });
+      setResponseStatus(event, 400, redirect.error.error);
+      return redirect.error;
     }
 
     await oauthHooks.callHookParallel("authorizeIssued", redirect, event);
@@ -234,32 +223,22 @@ export function useOAuthProvider(
     });
   }
 
-  async function token(
-    event: H3Event,
-    cb?: (input: NormalizedTokenInput) => MaybePromise<{
-      accessTokenExtraClaims?: Record<string, unknown>;
-      refreshTokenExtraClaims?: Record<string, unknown>;
-    }>,
-  ) {
+  async function token(event: H3Event, cb?: TokenCallback) {
     const req = await readBody<TokenRequest>(event).catch(() => undefined);
     if (!req) {
-      throw createError({
-        status: 400,
-        statusText: "Invalid or missing request body",
-      });
+      setResponseStatus(event, 400, "Invalid or missing request body");
+      return {
+        error: "invalid_request",
+        error_description: "Invalid or missing request body",
+      };
     }
 
     const validation = getProvider().validateTokenRequest(req);
     if (!validation.success) {
       await oauthHooks.callHookParallel("tokenFailed", validation, event);
 
-      throw createError({
-        status: 400,
-        statusText: "Invalid request",
-        cause: new Error(
-          `${validation.error.error}: ${validation.error.error_description}`,
-        ),
-      });
+      setResponseStatus(event, 400, validation.error.error);
+      return validation.error;
     }
     const normalized = validation.value;
 
@@ -287,13 +266,8 @@ export function useOAuthProvider(
     if (!tokenGrant.success) {
       await oauthHooks.callHookParallel("tokenFailed", tokenGrant, event);
 
-      throw createError({
-        status: 400,
-        statusText: tokenGrant.error.error,
-        cause: new Error(
-          `${tokenGrant.error.error}: ${tokenGrant.error.error_description}`,
-        ),
-      });
+      setResponseStatus(event, 400, tokenGrant.error.error);
+      return tokenGrant.error;
     }
 
     const context = ((event.context ||= Object.create(null)).unauth ||=
@@ -354,23 +328,4 @@ export function useOAuthProvider(
     authorize,
     token,
   };
-}
-
-export function validateRedirectUri(
-  redirectUri: string | undefined,
-  registeredUris: string | string[],
-): string {
-  const validated = _coreValidateRedirectUri(redirectUri, registeredUris);
-
-  if (!validated.success) {
-    throw createError({
-      status: 400,
-      statusText: "Invalid redirect_uri",
-      cause: new Error(
-        `${validated.error.error}: ${validated.error.error_description}`,
-      ),
-    });
-  }
-
-  return validated.value;
 }
