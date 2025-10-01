@@ -3,11 +3,16 @@ import type { CookieSerializeOptions } from "cookie-es";
 import { createHooks } from "hookable";
 import {
   type H3Event,
+  type Router,
+  type EventHandler,
   setResponseStatus,
   getQuery,
   readBody,
   getCookie,
   setCookie,
+  useBase,
+  createRouter,
+  defineEventHandler,
 } from "h3";
 
 import type { MaybePromise } from "../../types";
@@ -57,6 +62,11 @@ export type TokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
   refreshTokenExtraClaims?: Record<string, unknown>;
   idTokenExtraClaims?: Record<string, unknown>;
 }>;
+
+export type UserInfoCallback = (args: {
+  accessToken: AccessTokenClaims;
+  idToken?: IdTokenClaims;
+}) => MaybePromise<OIDCUserInfoProfile>;
 
 export interface OIDCHooks {
   authorizeRequest: (
@@ -117,12 +127,12 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
       typeof req.code === "string"
       ? getProvider()
           .introspectAuthorizationCode(req.code)
-          .catch(() => null)
-      : null;
+          .catch(() => undefined)
+      : undefined;
   }
   async function getAccessToken(
     event: H3Event,
-  ): Promise<AccessTokenClaims | null> {
+  ): Promise<AccessTokenClaims | undefined> {
     const context = ((event.context ||= Object.create(null)).unauth ||=
       Object.create(null));
 
@@ -133,19 +143,19 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     const at =
       event.headers.get("Authorization")?.split(" ")?.[1] ||
       getCookie(event, accessTokenName);
-    if (!at) return null;
+    if (!at) return undefined;
 
     const claims = await getProvider()
       .introspectAccessToken(at)
       .catch(() => null);
-    if (!claims) return null;
+    if (!claims) return undefined;
 
     context[accessTokenName] = claims;
     return claims;
   }
   async function getRefreshToken(
     event: H3Event,
-  ): Promise<RefreshTokenClaims | null> {
+  ): Promise<RefreshTokenClaims | undefined> {
     const context = ((event.context ||= Object.create(null)).unauth ||=
       Object.create(null));
 
@@ -154,17 +164,19 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     }
 
     const rt = getCookie(event, refreshTokenName);
-    if (!rt) return null;
+    if (!rt) return undefined;
 
     const claims = await getProvider()
       .introspectRefreshToken(rt)
       .catch(() => null);
-    if (!claims) return null;
+    if (!claims) return undefined;
 
     context[refreshTokenName] = claims;
     return claims;
   }
-  async function getIdToken(event: H3Event): Promise<IdTokenClaims | null> {
+  async function getIdToken(
+    event: H3Event,
+  ): Promise<IdTokenClaims | undefined> {
     const context = ((event.context ||= Object.create(null)).unauth ||=
       Object.create(null));
 
@@ -173,12 +185,12 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     }
 
     const rt = getCookie(event, idTokenName);
-    if (!rt) return null;
+    if (!rt) return undefined;
 
     const claims = await getProvider()
       .introspectIdToken(rt)
       .catch(() => null);
-    if (!claims) return null;
+    if (!claims) return undefined;
 
     context[idTokenName] = claims;
     return claims;
@@ -365,12 +377,12 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     return grant;
   }
 
-  async function userInfo(
-    event: H3Event,
-    cb?: (at: AccessTokenClaims) => MaybePromise<OIDCUserInfoProfile>,
-  ) {
-    const at = await getAccessToken(event);
-    if (!at) {
+  async function userinfo(event: H3Event, cb?: UserInfoCallback) {
+    const [accessToken, idToken] = await Promise.all([
+      getAccessToken(event),
+      getIdToken(event),
+    ]);
+    if (!accessToken) {
       setResponseStatus(event, 401, "Unauthorized");
       return {
         error: "invalid_token",
@@ -378,10 +390,13 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
       };
     }
 
-    const profile = await cb?.(at);
+    const profile = await cb?.({
+      accessToken,
+      idToken,
+    });
 
     return getProvider().buildUserInfo({
-      sub: at.sub,
+      sub: accessToken.sub,
       ...profile,
     });
   }
@@ -394,7 +409,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
         issuer: getProvider().issuer,
       });
     },
-    userInfo,
+    userinfo,
     jwkSet: getProvider().jwkSet,
     getAuthorizationCode,
     getAccessToken,
@@ -403,4 +418,99 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     authorize,
     token,
   };
+}
+
+export function createOAuthRouter(
+  base: string,
+  options: H3OIDCProviderOptions & {
+    preemptive?: boolean;
+    discovery?: Omit<BuildOIDCDiscoveryArgs, "prefix">;
+    authorize: AuthorizeCallback;
+    token?: TokenCallback;
+    userinfo?: UserInfoCallback;
+  },
+): EventHandler;
+export function createOAuthRouter(
+  options: H3OIDCProviderOptions & {
+    preemptive?: boolean;
+    discovery?: BuildOIDCDiscoveryArgs;
+    authorize: AuthorizeCallback;
+    token?: TokenCallback;
+    userinfo?: UserInfoCallback;
+  },
+): Router;
+export function createOAuthRouter(...args: any[]): EventHandler | Router {
+  const [base, options] = (args.length === 1 ? [undefined, args[0]] : args) as [
+    string | undefined,
+    H3OIDCProviderOptions & {
+      preemptive?: boolean;
+      discovery?: BuildOIDCDiscoveryArgs;
+      authorize: AuthorizeCallback;
+      token?: TokenCallback;
+      userinfo?: UserInfoCallback;
+    },
+  ];
+
+  const { preemptive, discovery, authorize, token, userinfo, ...opts } =
+    options;
+  const oidcRouter = createRouter({ preemptive });
+  const provider = useOIDCProvider(opts);
+
+  const rmBase = sliceBaseUrl(opts.issuer, discovery?.prefix);
+  const discoveryDoc = provider.discovery(
+    base === undefined
+      ? discovery
+      : {
+          ...discovery,
+          prefix: base,
+        },
+  );
+
+  // OIDC Provider Configuration (Discovery)
+  oidcRouter.get(
+    "/.well-known/openid-configuration",
+    defineEventHandler(() => {
+      return discoveryDoc;
+    }),
+  );
+
+  // JWKS (public keys)
+  oidcRouter.get(
+    rmBase(discoveryDoc.jwks_uri),
+    defineEventHandler(() => provider.jwkSet),
+  );
+
+  // Authorization Endpoint
+  oidcRouter.get(
+    rmBase(discoveryDoc.authorization_endpoint),
+    defineEventHandler(async (event) => {
+      return provider.authorize(event, authorize);
+    }),
+  );
+
+  // Token Endpoint
+  oidcRouter.post(
+    rmBase(discoveryDoc.token_endpoint),
+    defineEventHandler(async (event) => {
+      return provider.token(event, token);
+    }),
+  );
+
+  // UserInfo Endpoint
+  oidcRouter.get(
+    rmBase(discoveryDoc.userinfo_endpoint),
+    defineEventHandler(async (event) => {
+      return provider.userinfo(event, userinfo);
+    }),
+  );
+
+  return base === undefined ? oidcRouter : useBase(base, oidcRouter.handler);
+}
+
+function sliceBaseUrl(issuer: string, prefix?: string) {
+  const baseUrl = `${issuer.replace(/\/+$/, "")}${
+    prefix ? `/${prefix.replace(/^\/+|\/+$/g, "")}` : ""
+  }`;
+
+  return (input: string) => input.slice(baseUrl.length);
 }

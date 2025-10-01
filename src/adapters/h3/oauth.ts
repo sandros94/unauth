@@ -3,11 +3,16 @@ import type { CookieSerializeOptions } from "cookie-es";
 import { createHooks } from "hookable";
 import {
   type H3Event,
+  type Router,
+  type EventHandler,
   setResponseStatus,
   getQuery,
   readBody,
   getCookie,
   setCookie,
+  useBase,
+  createRouter,
+  defineEventHandler,
 } from "h3";
 
 import type { MaybePromise } from "../../types";
@@ -108,12 +113,12 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
       typeof req.code === "string"
       ? getProvider()
           .introspectAuthorizationCode(req.code)
-          .catch(() => null)
-      : null;
+          .catch(() => undefined)
+      : undefined;
   }
   async function getAccessToken(
     event: H3Event,
-  ): Promise<AccessTokenClaims | null> {
+  ): Promise<AccessTokenClaims | undefined> {
     const context = ((event.context ||= Object.create(null)).unauth ||=
       Object.create(null));
 
@@ -124,19 +129,19 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     const at =
       event.headers.get("Authorization")?.split(" ")?.[1] ||
       getCookie(event, accessTokenName);
-    if (!at) return null;
+    if (!at) return undefined;
 
     const claims = await getProvider()
       .introspectAccessToken(at)
       .catch(() => null);
-    if (!claims) return null;
+    if (!claims) return undefined;
 
     context[accessTokenName] = claims;
     return claims;
   }
   async function getRefreshToken(
     event: H3Event,
-  ): Promise<RefreshTokenClaims | null> {
+  ): Promise<RefreshTokenClaims | undefined> {
     const context = ((event.context ||= Object.create(null)).unauth ||=
       Object.create(null));
 
@@ -145,12 +150,12 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     }
 
     const rt = getCookie(event, refreshTokenName);
-    if (!rt) return null;
+    if (!rt) return undefined;
 
     const claims = await getProvider()
       .introspectRefreshToken(rt)
       .catch(() => null);
-    if (!claims) return null;
+    if (!claims) return undefined;
 
     context[refreshTokenName] = claims;
     return claims;
@@ -328,4 +333,87 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     authorize,
     token,
   };
+}
+
+export function createOAuthRouter(
+  base: string,
+  options: H3OAuthProviderOptions & {
+    preemptive?: boolean;
+    discovery?: Omit<BuildOAuthDiscoveryArgs, "prefix">;
+    authorize: AuthorizeCallback;
+    token?: TokenCallback;
+  },
+): EventHandler;
+export function createOAuthRouter(
+  options: H3OAuthProviderOptions & {
+    preemptive?: boolean;
+    discovery?: BuildOAuthDiscoveryArgs;
+    authorize: AuthorizeCallback;
+    token?: TokenCallback;
+  },
+): Router;
+export function createOAuthRouter(...args: any[]): EventHandler | Router {
+  const [base, options] = (args.length === 1 ? [undefined, args[0]] : args) as [
+    string | undefined,
+    H3OAuthProviderOptions & {
+      preemptive?: boolean;
+      discovery?: BuildOAuthDiscoveryArgs;
+      authorize: AuthorizeCallback;
+      token?: TokenCallback;
+    },
+  ];
+
+  const { preemptive, discovery, authorize, token, ...opts } = options;
+  const oauthRouter = createRouter({ preemptive });
+  const provider = useOAuthProvider(opts);
+
+  const rmBase = sliceBaseUrl(opts.issuer, discovery?.prefix);
+  const discoveryDoc = provider.discovery(
+    base === undefined
+      ? discovery
+      : {
+          ...discovery,
+          prefix: base,
+        },
+  );
+
+  // OAuth Provider Configuration (Discovery)
+  oauthRouter.get(
+    "/.well-known/oauth-configuration",
+    defineEventHandler(() => {
+      return discoveryDoc;
+    }),
+  );
+
+  // JWKS (public keys)
+  oauthRouter.get(
+    rmBase(discoveryDoc.jwks_uri),
+    defineEventHandler(() => provider.jwkSet),
+  );
+
+  // Authorization Endpoint
+  oauthRouter.get(
+    rmBase(discoveryDoc.authorization_endpoint),
+    defineEventHandler(async (event) => {
+      return provider.authorize(event, authorize);
+    }),
+  );
+
+  // Token Endpoint
+  oauthRouter.post(
+    rmBase(discoveryDoc.token_endpoint),
+    defineEventHandler(async (event) => {
+      return provider.token(event, token);
+    }),
+  );
+
+  return base === undefined ? oauthRouter : useBase(base, oauthRouter.handler);
+}
+
+function sliceBaseUrl(issuer: string, prefix?: string) {
+  const baseUrl = `${issuer.replace(/\/+$/, "")}${
+    prefix ? `/${prefix.replace(/^\/+|\/+$/g, "")}` : ""
+  }`;
+
+  return (input: string) => input.slice(baseUrl.length);
 }
