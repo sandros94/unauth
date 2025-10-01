@@ -37,11 +37,7 @@ export function buildOIDCDiscoveryDocument(
     ...oauthDocument,
     userinfo_endpoint: opts.userinfo_endpoint || `${baseUrl}/userinfo`,
     subject_types_supported: opts.subject_types_supported ?? ["public"],
-    scopes_supported: opts.scopes_supported ?? [
-      "openid",
-      "profile",
-      "email",
-    ],
+    scopes_supported: opts.scopes_supported ?? ["openid", "profile", "email"],
     claims_supported: opts.claims_supported ?? [
       "aud",
       "exp",
