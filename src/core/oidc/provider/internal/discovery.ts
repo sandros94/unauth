@@ -41,9 +41,6 @@ export function buildOIDCDiscoveryDocument(
       "openid",
       "profile",
       "email",
-      "phone",
-      "address",
-      "offline_access",
     ],
     claims_supported: opts.claims_supported ?? [
       "aud",
@@ -51,13 +48,8 @@ export function buildOIDCDiscoveryDocument(
       "iat",
       "iss",
       "sub",
-      "auth_time",
-      "acr",
-      "amr",
-      "azp",
       "nonce",
       "at_hash",
-      "c_hash",
       "name",
       "given_name",
       "family_name",
@@ -65,6 +57,7 @@ export function buildOIDCDiscoveryDocument(
       "email",
       "email_verified",
       "picture",
+      // "auth_time", // authentication logging is not currently tracked
     ],
   };
 }
