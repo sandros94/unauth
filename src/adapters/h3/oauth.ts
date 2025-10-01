@@ -65,7 +65,8 @@ export function useOAuthProvider(
   async function getAccessToken(
     event: H3Event,
   ): Promise<AccessTokenClaims | null> {
-    const context = ((event.context ||= {}).auth ||= {});
+    const context = ((event.context ||= Object.create(null)).unauth ||=
+      Object.create(null));
 
     if (context?.[accessTokenName]) {
       return context[accessTokenName];
@@ -87,7 +88,8 @@ export function useOAuthProvider(
   async function getRefreshToken(
     event: H3Event,
   ): Promise<RefreshTokenClaims | null> {
-    const context = ((event.context ||= {}).auth ||= {});
+    const context = ((event.context ||= Object.create(null)).unauth ||=
+      Object.create(null));
 
     if (context?.[refreshTokenName]) {
       return context[refreshTokenName];

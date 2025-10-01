@@ -72,7 +72,8 @@ export function useOIDCProvider(
   async function getAccessToken(
     event: H3Event,
   ): Promise<AccessTokenClaims | null> {
-    const context = ((event.context ||= {}).auth ||= {});
+    const context = ((event.context ||= Object.create(null)).unauth ||=
+      Object.create(null));
 
     if (context?.[accessTokenName]) {
       return context[accessTokenName];
@@ -112,7 +113,8 @@ export function useOIDCProvider(
     return claims;
   }
   async function getIdToken(event: H3Event): Promise<IdTokenClaims | null> {
-    const context = ((event.context ||= {}).auth ||= {});
+    const context = ((event.context ||= Object.create(null)).unauth ||=
+      Object.create(null));
 
     if (context?.[idTokenName]) {
       return context[idTokenName];
