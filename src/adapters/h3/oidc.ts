@@ -1,5 +1,6 @@
 import { computeExpiresInSeconds } from "unjwt/utils";
 import type { CookieSerializeOptions } from "cookie-es";
+import { createHooks } from "hookable";
 import {
   type H3Event,
   createError,
@@ -12,6 +13,7 @@ import {
 import type { MaybePromise } from "../../types";
 
 import {
+  type Failure,
   type OIDCProviderOptions,
   type AccessTokenClaims,
   type RefreshTokenClaims,
@@ -19,12 +21,45 @@ import {
   type AuthorizeRequest,
   type TokenRequest,
   type NormalizedAuthorizeInput,
+  type IssueAuthorizationCodeReturn,
   type NormalizedTokenInput,
+  type IssueTokenGrantReturn,
   type BuildOIDCDiscoveryArgs,
+  type OIDCUserInfoProfile,
   OIDCProvider,
   validateRedirectUri as _coreValidateRedirectUri,
   buildOIDCDiscoveryDocument,
 } from "../../core/oidc";
+
+export interface OIDCHooks {
+  authorizeRequest: (
+    normalized: NormalizedAuthorizeInput,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  authorizeFailed: (
+    error: Extract<IssueAuthorizationCodeReturn, Failure>,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  authorizeIssued: (
+    acResult: Exclude<IssueAuthorizationCodeReturn, Failure>,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  tokenRequest: (
+    normalized: NormalizedTokenInput,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  tokenFailed: (
+    error: Extract<IssueTokenGrantReturn, Failure>,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  tokenIssued: (
+    tokenGrant: Exclude<IssueTokenGrantReturn, Failure>,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  // TODO: introspection hooks?
+}
+
+export const oidcHooks = createHooks<OIDCHooks>();
 
 const DEFAULT_AT_NAME = "access_token";
 const DEFAULT_RT_NAME = "refresh_token";
@@ -95,7 +130,8 @@ export function useOIDCProvider(
   async function getRefreshToken(
     event: H3Event,
   ): Promise<RefreshTokenClaims | null> {
-    const context = ((event.context ||= {}).auth ||= {});
+    const context = ((event.context ||= Object.create(null)).unauth ||=
+      Object.create(null));
 
     if (context?.[refreshTokenName]) {
       return context[refreshTokenName];
@@ -152,6 +188,8 @@ export function useOIDCProvider(
 
     const validation = getProvider().validateAuthorizeRequest(req);
     if (!validation.success) {
+      await oidcHooks.callHookParallel("authorizeFailed", validation, event);
+
       throw createError({
         status: 400,
         statusText: "Invalid request",
@@ -167,12 +205,34 @@ export function useOIDCProvider(
       validateRedirectUri,
     );
     if (!redirect_uri) {
+      await oidcHooks.callHookParallel(
+        "authorizeFailed",
+        {
+          success: false,
+          error: {
+            error: "invalid_request",
+            error_description: "The redirect_uri must be provided",
+          },
+        },
+        event,
+      );
+
       throw createError({
         status: 400,
         statusText: "Missing redirect_uri",
         cause: new Error("The redirect_uri must be provided"),
       });
     }
+
+    await oidcHooks.callHookParallel(
+      "authorizeRequest",
+      {
+        ...normalized,
+        redirect_uri,
+        subject,
+      },
+      event,
+    );
 
     const redirect = await getProvider().issueAuthorizationCode({
       ...normalized,
@@ -182,6 +242,8 @@ export function useOIDCProvider(
     });
 
     if (!redirect.success) {
+      await oidcHooks.callHookParallel("authorizeFailed", redirect, event);
+
       throw createError({
         status: 400,
         statusText: "Invalid request",
@@ -190,6 +252,8 @@ export function useOIDCProvider(
         ),
       });
     }
+
+    await oidcHooks.callHookParallel("authorizeIssued", redirect, event);
 
     return new Response(null, {
       status: 302,
@@ -215,6 +279,8 @@ export function useOIDCProvider(
 
     const validation = getProvider().validateTokenRequest(req);
     if (!validation.success) {
+      await oidcHooks.callHookParallel("tokenFailed", validation, event);
+
       throw createError({
         status: 400,
         statusText: "Invalid request",
@@ -224,6 +290,8 @@ export function useOIDCProvider(
       });
     }
     const normalized = validation.value;
+
+    await oidcHooks.callHookParallel("tokenRequest", normalized, event);
 
     const {
       accessTokenExtraClaims,
@@ -249,6 +317,8 @@ export function useOIDCProvider(
     );
 
     if (!tokenGrant.success) {
+      await oidcHooks.callHookParallel("tokenFailed", tokenGrant, event);
+
       throw createError({
         status: 400,
         statusText: tokenGrant.error.error,
@@ -258,7 +328,8 @@ export function useOIDCProvider(
       });
     }
 
-    const context = ((event.context ||= {}).auth ||= {});
+    const context = ((event.context ||= Object.create(null)).unauth ||=
+      Object.create(null));
     if (tokenGrant.artifacts?.accessTokenClaims !== undefined) {
       Object.assign(context, {
         [accessTokenName]: tokenGrant.artifacts.accessTokenClaims,
@@ -282,6 +353,8 @@ export function useOIDCProvider(
         [idTokenName]: tokenGrant.artifacts.idTokenClaims,
       });
     }
+
+    await oidcHooks.callHookParallel("tokenIssued", tokenGrant, event);
 
     const { refresh_token, ...grant } = tokenGrant.value;
     if (refresh_token) {
@@ -318,7 +391,7 @@ export function useOIDCProvider(
     return grant;
   }
 
-  async function userInfo(event: H3Event) {
+  async function userInfo(event: H3Event, cb?: (at: AccessTokenClaims) => MaybePromise<OIDCUserInfoProfile>) {
     const at = await getAccessToken(event);
     if (!at) {
       throw createError({
@@ -327,9 +400,11 @@ export function useOIDCProvider(
       });
     }
 
+    const profile = await cb?.(at);
+
     return getProvider().buildUserInfo({
       sub: at.sub,
-      // TODO: other standard claims
+      ...profile,
     });
   }
 

@@ -1,5 +1,6 @@
 import { computeExpiresInSeconds } from "unjwt/utils";
 import type { CookieSerializeOptions } from "cookie-es";
+import { createHooks } from "hookable";
 import {
   type H3Event,
   createError,
@@ -12,18 +13,51 @@ import {
 import type { MaybePromise } from "../../types";
 
 import {
+  type Failure,
   type OAuthProviderOptions,
   type AccessTokenClaims,
   type RefreshTokenClaims,
   type AuthorizeRequest,
   type TokenRequest,
   type NormalizedAuthorizeInput,
+  type IssueAuthorizationCodeReturn,
   type NormalizedTokenInput,
+  type IssueTokenGrantReturn,
   type BuildOAuthDiscoveryArgs,
   OAuthProvider,
   validateRedirectUri as _coreValidateRedirectUri,
   buildOAuthDiscoveryDocument,
 } from "../../core/oauth";
+
+export interface OAuthHooks {
+  authorizeRequest: (
+    normalized: NormalizedAuthorizeInput,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  authorizeFailed: (
+    error: Extract<IssueAuthorizationCodeReturn, Failure>,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  authorizeIssued: (
+    acResult: Exclude<IssueAuthorizationCodeReturn, Failure>,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  tokenRequest: (
+    normalized: NormalizedTokenInput,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  tokenFailed: (
+    error: Extract<IssueTokenGrantReturn, Failure>,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  tokenIssued: (
+    tokenGrant: Exclude<IssueTokenGrantReturn, Failure>,
+    event: H3Event,
+  ) => MaybePromise<void>;
+  // TODO: introspection hooks?
+}
+
+export const oauthHooks = createHooks<OAuthHooks>();
 
 const DEFAULT_AT_NAME = "access_token";
 const DEFAULT_RT_NAME = "refresh_token";
@@ -127,6 +161,8 @@ export function useOAuthProvider(
 
     const validation = getProvider().validateAuthorizeRequest(req);
     if (!validation.success) {
+      await oauthHooks.callHookParallel("authorizeFailed", validation, event);
+
       throw createError({
         status: 400,
         statusText: "Invalid request",
@@ -142,12 +178,34 @@ export function useOAuthProvider(
       validateRedirectUri,
     );
     if (!redirect_uri) {
+      await oauthHooks.callHookParallel(
+        "authorizeFailed",
+        {
+          success: false,
+          error: {
+            error: "invalid_request",
+            error_description: "The redirect_uri must be provided",
+          },
+        },
+        event,
+      );
+
       throw createError({
         status: 400,
         statusText: "Missing redirect_uri",
         cause: new Error("The redirect_uri must be provided"),
       });
     }
+
+    await oauthHooks.callHookParallel(
+      "authorizeRequest",
+      {
+        ...normalized,
+        redirect_uri,
+        subject,
+      },
+      event,
+    );
 
     const redirect = await getProvider().issueAuthorizationCode({
       ...normalized,
@@ -157,6 +215,8 @@ export function useOAuthProvider(
     });
 
     if (!redirect.success) {
+      await oauthHooks.callHookParallel("authorizeFailed", redirect, event);
+
       throw createError({
         status: 400,
         statusText: "Invalid request",
@@ -165,6 +225,8 @@ export function useOAuthProvider(
         ),
       });
     }
+
+    await oauthHooks.callHookParallel("authorizeIssued", redirect, event);
 
     return new Response(null, {
       status: 302,
@@ -189,6 +251,8 @@ export function useOAuthProvider(
 
     const validation = getProvider().validateTokenRequest(req);
     if (!validation.success) {
+      await oauthHooks.callHookParallel("tokenFailed", validation, event);
+
       throw createError({
         status: 400,
         statusText: "Invalid request",
@@ -198,6 +262,8 @@ export function useOAuthProvider(
       });
     }
     const normalized = validation.value;
+
+    await oauthHooks.callHookParallel("tokenRequest", normalized, event);
 
     const { accessTokenExtraClaims, refreshTokenExtraClaims } =
       (await cb?.(normalized)) ?? {};
@@ -219,6 +285,8 @@ export function useOAuthProvider(
     );
 
     if (!tokenGrant.success) {
+      await oauthHooks.callHookParallel("tokenFailed", tokenGrant, event);
+
       throw createError({
         status: 400,
         statusText: tokenGrant.error.error,
@@ -228,7 +296,8 @@ export function useOAuthProvider(
       });
     }
 
-    const context = ((event.context ||= {}).auth ||= {});
+    const context = ((event.context ||= Object.create(null)).unauth ||=
+      Object.create(null));
     if (tokenGrant.artifacts?.accessTokenClaims) {
       Object.assign(context, {
         [accessTokenName]: tokenGrant.artifacts.accessTokenClaims,
@@ -243,6 +312,8 @@ export function useOAuthProvider(
         [refreshTokenName]: tokenGrant.artifacts.refreshTokenClaims,
       });
     }
+
+    await oauthHooks.callHookParallel("tokenIssued", tokenGrant, event);
 
     const { refresh_token, ...grant } = tokenGrant.value;
     if (refresh_token) {
