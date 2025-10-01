@@ -100,9 +100,7 @@ export class OAuthProvider {
 
   // Discovery
 
-  discovery(
-    options?: Omit<BuildOAuthDiscoveryArgs, "issuer">,
-  ): OAuthDiscoveryDocument {
+  discovery(options?: BuildOAuthDiscoveryArgs): OAuthDiscoveryDocument {
     return buildOAuthDiscoveryDocument({ ...options, issuer: this.issuer });
   }
 

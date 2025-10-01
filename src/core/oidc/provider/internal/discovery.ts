@@ -11,23 +11,29 @@ export interface BuildOIDCDiscoveryArgs extends BuildOAuthDiscoveryArgs {
   claims_supported?: string[];
 }
 
-export type OIDCDiscoveryDocument = ParseType<
+export type OIDCDiscoveryDocument<
+  T extends Record<string, unknown> = Record<string, unknown>,
+> = ParseType<
   Required<
     Omit<
       BuildOIDCDiscoveryArgs,
       "default_scope" | "revocation_endpoint" | "prefix"
     >
   > & {
+    issuer: string;
     default_scope?: string;
     revocation_endpoint?: string;
   }
->;
+> &
+  T;
 
 /**
  * Build a minimal OpenID Provider Configuration (discovery) document.
  */
 export function buildOIDCDiscoveryDocument(
-  opts: BuildOIDCDiscoveryArgs,
+  opts: BuildOIDCDiscoveryArgs & {
+    issuer: string;
+  },
 ): OIDCDiscoveryDocument {
   const baseUrl = `${opts.issuer.replace(/\/+$/, "")}${
     opts.prefix ? `/${opts.prefix.replace(/^\/+|\/+$/g, "")}` : ""

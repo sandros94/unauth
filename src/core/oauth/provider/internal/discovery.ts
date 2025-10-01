@@ -1,7 +1,6 @@
 import type { ParseType } from "../../../../types";
 
 export interface BuildOAuthDiscoveryArgs {
-  issuer: string;
   /**
    * An optional prefix for all endpoint URLs.
    *
@@ -21,26 +20,33 @@ export interface BuildOAuthDiscoveryArgs {
   response_types_supported?: string[];
 }
 
-export type OAuthDiscoveryDocument = ParseType<
+export type OAuthDiscoveryDocument<
+  T extends Record<string, unknown> = Record<string, unknown>,
+> = ParseType<
   Required<
     Omit<
       BuildOAuthDiscoveryArgs,
       "default_scope" | "revocation_endpoint" | "prefix"
     >
   > & {
+    issuer: string;
     default_scope?: string;
     revocation_endpoint?: string;
   }
->;
+> &
+  T;
 
 export function buildOAuthDiscoveryDocument(
-  opts: BuildOAuthDiscoveryArgs,
+  opts: BuildOAuthDiscoveryArgs & {
+    issuer: string;
+  },
 ): OAuthDiscoveryDocument {
   const baseUrl = `${opts.issuer.replace(/\/+$/, "")}${
     opts.prefix ? `/${opts.prefix.replace(/^\/+|\/+$/g, "")}` : ""
   }`;
 
   return {
+    ...opts,
     issuer: opts.issuer,
     jwks_uri: opts.jwks_uri || `${baseUrl}/.well-known/jwks.json`,
     authorization_endpoint:
@@ -49,7 +55,7 @@ export function buildOAuthDiscoveryDocument(
     introspection_endpoint:
       opts.introspection_endpoint || `${baseUrl}/introspect`,
     revocation_endpoint: opts.revocation_endpoint,
-    response_types_supported: opts.response_types_supported ?? ["code"],
+    response_types_supported: ["code"], // only "code" is supported
     scopes_supported: opts.scopes_supported ?? [],
     default_scope: opts.default_scope,
   };

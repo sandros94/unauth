@@ -81,9 +81,7 @@ export class OIDCProvider extends OAuthProvider {
 
   // Discovery
 
-  override discovery(
-    options?: Omit<BuildOIDCDiscoveryArgs, "issuer">,
-  ): OIDCDiscoveryDocument {
+  override discovery(options?: BuildOIDCDiscoveryArgs): OIDCDiscoveryDocument {
     return buildOIDCDiscoveryDocument({ ...options, issuer: this.issuer });
   }
 
