@@ -47,7 +47,7 @@ export interface H3OIDCProviderOptions extends OIDCProviderOptions {
   };
 }
 
-export type AuthorizeCallback = (
+export type OIDCAuthorizeCallback = (
   input: Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
     redirect_uri?: string;
   },
@@ -57,13 +57,13 @@ export type AuthorizeCallback = (
   extraClaims?: Record<string, unknown>;
 }>;
 
-export type TokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
+export type OIDCTokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
   accessTokenExtraClaims?: Record<string, unknown>;
   refreshTokenExtraClaims?: Record<string, unknown>;
   idTokenExtraClaims?: Record<string, unknown>;
 }>;
 
-export type UserInfoCallback = (args: {
+export type OIDCUserinfoCallback = (args: {
   accessToken: AccessTokenClaims;
   idToken?: IdTokenClaims;
 }) => MaybePromise<OIDCUserInfoProfile>;
@@ -196,7 +196,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     return claims;
   }
 
-  async function authorize(event: H3Event, cb: AuthorizeCallback) {
+  async function authorize(event: H3Event, cb: OIDCAuthorizeCallback) {
     const req = getQuery<AuthorizeRequest>(event);
 
     const validation = getProvider().validateAuthorizeRequest(req);
@@ -209,7 +209,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     const normalized = validation.value;
 
     let cbReturn =
-      (cb as AuthorizeCallback | undefined)?.(normalized) || undefined;
+      (cb as OIDCAuthorizeCallback | undefined)?.(normalized) || undefined;
     if (cbReturn instanceof Promise) {
       cbReturn = await cbReturn.catch(() => undefined);
     }
@@ -263,7 +263,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     });
   }
 
-  async function token(event: H3Event, cb?: TokenCallback) {
+  async function token(event: H3Event, cb?: OIDCTokenCallback) {
     const req = await readBody<TokenRequest>(event).catch(() => undefined);
     if (!req) {
       setResponseStatus(event, 400, "Invalid or missing request body");
@@ -377,7 +377,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     return grant;
   }
 
-  async function userinfo(event: H3Event, cb?: UserInfoCallback) {
+  async function userinfo(event: H3Event, cb?: OIDCUserinfoCallback) {
     const [accessToken, idToken] = await Promise.all([
       getAccessToken(event),
       getIdToken(event),
@@ -420,34 +420,34 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
   };
 }
 
-export function createOAuthRouter(
+export function createOIDCRouter(
   base: string,
   options: H3OIDCProviderOptions & {
     preemptive?: boolean;
     discovery?: Omit<BuildOIDCDiscoveryArgs, "prefix">;
-    authorize: AuthorizeCallback;
-    token?: TokenCallback;
-    userinfo?: UserInfoCallback;
+    authorize: OIDCAuthorizeCallback;
+    token?: OIDCTokenCallback;
+    userinfo?: OIDCUserinfoCallback;
   },
 ): EventHandler;
-export function createOAuthRouter(
+export function createOIDCRouter(
   options: H3OIDCProviderOptions & {
     preemptive?: boolean;
     discovery?: BuildOIDCDiscoveryArgs;
-    authorize: AuthorizeCallback;
-    token?: TokenCallback;
-    userinfo?: UserInfoCallback;
+    authorize: OIDCAuthorizeCallback;
+    token?: OIDCTokenCallback;
+    userinfo?: OIDCUserinfoCallback;
   },
 ): Router;
-export function createOAuthRouter(...args: any[]): EventHandler | Router {
+export function createOIDCRouter(...args: any[]): EventHandler | Router {
   const [base, options] = (args.length === 1 ? [undefined, args[0]] : args) as [
     string | undefined,
     H3OIDCProviderOptions & {
       preemptive?: boolean;
       discovery?: BuildOIDCDiscoveryArgs;
-      authorize: AuthorizeCallback;
-      token?: TokenCallback;
-      userinfo?: UserInfoCallback;
+      authorize: OIDCAuthorizeCallback;
+      token?: OIDCTokenCallback;
+      userinfo?: OIDCUserinfoCallback;
     },
   ];
 

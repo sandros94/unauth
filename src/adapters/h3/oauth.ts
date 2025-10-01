@@ -43,7 +43,7 @@ export interface H3OAuthProviderOptions extends OAuthProviderOptions {
   };
 }
 
-export type AuthorizeCallback = (
+export type OAuthAuthorizeCallback = (
   input: Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
     redirect_uri?: string;
   },
@@ -53,7 +53,7 @@ export type AuthorizeCallback = (
   extraClaims?: Record<string, unknown>;
 }>;
 
-export type TokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
+export type OAuthTokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
   accessTokenExtraClaims?: Record<string, unknown>;
   refreshTokenExtraClaims?: Record<string, unknown>;
 }>;
@@ -161,7 +161,7 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     return claims;
   }
 
-  async function authorize(event: H3Event, cb: AuthorizeCallback) {
+  async function authorize(event: H3Event, cb: OAuthAuthorizeCallback) {
     const req = getQuery<AuthorizeRequest>(event);
 
     const validation = getProvider().validateAuthorizeRequest(req);
@@ -174,7 +174,7 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     const normalized = validation.value;
 
     let cbReturn =
-      (cb as AuthorizeCallback | undefined)?.(normalized) || undefined;
+      (cb as OAuthAuthorizeCallback | undefined)?.(normalized) || undefined;
     if (cbReturn instanceof Promise) {
       cbReturn = await cbReturn.catch(() => undefined);
     }
@@ -228,7 +228,7 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     });
   }
 
-  async function token(event: H3Event, cb?: TokenCallback) {
+  async function token(event: H3Event, cb?: OAuthTokenCallback) {
     const req = await readBody<TokenRequest>(event).catch(() => undefined);
     if (!req) {
       setResponseStatus(event, 400, "Invalid or missing request body");
@@ -340,16 +340,16 @@ export function createOAuthRouter(
   options: H3OAuthProviderOptions & {
     preemptive?: boolean;
     discovery?: Omit<BuildOAuthDiscoveryArgs, "prefix">;
-    authorize: AuthorizeCallback;
-    token?: TokenCallback;
+    authorize: OAuthAuthorizeCallback;
+    token?: OAuthTokenCallback;
   },
 ): EventHandler;
 export function createOAuthRouter(
   options: H3OAuthProviderOptions & {
     preemptive?: boolean;
     discovery?: BuildOAuthDiscoveryArgs;
-    authorize: AuthorizeCallback;
-    token?: TokenCallback;
+    authorize: OAuthAuthorizeCallback;
+    token?: OAuthTokenCallback;
   },
 ): Router;
 export function createOAuthRouter(...args: any[]): EventHandler | Router {
@@ -358,8 +358,8 @@ export function createOAuthRouter(...args: any[]): EventHandler | Router {
     H3OAuthProviderOptions & {
       preemptive?: boolean;
       discovery?: BuildOAuthDiscoveryArgs;
-      authorize: AuthorizeCallback;
-      token?: TokenCallback;
+      authorize: OAuthAuthorizeCallback;
+      token?: OAuthTokenCallback;
     },
   ];
 
