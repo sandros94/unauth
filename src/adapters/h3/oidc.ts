@@ -391,7 +391,10 @@ export function useOIDCProvider(
     return grant;
   }
 
-  async function userInfo(event: H3Event, cb?: (at: AccessTokenClaims) => MaybePromise<OIDCUserInfoProfile>) {
+  async function userInfo(
+    event: H3Event,
+    cb?: (at: AccessTokenClaims) => MaybePromise<OIDCUserInfoProfile>,
+  ) {
     const at = await getAccessToken(event);
     if (!at) {
       throw createError({
