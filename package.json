@@ -30,6 +30,14 @@
     "./h3": {
       "types": "./dist/h3.d.mts",
       "default": "./dist/h3.mjs"
+    },
+    "./h3/oauth": {
+      "types": "./dist/h3/oauth.d.mts",
+      "default": "./dist/h3/oauth.mjs"
+    },
+    "./h3/oidc": {
+      "types": "./dist/h3/oidc.d.mts",
+      "default": "./dist/h3/oidc.mjs"
     }
   },
   "main": "./dist/index.mjs",

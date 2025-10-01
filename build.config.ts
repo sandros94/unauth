@@ -25,6 +25,16 @@ export default defineBuildConfig({
       outDir: "./dist/h3",
       name: "h3",
     },
+    {
+      input: "./src/adapters/h3/oauth",
+      outDir: "./dist/h3/oauth",
+      name: "h3/oauth",
+    },
+    {
+      input: "./src/adapters/h3/oidc",
+      outDir: "./dist/h3/oidc",
+      name: "h3/oidc",
+    },
   ],
   declaration: true,
   hooks: {
