@@ -346,6 +346,20 @@ export async function issueAuthorizationCode(
   } = args;
   const { iss, authorizationCodeOptions } = options;
 
+  if (!redirect_uri) {
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        "Missing redirect_uri for authorization redirect",
+        {
+          state,
+          iss,
+        },
+      ),
+    };
+  }
+
   if (!subject) {
     return {
       success: false,
