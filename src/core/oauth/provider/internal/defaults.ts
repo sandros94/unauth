@@ -1,5 +1,7 @@
 import type {
-  JWK,
+  JWK_Symmetric,
+  JWK_Private,
+  JWK_Public,
   JWEEncryptOptions,
   JWEDecryptOptions,
   JWSSignOptions,
@@ -27,7 +29,7 @@ export interface AuthorizationCodeOptions {
   /**
    * The secret or private key to sign the authorization code token.
    */
-  privateKey: string | JWK;
+  privateKey: string | JWK_Symmetric | JWK_Private;
   /**
    * Options for encrypting the authorization code token.
    */
@@ -101,11 +103,11 @@ export interface AccessTokenOptions {
   /**
    * The private key to sign the access token.
    */
-  privateKey: JWK;
+  privateKey: JWK_Symmetric | JWK_Private;
   /**
    * The public key or key set to verify the access token.
    */
-  publicKey?: MaybeArray<JWK>;
+  publicKey?: MaybeArray<JWK_Symmetric | JWK_Public>;
   /**
    * Options for signing the access token.
    */
