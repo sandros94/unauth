@@ -125,7 +125,7 @@ const accessClaims = await oauth.introspectAccessToken(
 );
 ```
 
-> **Note**
+> [!NOTE]
 > For advanced use-cases you can import the lower-level helpers directly, e.g. `import { issueAuthorizationCode } from "unauth/oauth"` or `import { buildUserInfo } from "unauth/oidc"`, to compose custom flows while keeping the same core primitives.
 
 ### Adapters
