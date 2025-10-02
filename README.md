@@ -8,7 +8,7 @@
 
 <!-- /automd -->
 
-A collection of low-level, and high-level server-agnostic, OAuth 2.1 and OpenID Connect utilities based on JWT ([`unjwt`](https://github.com/sandros94/unjwt)). Adapters for popular frameworks are available.
+A collection of low-level, and high-level server-agnostic, OAuth 2.1 and OpenID Connect utilities based on JWT ([`unjwt`](https://github.com/sandros94/unjwt)). Adapters for popular frameworks are available (PRs are welcome for more!).
 
 > [!WARNING]
 > This package is in active development. It is not recommended for production use yet unless you are willing to help with testing and feedback.
