@@ -1,44 +1,71 @@
-import { createApp, createRouter, defineEventHandler, getQuery } from "h3";
-import { generateJWK, useOIDCProvider } from "unauth/h3";
-
-// Create an app instance
-export const app = createApp();
-
-// Create a new router and register it in app
-const router = createRouter();
-app.use(router);
+import {
+  createApp,
+  createRouter,
+  defineEventHandler,
+  getQuery,
+  useBase,
+} from "h3";
+import { createOIDCRouter, validateRedirectUri } from "unauth/h3/oidc";
+import { generateJWK } from "unauth";
 
 const [atJwk, idJwk] = await Promise.all([
   generateJWK("RS256", { kid: "at-rsa-1" }),
   generateJWK("RS256", { kid: "id-rsa-1" }),
 ]);
-const provider = useOIDCProvider({
+
+// If the first argument is a string, it will return a handler with a base
+const oidcRouter = createOIDCRouter({
   issuer: "http://localhost:3000",
+  discovery: {
+    // the base path where the OIDC endpoints will be served
+    // (e.g. /oidc/v1/.well-known/openid-configuration)
+    base: "/oidc/v1",
+    // you can also override individual endpoints here, e.g.:
+    // authorization_endpoint: "/oidc/v1/authorize",
+  },
+
   authorizationCodeOptions: {
     privateKey: "ac-secret",
   },
   refreshTokenOptions: {
     privateKey: "rt-secret",
   },
-  accessTokenOptions: atJwk,
-  idTokenOptions: idJwk,
+  accessTokenOptions: atJwk, // we can directly pass keys and use default options
+  idTokenOptions: idJwk, // same as accessTokenOptions
+
+  // Hook that is called when the /authorize endpoint is hit
+  authorize: async (input) => {
+    if (input.client_id !== "test-client") {
+      return {
+        error: "invalid_client",
+        error_description: "Unknown client",
+      };
+    }
+
+    const validRedirectUri = validateRedirectUri(input.redirect_uri, [
+      "http://localhost:3000/callback", // this is the one requested
+      "http://localhost:3000/alt-callback",
+    ]);
+
+    if (!validRedirectUri.success) {
+      return validRedirectUri.error;
+    }
+
+    // in a real app, you'd determine this from the user's login session
+    const subject = "user-123";
+
+    return {
+      subject,
+      redirect_uri: validRedirectUri.value,
+    };
+  },
 });
 
-// OpenID Provider Configuration (Discovery)
-router.get(
-  "/.well-known/openid-configuration",
-  defineEventHandler(() => {
-    return provider.discovery();
-  }),
-);
+// Create an H3 app instance
+export const app = createApp();
+const router = createRouter();
 
-// JWKS (public keys)
-router.get(
-  "/.well-known/jwks.json",
-  defineEventHandler(() => provider.jwkSet),
-);
-
-// Simple callback endpoint for manual testing; not used by the scripted test (which intercepts the Location header)
+// Simple callback endpoint for manual testing; used by the scripted test (which intercepts the Location header)
 router.get(
   "/callback",
   defineEventHandler((event) => {
@@ -47,33 +74,7 @@ router.get(
   }),
 );
 
-router.get(
-  "/authorize",
-  defineEventHandler(async (event) => {
-    return provider.authorize(event, async (input, validateRedirectUri) => {
-      const redirect_uri = validateRedirectUri(input.redirect_uri, [
-        "http://localhost:3000/callback", // this is the one requested
-        "http://localhost:3000/alt-callback",
-      ]);
+// Use the same base as used in `createOIDCRouter`
+router.use("/oidc/v1/**", useBase("/oidc/v1", oidcRouter.handler));
 
-      return {
-        subject: "user-123", // in a real app, you'd determine this from the user's session
-        redirect_uri,
-      };
-    });
-  }),
-);
-
-router.post(
-  "/token",
-  defineEventHandler(async (event) => {
-    return provider.token(event);
-  }),
-);
-
-router.get(
-  "/userinfo",
-  defineEventHandler(async (event) => {
-    return provider.userInfo(event);
-  }),
-);
+app.use(router);
