@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.0.5
+
+[compare changes](https://github.com/sandros94/unauth/compare/v0.0.4...v0.0.5)
+
+### 🚀 Enhancements
+
+- **h3:** Global hooks ([aa39f0a](https://github.com/sandros94/unauth/commit/aa39f0a))
+- **h3:** Simplified sub-router creation ([fb06187](https://github.com/sandros94/unauth/commit/fb06187))
+
+### 🩹 Fixes
+
+- **adapter:** Use object create ([5b78361](https://github.com/sandros94/unauth/commit/5b78361))
+- Discovery utility ([aa8b53d](https://github.com/sandros94/unauth/commit/aa8b53d))
+- **oauth:** Force `redirect_uri` missing check ([b4a1d0b](https://github.com/sandros94/unauth/commit/b4a1d0b))
+- **h3:** Error handling ([dcd54fc](https://github.com/sandros94/unauth/commit/dcd54fc))
+- **h3:** Standardize exports ([2644a0e](https://github.com/sandros94/unauth/commit/2644a0e))
+- Issuer and discovery document propagation ([7f627db](https://github.com/sandros94/unauth/commit/7f627db))
+
+### 📖 Documentation
+
+- Update h3 example ([5d68080](https://github.com/sandros94/unauth/commit/5d68080))
+
+### 🏡 Chore
+
+- Update deps ([ec481fa](https://github.com/sandros94/unauth/commit/ec481fa))
+
+### ❤️ Contributors
+
+- Sandro Circi ([@sandros94](https://github.com/sandros94))
+
 ## v0.0.4
 
 [compare changes](https://github.com/sandros94/unauth/compare/v0.0.3...v0.0.4)
