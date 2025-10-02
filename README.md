@@ -14,6 +14,29 @@ A collection of low-level, and high-level server-agnostic, OAuth 2.1 and OpenID 
 > This package is in active development. It is not recommended for production use yet unless you are willing to help with testing and feedback.
 > Expect breaking changes, as I prioritize usability and correctness over stability at this stage.
 
+## Features
+
+- OAuth 2.1 core and extensions:
+  - Authorization Code Grant (with PKCE)
+  - Refresh Token Grant
+  - Client Credentials Grant
+  - JWT Bearer Token Grant (RFC 9068)
+  - Token Introspection (RFC 7662) (planned in adapters)
+  - Token Revocation (RFC 7009) (planned in adapters)
+- OpenID Connect Core 1.0:
+  - ID Tokens
+  - UserInfo Endpoint
+  - Discovery Endpoint
+- Framework adapters:
+  - [H3 v1](https://v1.h3.dev) (also for use with Nuxt, Nitro, etc.)
+- Works in Node.js, Deno, Bun and Browsers
+- Fully typed
+
+Built on top of minimal dependencies:
+
+- [`unjwt`](https://github.com/sandros94/unjwt)
+- [`unsecure`](https://github.com/sandros94/unsecure)
+
 ## Usage
 
 Install the package:
@@ -231,6 +254,11 @@ app.use(router);
 - Run interactive tests using `pnpm dev`
 
 </details>
+
+## Why unauth?
+
+I started by building `unjwt`, as I needed a cryptographycally secure way to transmit sensitive information between various programming languages and servers. Not long after I started requiring some standardization, in particular on how to prepare and expect authorization data to be shared between parties (client and servers), but as I was testing various libraries I've never been satisfied by their DX (although most of them were great for someone that already knows the topic).
+So I started building `unauth` as a collection of low-level primitives that then can be wrapped in higher-level abstractions, via adapters, to provide a "batteries included" experience while retaining control and flexibility of using your preferred storage, database and web frameworks.
 
 ## Credits
 
