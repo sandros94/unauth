@@ -4,13 +4,11 @@ import { createHooks } from "hookable";
 import {
   type H3Event,
   type Router,
-  type EventHandler,
   setResponseStatus,
   getQuery,
   readBody,
   getCookie,
   setCookie,
-  useBase,
   createRouter,
   defineEventHandler,
 } from "h3";
@@ -24,6 +22,7 @@ import {
   type RefreshTokenClaims,
   type IdTokenClaims,
   type AuthorizeRequest,
+  type AuthorizeErrorResponse,
   type TokenRequest,
   type NormalizedAuthorizeInput,
   type IssueAuthorizationCodeReturn,
@@ -32,7 +31,6 @@ import {
   type BuildOIDCDiscoveryArgs,
   type OIDCUserInfoProfile,
   OIDCProvider,
-  buildOIDCDiscoveryDocument,
 } from "../../core/oidc";
 export { validateRedirectUri } from "../../core/oidc";
 
@@ -51,11 +49,14 @@ export type OIDCAuthorizeCallback = (
   input: Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
     redirect_uri?: string;
   },
-) => MaybePromise<{
-  subject: string;
-  redirect_uri: string;
-  extraClaims?: Record<string, unknown>;
-}>;
+) => MaybePromise<
+  | {
+      subject: string;
+      redirect_uri: string;
+      extraClaims?: Record<string, unknown>;
+    }
+  | AuthorizeErrorResponse
+>;
 
 export type OIDCTokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
   accessTokenExtraClaims?: Record<string, unknown>;
@@ -63,7 +64,7 @@ export type OIDCTokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
   idTokenExtraClaims?: Record<string, unknown>;
 }>;
 
-export type OIDCUserinfoCallback = (args: {
+export type OIDCUserInfoCallback = (args: {
   accessToken: AccessTokenClaims;
   idToken?: IdTokenClaims;
 }) => MaybePromise<OIDCUserInfoProfile>;
@@ -113,8 +114,8 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
   function getProvider() {
     if (!_oidcProvider) {
       console.log("Creating new OIDCProvider");
-      console.log("issuer:", opts.issuer);
       _oidcProvider = new OIDCProvider(opts);
+      console.log("issuer:", _oidcProvider.issuer);
     }
     return _oidcProvider;
   }
@@ -213,7 +214,12 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     if (cbReturn instanceof Promise) {
       cbReturn = await cbReturn.catch(() => undefined);
     }
-    if (!cbReturn || !cbReturn.subject || !cbReturn.redirect_uri) {
+    if (
+      !cbReturn ||
+      "error" in cbReturn ||
+      !cbReturn.subject ||
+      !cbReturn.redirect_uri
+    ) {
       const error = {
         error: "server_error",
         error_description:
@@ -377,7 +383,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     return grant;
   }
 
-  async function userinfo(event: H3Event, cb?: OIDCUserinfoCallback) {
+  async function userinfo(event: H3Event, cb?: OIDCUserInfoCallback) {
     const [accessToken, idToken] = await Promise.all([
       getAccessToken(event),
       getIdToken(event),
@@ -396,19 +402,15 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     });
 
     return getProvider().buildUserInfo({
-      sub: accessToken.sub,
+      ...idToken,
+      aud: accessToken.aud,
       ...profile,
+      sub: accessToken.sub,
     });
   }
 
   return {
-    discovery: (options?: Omit<BuildOIDCDiscoveryArgs, "issuer">) => {
-      // TODO: fix `getProvider().discovery` causing `this.issuer` to be undefined
-      return buildOIDCDiscoveryDocument({
-        ...options,
-        issuer: getProvider().issuer,
-      });
-    },
+    discoveryDocument: getProvider().discoveryDocument,
     userinfo,
     jwkSet: getProvider().jwkSet,
     getAuthorizationCode,
@@ -421,96 +423,52 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
 }
 
 export function createOIDCRouter(
-  base: string,
-  options: H3OIDCProviderOptions & {
-    preemptive?: boolean;
-    discovery?: Omit<BuildOIDCDiscoveryArgs, "prefix">;
-    authorize: OIDCAuthorizeCallback;
-    token?: OIDCTokenCallback;
-    userinfo?: OIDCUserinfoCallback;
-  },
-): EventHandler;
-export function createOIDCRouter(
   options: H3OIDCProviderOptions & {
     preemptive?: boolean;
     discovery?: BuildOIDCDiscoveryArgs;
     authorize: OIDCAuthorizeCallback;
     token?: OIDCTokenCallback;
-    userinfo?: OIDCUserinfoCallback;
+    userinfo?: OIDCUserInfoCallback;
   },
-): Router;
-export function createOIDCRouter(...args: any[]): EventHandler | Router {
-  const [base, options] = (args.length === 1 ? [undefined, args[0]] : args) as [
-    string | undefined,
-    H3OIDCProviderOptions & {
-      preemptive?: boolean;
-      discovery?: BuildOIDCDiscoveryArgs;
-      authorize: OIDCAuthorizeCallback;
-      token?: OIDCTokenCallback;
-      userinfo?: OIDCUserinfoCallback;
-    },
-  ];
-
-  const { preemptive, discovery, authorize, token, userinfo, ...opts } =
-    options;
-  const oidcRouter = createRouter({ preemptive });
+): Router {
+  const { preemptive, authorize, token, userinfo, ...opts } = options;
   const provider = useOIDCProvider(opts);
+  const discoveryDoc = provider.discoveryDocument;
 
-  const rmBase = sliceBaseUrl(opts.issuer, discovery?.prefix);
-  const discoveryDoc = provider.discovery(
-    base === undefined
-      ? discovery
-      : {
-          ...discovery,
-          prefix: base,
-        },
-  );
+  const oidcRouter = createRouter({ preemptive })
+    // JWKS (public keys)
+    .get(
+      discoveryDoc.jwks_uri.slice(discoveryDoc.issuer.length),
+      defineEventHandler(() => provider.jwkSet),
+    )
+    // OIDC Provider Configuration (Discovery)
+    .get(
+      "/.well-known/openid-configuration",
+      defineEventHandler(() => {
+        return discoveryDoc;
+      }),
+    )
+    // Authorization Endpoint
+    .get(
+      discoveryDoc.authorization_endpoint.slice(discoveryDoc.issuer.length),
+      defineEventHandler(async (event) => {
+        return provider.authorize(event, authorize);
+      }),
+    )
+    // Token Endpoint
+    .post(
+      discoveryDoc.token_endpoint.slice(discoveryDoc.issuer.length),
+      defineEventHandler(async (event) => {
+        return provider.token(event, token);
+      }),
+    )
+    // UserInfo Endpoint
+    .get(
+      discoveryDoc.userinfo_endpoint.slice(discoveryDoc.issuer.length),
+      defineEventHandler(async (event) => {
+        return provider.userinfo(event, userinfo);
+      }),
+    );
 
-  // OIDC Provider Configuration (Discovery)
-  oidcRouter.get(
-    "/.well-known/openid-configuration",
-    defineEventHandler(() => {
-      return discoveryDoc;
-    }),
-  );
-
-  // JWKS (public keys)
-  oidcRouter.get(
-    rmBase(discoveryDoc.jwks_uri),
-    defineEventHandler(() => provider.jwkSet),
-  );
-
-  // Authorization Endpoint
-  oidcRouter.get(
-    rmBase(discoveryDoc.authorization_endpoint),
-    defineEventHandler(async (event) => {
-      return provider.authorize(event, authorize);
-    }),
-  );
-
-  // Token Endpoint
-  oidcRouter.post(
-    rmBase(discoveryDoc.token_endpoint),
-    defineEventHandler(async (event) => {
-      return provider.token(event, token);
-    }),
-  );
-
-  // UserInfo Endpoint
-  oidcRouter.get(
-    rmBase(discoveryDoc.userinfo_endpoint),
-    defineEventHandler(async (event) => {
-      return provider.userinfo(event, userinfo);
-    }),
-  );
-
-  return base === undefined ? oidcRouter : useBase(base, oidcRouter.handler);
-}
-
-function sliceBaseUrl(issuer: string, prefix?: string) {
-  const baseUrl = `${issuer.replace(/\/+$/, "")}${
-    prefix ? `/${prefix.replace(/^\/+|\/+$/g, "")}` : ""
-  }`;
-
-  return (input: string) => input.slice(baseUrl.length);
+  return oidcRouter;
 }

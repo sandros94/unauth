@@ -93,7 +93,7 @@ describe("OIDC Provider", () => {
     it("builds OIDC discovery and idTokenDefaults", () => {
       const doc = buildOIDCDiscoveryDocument({
         issuer: "https://auth/",
-        prefix: "/oidc",
+        base: "/oidc",
       });
       expect(doc.userinfo_endpoint).toBe("https://auth/oidc/userinfo");
       expect(doc.scopes_supported).toContain("openid");

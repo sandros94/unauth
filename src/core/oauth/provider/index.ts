@@ -23,7 +23,6 @@ import type {
   ResolvedAuthorizationCodeOptions,
   ResolvedAccessTokenOptions,
   ResolvedRefreshTokenOptions,
-  BuildOAuthDiscoveryArgs,
   NormalizedAuthorizeInput,
   IssueAuthorizationCodeReturn,
   NormalizedTokenInput,
@@ -31,7 +30,6 @@ import type {
 } from "./internal";
 import {
   oauthProviderDefaults,
-  buildOAuthDiscoveryDocument,
   introspectAuthorizationCode,
   introspectAccessToken,
   introspectRefreshToken,
@@ -54,20 +52,31 @@ export class OAuthProvider {
   private _ac: ResolvedAuthorizationCodeOptions;
   private _rt: ResolvedRefreshTokenOptions;
   private _at: ResolvedAccessTokenOptions;
-  private _iss: string;
   private _randomJti: () => string;
+  private _discovery: OAuthDiscoveryDocument;
   private _jwkSet: JWKSet;
 
   constructor(opts: OAuthProviderOptions) {
     const r = oauthProviderDefaults(opts);
-    this._iss = r.issuer;
-    this._randomJti = r.randomJti;
+    this._discovery = r.discovery;
+    this._jwkSet = getPublicKeys(r.accessTokenOptions.publicKey);
     this._ac = r.authorizationCodeOptions;
     this._rt = r.refreshTokenOptions;
     this._at = r.accessTokenOptions;
-    this._jwkSet = getPublicKeys(r.accessTokenOptions.publicKey);
+    this._randomJti = r.randomJti;
   }
 
+  get issuer() {
+    return this._discovery.issuer;
+  }
+  get discoveryDocument() {
+    return deepFreeze(this._discovery);
+  }
+  get jwkSet() {
+    return {
+      keys: [...this._jwkSet.keys],
+    };
+  }
   get authorizationCodeOptions() {
     return deepFreeze(this._ac);
   }
@@ -77,31 +86,17 @@ export class OAuthProvider {
   get accessTokenOptions() {
     return deepFreeze(this._at);
   }
-  get issuer() {
-    return this._iss;
-  }
   get randomJti() {
     return this._randomJti;
   }
-  get jwkSet() {
-    return {
-      keys: [...this._jwkSet.keys],
-    };
-  }
   get options() {
-    return {
+    return Object.freeze({
       iss: this.issuer,
       authorizationCodeOptions: this.authorizationCodeOptions,
       accessTokenOptions: this.accessTokenOptions,
       refreshTokenOptions: this.refreshTokenOptions,
       randomJti: this.randomJti,
-    };
-  }
-
-  // Discovery
-
-  discovery(options?: BuildOAuthDiscoveryArgs): OAuthDiscoveryDocument {
-    return buildOAuthDiscoveryDocument({ ...options, issuer: this.issuer });
+    });
   }
 
   // Authorize

@@ -9,6 +9,10 @@ import type {
 } from "unjwt";
 
 import type { MaybeArray, Require } from "../../../../types";
+import {
+  type BuildOAuthDiscoveryArgs,
+  buildOAuthDiscoveryDocument,
+} from "./discovery";
 
 export const DEFAULTS_OPTIONS = Object.freeze({
   authorizationCode: {
@@ -153,6 +157,7 @@ export interface OAuthProviderOptions {
   authorizationCodeOptions: AuthorizationCodeOptions;
   refreshTokenOptions: RefreshTokenOptions;
   accessTokenOptions: AccessTokenOptions;
+  discovery?: BuildOAuthDiscoveryArgs;
   randomJti?: () => string;
 }
 
@@ -168,5 +173,9 @@ export function oauthProviderDefaults(args: OAuthProviderOptions) {
     ),
     refreshTokenOptions: refreshTokenDefaults(args.refreshTokenOptions),
     accessTokenOptions: accessTokenDefaults(args.accessTokenOptions),
+    discovery: buildOAuthDiscoveryDocument({
+      ...args.discovery,
+      issuer: args.issuer,
+    }),
   };
 }

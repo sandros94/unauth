@@ -2,14 +2,14 @@ import type { ParseType } from "../../../../types";
 
 export interface BuildOAuthDiscoveryArgs {
   /**
-   * An optional prefix for all endpoint URLs.
+   * An optional base for all endpoint URLs.
    *
    * @default undefined
    * @example
    * "/oauth/v1"
    * "${issuer}/oauth/${jwks_uri|token_endpoint|introspection_endpoint|authorization_endpoint}"
    */
-  prefix?: string;
+  base?: string;
   jwks_uri?: string;
   authorization_endpoint?: string;
   token_endpoint?: string;
@@ -26,7 +26,7 @@ export type OAuthDiscoveryDocument<
   Required<
     Omit<
       BuildOAuthDiscoveryArgs,
-      "default_scope" | "revocation_endpoint" | "prefix"
+      "default_scope" | "revocation_endpoint" | "base"
     >
   > & {
     issuer: string;
@@ -37,17 +37,19 @@ export type OAuthDiscoveryDocument<
   T;
 
 export function buildOAuthDiscoveryDocument(
-  opts: BuildOAuthDiscoveryArgs & {
+  options: BuildOAuthDiscoveryArgs & {
     issuer: string;
   },
 ): OAuthDiscoveryDocument {
-  const baseUrl = `${opts.issuer.replace(/\/+$/, "")}${
-    opts.prefix ? `/${opts.prefix.replace(/^\/+|\/+$/g, "")}` : ""
+  const { issuer, base, ...opts } = options;
+
+  const baseUrl = `${issuer.replace(/\/+$/, "")}${
+    base ? `/${base.replace(/^\/+|\/+$/g, "")}` : ""
   }`;
 
   return {
     ...opts,
-    issuer: opts.issuer,
+    issuer: baseUrl,
     jwks_uri: opts.jwks_uri || `${baseUrl}/.well-known/jwks.json`,
     authorization_endpoint:
       opts.authorization_endpoint || `${baseUrl}/authorize`,

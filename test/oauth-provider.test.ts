@@ -170,9 +170,9 @@ describe("OAuth Provider", () => {
     it("builds discovery document with prefix normalization", () => {
       const doc = buildOAuthDiscoveryDocument({
         issuer: "https://auth.example.com/",
-        prefix: "/oauth/v1/",
+        base: "/oauth/v1/",
       });
-      expect(doc.issuer).toBe("https://auth.example.com/");
+      expect(doc.issuer).toBe("https://auth.example.com/oauth/v1");
       expect(doc.authorization_endpoint).toBe(
         "https://auth.example.com/oauth/v1/authorize",
       );

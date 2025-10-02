@@ -10,7 +10,7 @@ import * as client from "openid-client";
  * 5) Call userinfo
  */
 try {
-  const issuer = new URL("http://localhost:3000");
+  const issuer = new URL("http://localhost:3000/oidc/v1");
   const redirectUri = new URL("http://localhost:3000/callback");
   const clientId = "test-client";
 

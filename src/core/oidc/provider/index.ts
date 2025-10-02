@@ -20,7 +20,6 @@ import type {
 import type {
   OIDCProviderOptions,
   ResolvedIdTokenOptions,
-  BuildOIDCDiscoveryArgs,
   OIDCDiscoveryDocument,
   OIDCUserInfoProfile,
   NormalizedAuthorizeInput,
@@ -30,7 +29,6 @@ import type {
 } from "./internal";
 import {
   oidcProviderDefaults,
-  buildOIDCDiscoveryDocument,
   buildUserInfo,
   introspectIdToken,
   validateAuthorizeRequest,
@@ -47,14 +45,17 @@ import {
  * is purely ergonomic and does not add new logic.
  */
 export class OIDCProvider extends OAuthProvider {
+  private _OIDCdiscovery: OIDCDiscoveryDocument;
   private _it: ResolvedIdTokenOptions;
   private _idTokenJwkSet: JWKSet;
   private _mergedJwkSet: JWKSet;
 
   constructor(args: OIDCProviderOptions) {
-    const { idTokenOptions, ...defaults } = oidcProviderDefaults(args);
+    const { idTokenOptions, discovery, ...defaults } =
+      oidcProviderDefaults(args);
     super(defaults);
 
+    this._OIDCdiscovery = discovery;
     this._it = idTokenOptions;
     this._idTokenJwkSet = getPublicKeys(idTokenOptions.publicKey);
     this._mergedJwkSet = mergeUniqueKids(super.jwkSet, this._idTokenJwkSet);
@@ -63,27 +64,29 @@ export class OIDCProvider extends OAuthProvider {
   get idTokenOptions() {
     return deepFreeze(this._it);
   }
+  override get issuer() {
+    return this._OIDCdiscovery.issuer;
+  }
+  override get discoveryDocument() {
+    return deepFreeze(this._OIDCdiscovery);
+  }
   override get jwkSet() {
     return {
       keys: [...this._mergedJwkSet.keys],
     };
   }
   override get options() {
-    return {
+    return Object.freeze({
       iss: this.issuer,
       authorizationCodeOptions: this.authorizationCodeOptions,
       accessTokenOptions: this.accessTokenOptions,
       refreshTokenOptions: this.refreshTokenOptions,
       idTokenOptions: this.idTokenOptions,
       randomJti: this.randomJti,
-    };
+    });
   }
 
   // Discovery
-
-  override discovery(options?: BuildOIDCDiscoveryArgs): OIDCDiscoveryDocument {
-    return buildOIDCDiscoveryDocument({ ...options, issuer: this.issuer });
-  }
 
   buildUserInfo<T extends Record<string, unknown>>(
     profile: OIDCUserInfoProfile,

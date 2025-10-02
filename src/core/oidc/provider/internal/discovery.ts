@@ -17,7 +17,7 @@ export type OIDCDiscoveryDocument<
   Required<
     Omit<
       BuildOIDCDiscoveryArgs,
-      "default_scope" | "revocation_endpoint" | "prefix"
+      "default_scope" | "revocation_endpoint" | "base"
     >
   > & {
     issuer: string;
@@ -36,7 +36,7 @@ export function buildOIDCDiscoveryDocument(
   },
 ): OIDCDiscoveryDocument {
   const baseUrl = `${opts.issuer.replace(/\/+$/, "")}${
-    opts.prefix ? `/${opts.prefix.replace(/^\/+|\/+$/g, "")}` : ""
+    opts.base ? `/${opts.base.replace(/^\/+|\/+$/g, "")}` : ""
   }`;
   const oauthDocument = buildOAuthDiscoveryDocument(opts);
   return {
@@ -59,7 +59,6 @@ export function buildOIDCDiscoveryDocument(
       "email",
       "email_verified",
       "picture",
-      // "auth_time", // authentication logging is not currently tracked
     ],
   };
 }

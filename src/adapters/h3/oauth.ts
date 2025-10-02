@@ -4,13 +4,11 @@ import { createHooks } from "hookable";
 import {
   type H3Event,
   type Router,
-  type EventHandler,
   setResponseStatus,
   getQuery,
   readBody,
   getCookie,
   setCookie,
-  useBase,
   createRouter,
   defineEventHandler,
 } from "h3";
@@ -23,6 +21,7 @@ import {
   type AccessTokenClaims,
   type RefreshTokenClaims,
   type AuthorizeRequest,
+  type AuthorizeErrorResponse,
   type TokenRequest,
   type NormalizedAuthorizeInput,
   type IssueAuthorizationCodeReturn,
@@ -30,7 +29,6 @@ import {
   type IssueTokenGrantReturn,
   type BuildOAuthDiscoveryArgs,
   OAuthProvider,
-  buildOAuthDiscoveryDocument,
 } from "../../core/oauth";
 export { validateRedirectUri } from "../../core/oauth";
 
@@ -47,11 +45,14 @@ export type OAuthAuthorizeCallback = (
   input: Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
     redirect_uri?: string;
   },
-) => MaybePromise<{
-  subject: string;
-  redirect_uri: string;
-  extraClaims?: Record<string, unknown>;
-}>;
+) => MaybePromise<
+  | {
+      subject: string;
+      redirect_uri: string;
+      extraClaims?: Record<string, unknown>;
+    }
+  | AuthorizeErrorResponse
+>;
 
 export type OAuthTokenCallback = (input: NormalizedTokenInput) => MaybePromise<{
   accessTokenExtraClaims?: Record<string, unknown>;
@@ -100,7 +101,9 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
   } = defaults || {};
   function getProvider() {
     if (!_oauthProvider) {
+      console.log("Creating new OAuthProvider");
       _oauthProvider = new OAuthProvider(opts);
+      console.log("issuer:", _oauthProvider.issuer);
     }
     return _oauthProvider;
   }
@@ -178,7 +181,12 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     if (cbReturn instanceof Promise) {
       cbReturn = await cbReturn.catch(() => undefined);
     }
-    if (!cbReturn || !cbReturn.subject || !cbReturn.redirect_uri) {
+    if (
+      !cbReturn ||
+      "error" in cbReturn ||
+      !cbReturn.subject ||
+      !cbReturn.redirect_uri
+    ) {
       const error = {
         error: "server_error",
         error_description:
@@ -319,13 +327,7 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
   }
 
   return {
-    discovery: (options?: Omit<BuildOAuthDiscoveryArgs, "issuer">) => {
-      // TODO: fix `getProvider().discovery` causing `this.issuer` to be undefined
-      return buildOAuthDiscoveryDocument({
-        ...options,
-        issuer: getProvider().issuer,
-      });
-    },
+    discoveryDocument: getProvider().discoveryDocument,
     jwkSet: getProvider().jwkSet,
     getAuthorizationCode,
     getAccessToken,
@@ -336,84 +338,44 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
 }
 
 export function createOAuthRouter(
-  base: string,
-  options: H3OAuthProviderOptions & {
-    preemptive?: boolean;
-    discovery?: Omit<BuildOAuthDiscoveryArgs, "prefix">;
-    authorize: OAuthAuthorizeCallback;
-    token?: OAuthTokenCallback;
-  },
-): EventHandler;
-export function createOAuthRouter(
   options: H3OAuthProviderOptions & {
     preemptive?: boolean;
     discovery?: BuildOAuthDiscoveryArgs;
     authorize: OAuthAuthorizeCallback;
     token?: OAuthTokenCallback;
   },
-): Router;
-export function createOAuthRouter(...args: any[]): EventHandler | Router {
-  const [base, options] = (args.length === 1 ? [undefined, args[0]] : args) as [
-    string | undefined,
-    H3OAuthProviderOptions & {
-      preemptive?: boolean;
-      discovery?: BuildOAuthDiscoveryArgs;
-      authorize: OAuthAuthorizeCallback;
-      token?: OAuthTokenCallback;
-    },
-  ];
-
-  const { preemptive, discovery, authorize, token, ...opts } = options;
-  const oauthRouter = createRouter({ preemptive });
+): Router {
+  const { preemptive, authorize, token, ...opts } = options;
   const provider = useOAuthProvider(opts);
+  const discoveryDoc = provider.discoveryDocument;
 
-  const rmBase = sliceBaseUrl(opts.issuer, discovery?.prefix);
-  const discoveryDoc = provider.discovery(
-    base === undefined
-      ? discovery
-      : {
-          ...discovery,
-          prefix: base,
-        },
-  );
+  const oauthRouter = createRouter({ preemptive })
+    // OAuth Provider Configuration (Discovery)
+    .get(
+      "/.well-known/oauth-configuration",
+      defineEventHandler(() => {
+        return discoveryDoc;
+      }),
+    )
+    // JWKS (public keys)
+    .get(
+      discoveryDoc.jwks_uri.slice(discoveryDoc.issuer.length),
+      defineEventHandler(() => provider.jwkSet),
+    )
+    // Authorization Endpoint
+    .get(
+      discoveryDoc.authorization_endpoint.slice(discoveryDoc.issuer.length),
+      defineEventHandler(async (event) => {
+        return provider.authorize(event, authorize);
+      }),
+    )
+    // Token Endpoint
+    .post(
+      discoveryDoc.token_endpoint.slice(discoveryDoc.issuer.length),
+      defineEventHandler(async (event) => {
+        return provider.token(event, token);
+      }),
+    );
 
-  // OAuth Provider Configuration (Discovery)
-  oauthRouter.get(
-    "/.well-known/oauth-configuration",
-    defineEventHandler(() => {
-      return discoveryDoc;
-    }),
-  );
-
-  // JWKS (public keys)
-  oauthRouter.get(
-    rmBase(discoveryDoc.jwks_uri),
-    defineEventHandler(() => provider.jwkSet),
-  );
-
-  // Authorization Endpoint
-  oauthRouter.get(
-    rmBase(discoveryDoc.authorization_endpoint),
-    defineEventHandler(async (event) => {
-      return provider.authorize(event, authorize);
-    }),
-  );
-
-  // Token Endpoint
-  oauthRouter.post(
-    rmBase(discoveryDoc.token_endpoint),
-    defineEventHandler(async (event) => {
-      return provider.token(event, token);
-    }),
-  );
-
-  return base === undefined ? oauthRouter : useBase(base, oauthRouter.handler);
-}
-
-function sliceBaseUrl(issuer: string, prefix?: string) {
-  const baseUrl = `${issuer.replace(/\/+$/, "")}${
-    prefix ? `/${prefix.replace(/^\/+|\/+$/g, "")}` : ""
-  }`;
-
-  return (input: string) => input.slice(baseUrl.length);
+  return oauthRouter;
 }
