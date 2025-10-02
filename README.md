@@ -102,12 +102,12 @@ const code = await oidc.issueAuthorizationCode({
 // In your token endpoint
 const normalized = oidc.validateTokenRequest(req.body);
 if (!normalized.success) {
-  return sendError(normalized.error);
+  return normalized.error;
 }
 
 const grant = await oauth.issueTokenGrant(validation.value);
 if (!grant.success) {
-  return sendError(grant.error);
+  return grant.error;
 }
 
 const idToken = await oidc.introspectIdToken(grant.value.id_token);
@@ -134,12 +134,12 @@ const oauth = useOAuthProvider({
 
 const validation = oauth.validateTokenRequest(req.body);
 if (!validation.success) {
-  return sendError(validation.error);
+  return validation.error;
 }
 
 const grant = await oauth.issueTokenGrant(validation.value);
 if (!grant.success) {
-  return sendError(grant.error);
+  return grant.error;
 }
 
 // Later, verify tokens issued by the provider
