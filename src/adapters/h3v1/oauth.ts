@@ -1,5 +1,5 @@
 import { computeExpiresInSeconds } from "unjwt/utils";
-import type { CookieSerializeOptions } from "cookie-es";
+import type { CookieSerializeOptions } from "cookie-esv1";
 import { createHooks } from "hookable";
 import {
   type H3Event,
@@ -11,7 +11,7 @@ import {
   setCookie,
   createRouter,
   defineEventHandler,
-} from "h3";
+} from "h3v1";
 
 import type { MaybePromise } from "../../types";
 

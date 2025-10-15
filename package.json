@@ -27,17 +27,29 @@
       "types": "./dist/utils.d.mts",
       "default": "./dist/utils.mjs"
     },
-    "./h3": {
-      "types": "./dist/h3.d.mts",
-      "default": "./dist/h3.mjs"
+    "./adapters/h3": {
+      "types": "./dist/adapters/h3v1.d.mts",
+      "default": "./dist/adapters/h3v1.mjs"
     },
-    "./h3/oauth": {
-      "types": "./dist/h3/oauth.d.mts",
-      "default": "./dist/h3/oauth.mjs"
+    "./adapters/h3/oauth": {
+      "types": "./dist/adapters/h3v1/oauth.d.mts",
+      "default": "./dist/adapters/h3v1/oauth.mjs"
     },
-    "./h3/oidc": {
-      "types": "./dist/h3/oidc.d.mts",
-      "default": "./dist/h3/oidc.mjs"
+    "./adapters/h3/oidc": {
+      "types": "./dist/adapters/h3v1/oidc.d.mts",
+      "default": "./dist/adapters/h3v1/oidc.mjs"
+    },
+    "./adapters/h3v1": {
+      "types": "./dist/adapters/h3v1.d.mts",
+      "default": "./dist/adapters/h3v1.mjs"
+    },
+    "./adapters/h3v1/oauth": {
+      "types": "./dist/adapters/h3v1/oauth.d.mts",
+      "default": "./dist/adapters/h3v1/oauth.mjs"
+    },
+    "./adapters/h3v1/oidc": {
+      "types": "./dist/adapters/h3v1/oidc.d.mts",
+      "default": "./dist/adapters/h3v1/oidc.mjs"
     }
   },
   "main": "./dist/index.mjs",
@@ -64,7 +76,7 @@
   },
   "dependencies": {
     "hookable": "^5.5.3",
-    "unjwt": "^0.5.21",
+    "unjwt": "^0.5.25",
     "unsecure": "^0.0.4"
   },
   "devDependencies": {
@@ -72,8 +84,12 @@
     "@vitest/coverage-v8": "^3.2.4",
     "automd": "^0.4.2",
     "changelogen": "^0.6.2",
+    "cookie-esv1": "npm:cookie-es@^1.2.2",
+    "cookie-esv2": "npm:cookie-es@^2.0.0",
     "eslint": "^9.36.0",
     "eslint-config-unjs": "^0.5.0",
+    "h3v1": "npm:h3@^1.15.4",
+    "h3v2": "npm:h3@^2.0.1-rc.2",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "unbuild": "^3.6.1",
@@ -81,7 +97,8 @@
   },
   "peerDependencies": {
     "cookie-es": "^1.2.2 || ^2.0.0",
-    "h3": "^1.15.4 || ^2.0.0-rc.0 || ^2.0.0"
+    "h3": "^1.15.4 || >=2.0.1-rc.2 || ^2.0.1",
+    "rou3": "^0.7.7"
   },
   "peerDependenciesMeta": {
     "cookie-es": {
@@ -96,5 +113,5 @@
       "@parcel/watcher"
     ]
   },
-  "packageManager": "pnpm@10.17.1"
+  "packageManager": "pnpm@10.18.3"
 }

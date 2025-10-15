@@ -21,21 +21,43 @@ export default defineBuildConfig({
       name: "utils",
     },
     {
-      input: "./src/adapters/h3",
-      outDir: "./dist/h3",
-      name: "h3",
+      input: "./src/adapters/h3v1",
+      outDir: "./dist/adapters/h3v1",
+      name: "adapters/h3",
     },
     {
-      input: "./src/adapters/h3/oauth",
-      outDir: "./dist/h3/oauth",
-      name: "h3/oauth",
+      input: "./src/adapters/h3v1/oauth",
+      outDir: "./dist/adapters/h3v1/oauth",
+      name: "adapters/h3/oauth",
     },
     {
-      input: "./src/adapters/h3/oidc",
-      outDir: "./dist/h3/oidc",
-      name: "h3/oidc",
+      input: "./src/adapters/h3v1/oidc",
+      outDir: "./dist/adapters/h3v1/oidc",
+      name: "adapters/h3/oidc",
+    },
+    {
+      input: "./src/adapters/h3v1",
+      outDir: "./dist/adapters/h3v1",
+      name: "adapters/h3v1",
+    },
+    {
+      input: "./src/adapters/h3v1/oauth",
+      outDir: "./dist/adapters/h3v1/oauth",
+      name: "adapters/h3v1/oauth",
+    },
+    {
+      input: "./src/adapters/h3v1/oidc",
+      outDir: "./dist/adapters/h3v1/oidc",
+      name: "adapters/h3v1/oidc",
     },
   ],
+  replace: {
+    h3v1: "h3",
+    h3v2: "h3",
+    "cookie-esv1": "cookie-es",
+    "cookie-esv2": "cookie-es",
+  },
+  externals: ["h3v1", "h3v2", "cookie-esv1", "cookie-esv2"],
   declaration: true,
   hooks: {
     async "build:done"() {
