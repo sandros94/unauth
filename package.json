@@ -76,7 +76,7 @@
   },
   "dependencies": {
     "hookable": "^5.5.3",
-    "unjwt": "^0.5.25",
+    "unjwt": "^0.5.26",
     "unsecure": "^0.0.4"
   },
   "devDependencies": {
