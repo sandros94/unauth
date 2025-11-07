@@ -14,17 +14,17 @@ importers:
         specifier: ^1.2.2 || ^2.0.0
         version: 2.0.0
       h3:
-        specifier: ^1.15.4 || >=2.0.1-rc.2 || ^2.0.1
+        specifier: ^1.15.4 || >=2.0.1-rc.5 || ^2.0.1
         version: 1.15.4
       hookable:
         specifier: ^5.5.3
         version: 5.5.3
       rou3:
-        specifier: ^0.7.7
-        version: 0.7.7
+        specifier: ^0.7.10
+        version: 0.7.10
       unjwt:
         specifier: ^0.5.25
-        version: 0.5.25(cookie-es@2.0.0)(h3@1.15.4)(rou3@0.7.7)
+        version: 0.5.25(cookie-es@2.0.0)(h3@1.15.4)(rou3@0.7.10)
       unsecure:
         specifier: ^0.0.4
         version: 0.0.4
@@ -57,8 +57,8 @@ importers:
         specifier: npm:h3@^1.15.4
         version: h3@1.15.4
       h3v2:
-        specifier: npm:h3@^2.0.1-rc.2
-        version: h3@2.0.1-rc.2
+        specifier: npm:h3@^2.0.1-rc.5
+        version: h3@2.0.1-rc.5
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
@@ -2500,10 +2500,10 @@ packages:
       crossws:
         optional: true
 
-  h3@2.0.1-rc.2:
+  h3@2.0.1-rc.5:
     resolution:
       {
-        integrity: sha512-2vS7OETzPDzGQxmmcs6ttu7p0NW25zAdkPXYOr43dn4GZf81uUljJvupa158mcpUGpsQUqIy4O4THWUQT1yVeA==,
+        integrity: sha512-qkohAzCab0nLzXNm78tBjZDvtKMTmtygS8BJLT3VPczAQofdqlFXDPkXdLMJN4r05+xqneG8snZJ0HgkERCZTg==,
       }
     engines: { node: ">=20.11.1" }
     peerDependencies:
@@ -3648,10 +3648,10 @@ packages:
     engines: { node: ">=18.0.0", npm: ">=8.0.0" }
     hasBin: true
 
-  rou3@0.7.5:
+  rou3@0.7.10:
     resolution:
       {
-        integrity: sha512-bwUHDHw1HSARty7TWNV71R0NZs5fOt74OM+hcMdJyPfchfRktEmxLoMSNa7PwEp6WqJ0a3feKztsIfTUEYhskw==,
+        integrity: sha512-aoFj6f7MJZ5muJ+Of79nrhs9N3oLGqi2VEMe94Zbkjb6Wupha46EuoYgpWSOZlXww3bbd8ojgXTAA2mzimX5Ww==,
       }
 
   rou3@0.7.7:
@@ -3727,18 +3727,18 @@ packages:
       }
     engines: { node: ">=0.10.0" }
 
-  srvx@0.8.16:
-    resolution:
-      {
-        integrity: sha512-hmcGW4CgroeSmzgF1Ihwgl+Ths0JqAJ7HwjP2X7e3JzY7u4IydLMcdnlqGQiQGUswz+PO9oh/KtCpOISIvs9QQ==,
-      }
-    engines: { node: ">=20.16.0" }
-    hasBin: true
-
   srvx@0.8.9:
     resolution:
       {
         integrity: sha512-wYc3VLZHRzwYrWJhkEqkhLb31TI0SOkfYZDkUhXdp3NoCnNS0FqajiQszZZjfow/VYEuc6Q5sZh9nM6kPy2NBQ==,
+      }
+    engines: { node: ">=20.16.0" }
+    hasBin: true
+
+  srvx@0.9.5:
+    resolution:
+      {
+        integrity: sha512-nQsA2c8q3XwbSn6kTxVQjz0zS096rV+Be2pzJwrYEAdtnYszLw4MTy8JWJjz1XEGBZwP0qW51SUIX3WdjdRemQ==,
       }
     engines: { node: ">=20.16.0" }
     hasBin: true
@@ -5529,15 +5529,13 @@ snapshots:
     dependencies:
       cookie-es: 2.0.0
       fetchdts: 0.1.7
-      rou3: 0.7.5
+      rou3: 0.7.7
       srvx: 0.8.9
 
-  h3@2.0.1-rc.2:
+  h3@2.0.1-rc.5:
     dependencies:
-      cookie-es: 2.0.0
-      fetchdts: 0.1.7
-      rou3: 0.7.7
-      srvx: 0.8.16
+      rou3: 0.7.10
+      srvx: 0.9.5
 
   has-flag@4.0.0: {}
 
@@ -6185,7 +6183,7 @@ snapshots:
       "@rollup/rollup-win32-x64-msvc": 4.48.0
       fsevents: 2.3.3
 
-  rou3@0.7.5: {}
+  rou3@0.7.10: {}
 
   rou3@0.7.7: {}
 
@@ -6213,11 +6211,11 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  srvx@0.8.16: {}
-
   srvx@0.8.9:
     dependencies:
       cookie-es: 2.0.0
+
+  srvx@0.9.5: {}
 
   stackback@0.0.2: {}
 
@@ -6370,9 +6368,9 @@ snapshots:
     dependencies:
       "@types/unist": 2.0.11
 
-  unjwt@0.5.25(cookie-es@2.0.0)(h3@1.15.4)(rou3@0.7.7):
+  unjwt@0.5.25(cookie-es@2.0.0)(h3@1.15.4)(rou3@0.7.10):
     dependencies:
-      rou3: 0.7.7
+      rou3: 0.7.10
     optionalDependencies:
       cookie-es: 2.0.0
       h3: 1.15.4
