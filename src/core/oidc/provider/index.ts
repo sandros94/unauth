@@ -132,7 +132,7 @@ export class OIDCProvider extends OAuthProvider {
     },
   ): Promise<IssueTokenGrantReturn> {
     const opts = { ...this.options, ...options };
-    return issueTokenGrant(args, opts);
+    return issueTokenGrant(args, opts as any); // TODO: readonly type issue
   }
 
   // Introspection
@@ -141,7 +141,7 @@ export class OIDCProvider extends OAuthProvider {
     return introspectIdToken({
       token,
       iss: this.issuer,
-      options: this.idTokenOptions,
+      options: this.idTokenOptions as any, // TODO: readonly type issue
     });
   }
 }

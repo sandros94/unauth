@@ -1,9 +1,8 @@
-import { isPublicJWK, isSymmetricJWK } from "unjwt/utils";
 import { verify } from "unjwt/jws";
-import type { JWK, JWKSet } from "unjwt/jwk";
 
 import type { IdTokenClaims } from "../../types";
 import { type IdTokenOptions, idTokenDefaults } from "./defaults";
+import { preferPublicKey } from "../../../oauth/provider/internal/utils";
 
 export * from "../../../oauth/provider/internal/introspect";
 
@@ -15,7 +14,7 @@ export async function introspectIdToken<T extends IdTokenClaims>(args: {
 }): Promise<T> {
   const { token, iss, options } = args;
   const opts = idTokenDefaults(options);
-  const key = preferPublicKey(opts);
+  const key = preferPublicKey(opts, { tokenType: "ID Token" });
 
   const { payload } = await verify<T>(token, key, {
     issuer: iss,
@@ -25,26 +24,4 @@ export async function introspectIdToken<T extends IdTokenClaims>(args: {
   });
 
   return payload;
-}
-
-function preferPublicKey(options: {
-  publicKey?: JWK | JWK[];
-  privateKey: JWK;
-}): JWK | JWKSet {
-  if (options.publicKey) {
-    const key = Array.isArray(options.publicKey)
-      ? options.publicKey
-      : [options.publicKey];
-
-    return {
-      keys: key.filter((element) => isPublicJWK(element)),
-    };
-  }
-
-  if (!isSymmetricJWK(options.privateKey)) {
-    console.warn(
-      `Using private key for ID Token verification; ensure "key_ops" includes "verify" and that this is intentional.`,
-    );
-  }
-  return options.privateKey;
 }

@@ -154,7 +154,7 @@ export class OAuthProvider {
     },
   ): Promise<IssueTokenGrantReturn> {
     const opts = { ...this.options, ...options };
-    return issueTokenGrant(args, opts);
+    return issueTokenGrant(args, opts as any); // TODO: readonly type issue
   }
 
   // Introspection
@@ -171,7 +171,7 @@ export class OAuthProvider {
     return introspectAccessToken({
       token,
       iss: this.issuer,
-      options: this.accessTokenOptions,
+      options: this.accessTokenOptions as any, // TODO: readonly type issue
     });
   }
 

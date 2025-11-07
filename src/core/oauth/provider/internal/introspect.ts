@@ -1,7 +1,5 @@
-import type { JWK, JWKSet } from "unjwt/jwk";
 import { decrypt } from "unjwt/jwe";
 import { verify } from "unjwt/jws";
-import { isPublicJWK, isSymmetricJWK } from "unjwt/utils";
 
 import type {
   AuthorizationCodeClaims,
@@ -18,6 +16,7 @@ import {
   accessTokenDefaults,
   refreshTokenDefaults,
 } from "./defaults";
+import { preferPublicKey } from "./utils";
 
 // Utility to introspect refresh tokens while validating their claims
 export async function introspectAuthorizationCode<
@@ -48,7 +47,7 @@ export async function introspectAccessToken<T extends AccessTokenClaims>(args: {
 }): Promise<T> {
   const { token, iss, options } = args;
   const opts = accessTokenDefaults(options);
-  const key = preferPublicKey(opts);
+  const key = preferPublicKey(opts, { tokenType: "Access Token" });
 
   const { payload } = await verify<T>(token, key, {
     issuer: iss,
@@ -79,26 +78,4 @@ export async function introspectRefreshToken<
   });
 
   return payload;
-}
-
-function preferPublicKey(options: {
-  publicKey?: JWK | JWK[];
-  privateKey: JWK;
-}): JWK | JWKSet {
-  if (options.publicKey) {
-    const key = Array.isArray(options.publicKey)
-      ? options.publicKey
-      : [options.publicKey];
-
-    return {
-      keys: key.filter((element) => isPublicJWK(element)),
-    };
-  }
-
-  if (!isSymmetricJWK(options.privateKey)) {
-    console.warn(
-      `Using private key for Access Token verification; ensure "key_ops" includes "verify" and that this is intentional.`,
-    );
-  }
-  return options.privateKey;
 }

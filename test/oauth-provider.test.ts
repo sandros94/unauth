@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { randomBytes } from "node:crypto";
-import { base64UrlEncode } from "unsecure/utils";
-import type { JWK_oct } from "unjwt";
+import { generateJWK } from "unjwt/jwk";
 import * as jwe from "unjwt/jwe";
 import * as jws from "unjwt/jws";
 
@@ -39,24 +37,19 @@ import type {
 
 // Helpers
 
-const makeOctJwk = (size = 32, alg?: string): JWK_oct => {
-  const key = randomBytes(size);
-  // intentionally mocking keys instead of using unjwt's generateKey
-  return { kty: "oct", k: base64UrlEncode(key), ...(alg ? { alg } : {}) };
-};
-
 const fixedDate = new Date("2024-01-01T00:00:00Z");
 
-const buildTokenOptions = (
+const buildTokenOptions = async (
   overrides: Partial<IssueTokenGrantOptions> = {},
-): IssueTokenGrantOptions => {
+): Promise<IssueTokenGrantOptions> => {
+  const atKeys = await generateJWK("RS256");
   const base: IssueTokenGrantOptions = {
     iss: "https://issuer.example.com",
     authorizationCodeOptions: {
       privateKey: "ac-secret",
     },
     accessTokenOptions: {
-      privateKey: makeOctJwk(32, "HS256"),
+      ...atKeys,
       signOptions: {
         alg: "HS256",
       },
@@ -131,10 +124,12 @@ describe("OAuth Provider", () => {
     });
   });
 
-  describe("Defaults", () => {
+  describe("Defaults", async () => {
+    const tempKeys = await generateJWK("RS256");
     it("authorizationCodeDefaults fills expiresIn", () => {
-      const key = makeOctJwk();
-      const out = authorizationCodeDefaults({ privateKey: key });
+      const out = authorizationCodeDefaults({
+        privateKey: tempKeys.privateKey,
+      });
       expect(out.encryptOptions.expiresIn).toBe(
         DEFAULTS_OPTIONS.authorizationCode.expiresIn,
       );
@@ -144,8 +139,7 @@ describe("OAuth Provider", () => {
     });
 
     it("refreshTokenDefaults fills expiresIn", () => {
-      const key = makeOctJwk();
-      const out = refreshTokenDefaults({ privateKey: key });
+      const out = refreshTokenDefaults({ privateKey: tempKeys.privateKey });
       expect(out.encryptOptions.expiresIn).toBe(
         DEFAULTS_OPTIONS.refreshToken.expiresIn,
       );
@@ -155,8 +149,7 @@ describe("OAuth Provider", () => {
     });
 
     it("accessTokenDefaults fills expiresIn", () => {
-      const key = makeOctJwk(32, "HS256");
-      const out = accessTokenDefaults({ privateKey: key });
+      const out = accessTokenDefaults({ ...tempKeys });
       expect(out.signOptions.expiresIn).toBe(
         DEFAULTS_OPTIONS.accessToken.expiresIn,
       );
@@ -546,7 +539,7 @@ describe("OAuth Provider", () => {
       };
       const result = await issueAuthorizationCodeGrant(
         args,
-        buildTokenOptions(),
+        await buildTokenOptions(),
       );
       expect(result.success).toBe(true);
       if (!result.success) {
@@ -595,7 +588,7 @@ describe("OAuth Provider", () => {
           },
           code_verifier: "verifier",
         },
-        buildTokenOptions(),
+        await buildTokenOptions(),
       );
       expect(result.success).toBe(false);
       if (result.success) {
@@ -617,7 +610,7 @@ describe("OAuth Provider", () => {
       };
       const result = await issueClientCredentialsGrant(
         args,
-        buildTokenOptions(),
+        await buildTokenOptions(),
       );
       expect(result.success).toBe(true);
       if (!result.success) {
@@ -662,7 +655,10 @@ describe("OAuth Provider", () => {
         accessTokenExtraClaims: { audience: "internal" },
         refreshTokenExtraClaims: { rotated: true },
       };
-      const result = await issueRefreshTokenGrant(args, buildTokenOptions());
+      const result = await issueRefreshTokenGrant(
+        args,
+        await buildTokenOptions(),
+      );
       expect(result.success).toBe(true);
       if (!result.success) {
         throw new Error("Expected success");
@@ -702,7 +698,7 @@ describe("OAuth Provider", () => {
           },
           requested_scope: "admin",
         },
-        buildTokenOptions(),
+        await buildTokenOptions(),
       );
       expect(result.success).toBe(false);
       if (result.success) {

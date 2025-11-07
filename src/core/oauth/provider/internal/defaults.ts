@@ -107,11 +107,11 @@ export interface AccessTokenOptions {
   /**
    * The private key to sign the access token.
    */
-  privateKey: JWK_Symmetric | JWK_Private;
+  privateKey: JWK_Private;
   /**
    * The public key or key set to verify the access token.
    */
-  publicKey?: MaybeArray<JWK_Symmetric | JWK_Public>;
+  publicKey: MaybeArray<JWK_Public>;
   /**
    * Options for signing the access token.
    */

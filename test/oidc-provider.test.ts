@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { randomBytes } from "node:crypto";
-import { base64UrlEncode } from "unsecure/utils";
-import type { JWK_oct } from "unjwt";
+import { generateJWK } from "unjwt/jwk";
 import * as oauthProvider from "../src/core/oauth/provider";
 import * as oidcUtils from "../src/core/oidc/provider/internal/utils";
 import * as jws from "unjwt/jws";
@@ -28,23 +26,22 @@ import type {
   NormalizedRefreshTokenGrantInput,
 } from "../src/core/oidc/provider";
 
-const makeOctJwk = (size = 32, alg?: string): JWK_oct => {
-  const key = randomBytes(size);
-  return { kty: "oct", k: base64UrlEncode(key), ...(alg ? { alg } : {}) };
-};
-
 const fixedDate = new Date("2024-01-01T00:00:00Z");
 
-const buildOidcOptions = (
+const buildOidcOptions = async (
   overrides: Partial<IssueTokenGrantOptions> = {},
-): IssueTokenGrantOptions => {
+): Promise<IssueTokenGrantOptions> => {
+  const [atKeys, idKeys] = await Promise.all([
+    generateJWK("RS256"),
+    generateJWK("RS256"),
+  ]);
   const base: IssueTokenGrantOptions = {
     iss: "https://issuer.example.com",
     authorizationCodeOptions: {
       privateKey: "ac-secret",
     },
     accessTokenOptions: {
-      privateKey: makeOctJwk(32, "HS256"),
+      ...atKeys,
       signOptions: {
         alg: "HS256",
       },
@@ -53,7 +50,7 @@ const buildOidcOptions = (
       privateKey: "rt-secret",
     },
     idTokenOptions: {
-      privateKey: makeOctJwk(32, "HS256"),
+      ...idKeys,
       signOptions: {
         alg: "HS256",
       },
@@ -90,7 +87,7 @@ afterEach(() => {
 
 describe("OIDC Provider", () => {
   describe("Discovery + defaults", () => {
-    it("builds OIDC discovery and idTokenDefaults", () => {
+    it("builds OIDC discovery and idTokenDefaults", async () => {
       const doc = buildOIDCDiscoveryDocument({
         issuer: "https://auth/",
         base: "/oidc",
@@ -98,8 +95,8 @@ describe("OIDC Provider", () => {
       expect(doc.userinfo_endpoint).toBe("https://auth/oidc/userinfo");
       expect(doc.scopes_supported).toContain("openid");
 
-      const jwk = makeOctJwk(32, "HS256");
-      const idOpts = idTokenDefaults({ privateKey: jwk });
+      const keys = await generateJWK("RS256");
+      const idOpts = idTokenDefaults({ ...keys });
       expect(idOpts.signOptions.expiresIn).toBeGreaterThan(0);
     });
   });
@@ -278,7 +275,7 @@ describe("OIDC Provider", () => {
 
       const result = await oidcIssueAuthorizationCodeGrant(
         args,
-        buildOidcOptions(),
+        await buildOidcOptions(),
       );
       expect(result.success).toBe(true);
       if (!result.success) {
@@ -330,7 +327,7 @@ describe("OIDC Provider", () => {
           },
           code_verifier: "verifier",
         },
-        buildOidcOptions(),
+        await buildOidcOptions(),
       );
       expect(result.success).toBe(false);
       if (result.success) {
@@ -392,7 +389,10 @@ describe("OIDC Provider", () => {
         refreshTokenExtraClaims: { rotated: true },
       };
 
-      const result = await oidcIssueRefreshTokenGrant(args, buildOidcOptions());
+      const result = await oidcIssueRefreshTokenGrant(
+        args,
+        await buildOidcOptions(),
+      );
       expect(result.success).toBe(true);
       if (!result.success) {
         throw new Error("Expected success");
@@ -439,7 +439,7 @@ describe("OIDC Provider", () => {
             scope: "openid",
           },
         },
-        buildOidcOptions(),
+        await buildOidcOptions(),
       );
       expect(result.success).toBe(false);
       if (result.success) {

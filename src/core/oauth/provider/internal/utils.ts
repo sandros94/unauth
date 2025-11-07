@@ -1,4 +1,7 @@
+import { isPublicJWK, isSymmetricJWK } from "unjwt/utils";
 import { hash, secureCompare } from "unsecure";
+import type { JWK_Private, JWK_Public, JWKSet } from "unjwt";
+import type { MaybeArray } from "../../../../types";
 
 /**
  * PKCE verification helper shared with authorize.ts semantics
@@ -30,4 +33,37 @@ export function isScopeSubset(requested: string, allowed: string): boolean {
     }
   }
   return true;
+}
+
+export function preferPublicKey(
+  options: {
+    /**
+     * The private key to sign the access token.
+     */
+    privateKey: JWK_Private;
+    /**
+     * The public key or key set to verify the access token.
+     */
+    publicKey: MaybeArray<JWK_Public>;
+  },
+  opts?: {
+    tokenType?: "Access Token" | "ID Token" | (string & {});
+  },
+): JWK_Private | JWKSet {
+  if (options.publicKey) {
+    const key = Array.isArray(options.publicKey)
+      ? options.publicKey
+      : [options.publicKey];
+
+    return {
+      keys: key.filter((element) => isPublicJWK(element)),
+    };
+  }
+
+  if (!isSymmetricJWK(options.privateKey)) {
+    console.warn(
+      `Using private key for ${opts?.tokenType || "Token"} verification; ensure "key_ops" includes "verify" and that this is intentional.`,
+    );
+  }
+  return options.privateKey;
 }
