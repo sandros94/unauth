@@ -1,3 +1,5 @@
+import type { SessionJWS, SessionJWE } from "unjwt/adapters/h3v1";
+import { getJWSSession, getJWESession } from "unjwt/adapters/h3v1";
 import { computeExpiresInSeconds } from "unjwt/utils";
 import type { CookieSerializeOptions } from "cookie-es";
 import { createHooks } from "hookable";
@@ -7,7 +9,6 @@ import {
   setResponseStatus,
   getQuery,
   readBody,
-  getCookie,
   setCookie,
   createRouter,
   defineEventHandler,
@@ -134,67 +135,77 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
   async function getAccessToken(
     event: H3Event,
   ): Promise<AccessTokenClaims | undefined> {
-    const context = ((event.context ||= Object.create(null)).unauth ||=
-      Object.create(null));
+    const { signOptions, verifyOptions, ...key } =
+      getProvider().accessTokenOptions;
 
-    if (context?.[accessTokenName]) {
-      return context[accessTokenName];
-    }
+    const session = await getJWSSession<AccessTokenClaims>(event, {
+      name: accessTokenName,
+      sessionHeader: "Authorization",
+      key: key as any, // TODO: fix readonly type,
+      jws: {
+        signOptions,
+        verifyOptions,
+      },
+    }).catch(() => null);
 
-    const at =
-      event.headers.get("Authorization")?.split(" ")?.[1] ||
-      getCookie(event, accessTokenName);
-    if (!at) return undefined;
+    if (!session) return undefined;
 
-    const claims = await getProvider()
-      .introspectAccessToken(at)
-      .catch(() => null);
-    if (!claims) return undefined;
-
-    context[accessTokenName] = claims;
-    return claims;
+    const { id, createdAt, expiresAt, data } = session;
+    return {
+      ...data,
+      jti: id,
+      iat: Math.floor(createdAt / 1000),
+      exp: Math.floor(expiresAt! / 1000),
+    };
   }
   async function getRefreshToken(
     event: H3Event,
   ): Promise<RefreshTokenClaims | undefined> {
-    const context = ((event.context ||= Object.create(null)).unauth ||=
-      Object.create(null));
+    const { encryptOptions, decryptOptions, privateKey } =
+      getProvider().refreshTokenOptions;
 
-    if (context?.[refreshTokenName]) {
-      return context[refreshTokenName];
-    }
+    const session = await getJWESession<RefreshTokenClaims>(event, {
+      name: refreshTokenName,
+      key: privateKey,
+      jwe: {
+        encryptOptions,
+        decryptOptions,
+      },
+    }).catch(() => null);
 
-    const rt = getCookie(event, refreshTokenName);
-    if (!rt) return undefined;
+    if (!session) return undefined;
 
-    const claims = await getProvider()
-      .introspectRefreshToken(rt)
-      .catch(() => null);
-    if (!claims) return undefined;
-
-    context[refreshTokenName] = claims;
-    return claims;
+    const { id, createdAt, expiresAt, data } = session;
+    return {
+      ...data,
+      jti: id,
+      iat: Math.floor(createdAt / 1000),
+      exp: Math.floor(expiresAt! / 1000),
+    };
   }
   async function getIdToken(
     event: H3Event,
   ): Promise<IdTokenClaims | undefined> {
-    const context = ((event.context ||= Object.create(null)).unauth ||=
-      Object.create(null));
+    const { signOptions, verifyOptions, ...key } = getProvider().idTokenOptions;
 
-    if (context?.[idTokenName]) {
-      return context[idTokenName];
-    }
+    const session = await getJWSSession<IdTokenClaims>(event, {
+      name: idTokenName,
+      key: key as any, // TODO: fix readonly type,
+      jws: {
+        signOptions,
+        verifyOptions,
+      },
+    }).catch(() => null);
 
-    const rt = getCookie(event, idTokenName);
-    if (!rt) return undefined;
+    if (!session) return undefined;
 
-    const claims = await getProvider()
-      .introspectIdToken(rt)
-      .catch(() => null);
-    if (!claims) return undefined;
-
-    context[idTokenName] = claims;
-    return claims;
+    const { id, createdAt, expiresAt, data } = session;
+    return {
+      ...data,
+      jti: id,
+      iat: Math.floor(createdAt / 1000),
+      exp: Math.floor(expiresAt! / 1000),
+    };
   }
 
   async function authorize(event: H3Event, cb: OIDCAuthorizeCallback) {
@@ -320,30 +331,49 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
       return tokenGrant.error;
     }
 
-    const context = ((event.context ||= Object.create(null)).unauth ||=
-      Object.create(null));
-    if (tokenGrant.artifacts?.accessTokenClaims !== undefined) {
-      Object.assign(context, {
-        [accessTokenName]: tokenGrant.artifacts.accessTokenClaims,
-      });
-    }
-    if (
-      tokenGrant.artifacts &&
-      "refreshTokenClaims" in tokenGrant.artifacts &&
-      tokenGrant.artifacts?.refreshTokenClaims !== undefined
-    ) {
-      Object.assign(context, {
-        [refreshTokenName]: tokenGrant.artifacts.refreshTokenClaims,
-      });
-    }
-    if (
-      tokenGrant.artifacts &&
-      "idTokenClaims" in tokenGrant.artifacts &&
-      tokenGrant.artifacts?.idTokenClaims !== undefined
-    ) {
-      Object.assign(context, {
-        [idTokenName]: tokenGrant.artifacts.idTokenClaims,
-      });
+    // If successful, update event's context with tokens' claims
+    if (tokenGrant.artifacts) {
+      if (!event.context.sessions) {
+        event.context.sessions = Object.create(null);
+      }
+
+      if (tokenGrant.artifacts?.accessTokenClaims) {
+        const { jti, iat, exp, ...data } =
+          tokenGrant.artifacts.accessTokenClaims;
+        event.context.sessions![accessTokenName] = {
+          id: jti,
+          createdAt: iat * 1000,
+          expiresAt: exp * 1000,
+          data,
+        } as SessionJWS<AccessTokenClaims>;
+      }
+
+      if (
+        "refreshTokenClaims" in tokenGrant.artifacts &&
+        tokenGrant.artifacts?.refreshTokenClaims
+      ) {
+        const { jti, iat, exp, ...data } =
+          tokenGrant.artifacts.refreshTokenClaims;
+        event.context.sessions![refreshTokenName] = {
+          id: jti,
+          createdAt: iat * 1000,
+          expiresAt: exp * 1000,
+          data,
+        } as SessionJWE<RefreshTokenClaims>;
+      }
+
+      if (
+        "idTokenClaims" in tokenGrant.artifacts &&
+        tokenGrant.artifacts?.idTokenClaims
+      ) {
+        const { jti, iat, exp, ...data } = tokenGrant.artifacts.idTokenClaims;
+        event.context.sessions![idTokenName] = {
+          id: jti,
+          createdAt: iat * 1000,
+          expiresAt: exp * 1000,
+          data,
+        } as SessionJWS<IdTokenClaims>;
+      }
     }
 
     await oidcHooks.callHookParallel("tokenIssued", tokenGrant, event);
