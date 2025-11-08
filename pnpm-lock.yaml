@@ -24,8 +24,8 @@ importers:
         specifier: ^0.7.10
         version: 0.7.10
       unjwt:
-        specifier: ^0.5.26
-        version: 0.5.26(cookie-es@2.0.0)(h3@1.15.4)(rou3@0.7.10)
+        specifier: ^0.5.28
+        version: 0.5.28(cookie-es@2.0.0)(h3@1.15.4)(rou3@0.7.10)
       unsecure:
         specifier: ^0.0.4
         version: 0.0.4
@@ -2049,8 +2049,8 @@ packages:
   unist-util-stringify-position@2.0.3:
     resolution: {integrity: sha512-3faScn5I+hy9VleOq/qNbAd6pAx7iH5jYBMS9I1HgQVijz/4mv5Bvw5iw1sC/90CODiKo81G/ps8AJrISn687g==}
 
-  unjwt@0.5.26:
-    resolution: {integrity: sha512-C/MqUpL8Ds895TsKotp4os3k/eA2sf7s0nFiX90i9O1JWSprkjDTGwXxCp8XD49iiA+7v7wKpJjl7a9LGBzObQ==}
+  unjwt@0.5.28:
+    resolution: {integrity: sha512-ITiPPOBX25WIFi6U3k0Bc1LnubGvXWWNYLt3CRoZI6bhWkKJCeAEPqBCwRhor2Cx1IXzTN0htteeOfuzoyMDWw==}
     peerDependencies:
       cookie-es: ^1.2.2 || ^2.0.0
       h3: ^1.15.4 || >=2.0.1-rc.5 || ^2.0.1
@@ -4110,7 +4110,7 @@ snapshots:
     dependencies:
       '@types/unist': 2.0.11
 
-  unjwt@0.5.26(cookie-es@2.0.0)(h3@1.15.4)(rou3@0.7.10):
+  unjwt@0.5.28(cookie-es@2.0.0)(h3@1.15.4)(rou3@0.7.10):
     optionalDependencies:
       cookie-es: 2.0.0
       h3: 1.15.4

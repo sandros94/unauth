@@ -76,7 +76,7 @@
   },
   "dependencies": {
     "hookable": "^5.5.3",
-    "unjwt": "^0.5.26",
+    "unjwt": "^0.5.28",
     "unsecure": "^0.0.4"
   },
   "devDependencies": {
@@ -116,5 +116,5 @@
       "@parcel/watcher"
     ]
   },
-  "packageManager": "pnpm@10.18.3"
+  "packageManager": "pnpm@10.20.0"
 }
