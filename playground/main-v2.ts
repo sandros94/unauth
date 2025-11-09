@@ -1,12 +1,12 @@
-import { H3, serve, HTTPError, getQuery, readBody } from "h3v2";
-import { generateJWK } from "unauth/utils";
+import { H3, serve, withBase, HTTPError, getQuery, readBody } from "h3v2";
+import { generateJWK } from "../src/utils";
 import {
   type AuthorizeRequest,
   type TokenRequest,
   OIDCProvider,
-} from "unauth/oidc";
+} from "../src/core/oidc";
 
-const app = new H3();
+const api = new H3();
 
 const [atJwk, idJwk] = await Promise.all([
   generateJWK("RS256", { kid: "at-rsa-1" }),
@@ -14,6 +14,13 @@ const [atJwk, idJwk] = await Promise.all([
 ]);
 const provider = new OIDCProvider({
   issuer: "http://localhost:3000",
+  discovery: {
+    // the base path where the OIDC endpoints will be served
+    // (e.g. /oidc/v1/.well-known/openid-configuration)
+    base: "/oidc/v1",
+    // you can also override individual endpoints here, e.g.:
+    // authorization_endpoint: "/oidc/v1/authorize",
+  },
   authorizationCodeOptions: {
     privateKey: "ac-secret",
   },
@@ -31,15 +38,15 @@ const provider = new OIDCProvider({
 });
 
 // OpenID Provider Configuration (Discovery)
-app.get("/.well-known/openid-configuration", () => {
-  return provider.discovery();
+api.get("/.well-known/openid-configuration", () => {
+  return provider.discoveryDocument;
 });
 
 // JWKS (public keys)
-app.get("/.well-known/jwks.json", () => provider.jwkSet);
+api.get("/.well-known/jwks.json", () => provider.jwkSet);
 
 // Simple callback endpoint for manual testing; not used by the scripted test (which intercepts the Location header)
-app.get("/callback", (event) => {
+api.get("/callback", (event) => {
   const q = event.url.searchParams;
   const code = q.get("code");
   const state = q.get("state");
@@ -47,7 +54,7 @@ app.get("/callback", (event) => {
 });
 
 // Authorization endpoint (GET)
-app.get("/authorize", async (event) => {
+api.get("/authorize", async (event) => {
   const req = getQuery<AuthorizeRequest>(event);
 
   const validation = provider.validateAuthorizeRequest(req);
@@ -62,6 +69,7 @@ app.get("/authorize", async (event) => {
     });
   }
   const normalized = validation.value;
+  console.log("Normalized authorization request:", JSON.stringify(normalized, null, 2));
 
   const redirect = await provider.issueAuthorizationCode({
     ...normalized,
@@ -87,7 +95,7 @@ app.get("/authorize", async (event) => {
 
 // Token endpoint (POST)
 // Supports authorization_code, refresh_token, and client_credentials
-app.post("/token", async (event) => {
+api.post("/token", async (event) => {
   const req = await readBody<TokenRequest>(event).catch(() => undefined);
 
   if (!req) throw HTTPError.status(400, "Invalid or missing request body");
@@ -104,6 +112,15 @@ app.post("/token", async (event) => {
     });
   }
   const normalized = validation.value;
+  console.log("Normalized token request:", JSON.stringify(normalized, null, 2));
+
+  if (normalized.grant_type === "client_credentials") {
+    // mock check secret
+    // eslint-disable-next-line unicorn/no-lonely-if
+    if (normalized.client_id !== "test-client" || normalized.client_secret !== "client-secret") {
+      throw HTTPError.status(401, "Invalid client credentials");
+    }
+  }
 
   const tokenGrant = await provider.issueTokenGrant(normalized);
 
@@ -112,13 +129,13 @@ app.post("/token", async (event) => {
     : new Response(JSON.stringify(tokenGrant.error), {
         status: 400,
         statusText: "Invalid request",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "apilication/json" },
       });
 });
 
 // UserInfo endpoint (GET)
 // Requires a valid Bearer access token. Returns a minimal OIDC UserInfo response.
-app.get("/userinfo", async (event) => {
+api.get("/userinfo", async (event) => {
   const auth = event.req.headers.get("Authorization");
   if (!auth || !auth.toLowerCase().startsWith("bearer ")) {
     throw HTTPError.status(401, "Missing or invalid Authorization header");
@@ -132,5 +149,9 @@ app.get("/userinfo", async (event) => {
   // Build a minimal profile. Extend as needed with additional claims from your datastore.
   return provider.buildUserInfo({ sub: res.sub });
 });
+
+const app = new H3();
+
+app.use("/oidc/v1/**", withBase("/oidc/v1", api.handler));
 
 serve(app);

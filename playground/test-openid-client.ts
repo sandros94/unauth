@@ -8,6 +8,7 @@ import * as client from "openid-client";
  * 3) Simulate browser redirect back (capture 302 Location manually)
  * 4) Exchange code for tokens
  * 5) Call userinfo
+ * 6) Client Credentials grant
  */
 try {
   const issuer = new URL("http://localhost:3000/oidc/v1");
@@ -77,6 +78,30 @@ try {
     client.skipSubjectCheck,
   );
   console.log("userinfo:", userinfo, "\n\n");
+
+  // 6) Client Credentials grant
+  // Note: userinfo is not applicable for client_credentials (no end-user subject).
+  const ccScope = "api.read";
+  const ccTokens = await client
+    .clientCredentialsGrant(await client.discovery(
+      issuer,
+      clientId,
+      {
+        client_secret: "client-secret",
+      },
+      undefined,
+      {
+        execute: [client.allowInsecureRequests],
+      },
+    ), {
+      scope: ccScope,
+      resource: "https://api.example.com/",
+    })
+    .catch((error_) => {
+      console.error("Error during client_credentials:", error_.cause);
+      throw error_;
+    });
+  console.log("client_credentials tokens:", ccTokens, "\n\n");
 } catch (error_) {
   console.error(error_);
   process.exitCode = 1;
