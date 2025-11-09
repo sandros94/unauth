@@ -501,7 +501,8 @@ describe("OAuth Provider", () => {
     it("rejects token requests lacking client binding", () => {
       const res = validateTokenRequest({
         grant_type: "client_credentials",
-        client_id: "" as unknown as string,
+        client_id: "",
+        client_secret: "",
         resource: "https://api",
       });
       expect(res.success).toBe(false);
@@ -604,6 +605,7 @@ describe("OAuth Provider", () => {
       const args: NormalizedClientCredentialsGrantInput = {
         grant_type: "client_credentials",
         client_id: "client",
+        client_secret: "secret",
         resource: "https://api",
         scope: "write",
         accessTokenExtraClaims: { tier: "gold" },

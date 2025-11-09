@@ -156,7 +156,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
       jti: id,
       iat: Math.floor(createdAt / 1000),
       exp: Math.floor(expiresAt! / 1000),
-    };
+    } as AccessTokenClaims;
   }
   async function getRefreshToken(
     event: H3Event,
@@ -181,7 +181,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
       jti: id,
       iat: Math.floor(createdAt / 1000),
       exp: Math.floor(expiresAt! / 1000),
-    };
+    } as RefreshTokenClaims;
   }
   async function getIdToken(
     event: H3Event,
@@ -205,7 +205,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
       jti: id,
       iat: Math.floor(createdAt / 1000),
       exp: Math.floor(expiresAt! / 1000),
-    };
+    } as IdTokenClaims;
   }
 
   async function authorize(event: H3Event, cb: OIDCAuthorizeCallback) {
