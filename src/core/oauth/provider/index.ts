@@ -23,6 +23,7 @@ import type {
   ResolvedAccessTokenOptions,
   ResolvedRefreshTokenOptions,
   NormalizedAuthorizeInput,
+  ValidatedAuthorizeRequestResult,
   IssueAuthorizationCodeReturn,
   NormalizedTokenInput,
   NormalizedAuthorizationCodeGrantInput,
@@ -122,13 +123,7 @@ export class OAuthProvider {
   validateAuthorizeRequest(
     req: AuthorizeRequest,
     errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
-  ): Result<
-    Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
-      redirect_uri?: string;
-    },
-    undefined,
-    AuthorizeErrorResponse
-  > {
+  ): ValidatedAuthorizeRequestResult {
     return validateAuthorizeRequest(req, errorDetails);
   }
 

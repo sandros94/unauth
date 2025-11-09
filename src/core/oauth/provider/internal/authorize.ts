@@ -32,6 +32,14 @@ export interface NormalizedAuthorizeInput {
   acExtraClaims?: Record<string, unknown>;
 }
 
+export type ValidatedAuthorizeRequestResult = Result<
+  Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
+    redirect_uri?: string;
+  },
+  undefined,
+  AuthorizeErrorResponse
+>;
+
 export interface IssueAuthorizationCodeOptions {
   iss: string;
   authorizationCodeOptions: AuthorizationCodeOptions;
@@ -149,13 +157,7 @@ export function validateRedirectUri(
 export function validateAuthorizeRequest(
   req: AuthorizeRequest,
   errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
-): Result<
-  Omit<NormalizedAuthorizeInput, "subject" | "redirect_uri"> & {
-    redirect_uri?: string;
-  },
-  undefined,
-  AuthorizeErrorResponse
-> {
+): ValidatedAuthorizeRequestResult {
   if (!isAuthorizationCodeRequest(req)) {
     return {
       success: false,
