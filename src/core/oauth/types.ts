@@ -139,6 +139,8 @@ export interface AuthorizationCodeGrantRequest {
   code: string;
   /** The client identifier. REQUIRED for public clients. */
   client_id: string;
+  /** The client secret. REQUIRED only for `client_credentials` grant type. */
+  client_secret?: undefined;
   /**
    * The PKCE code verifier. REQUIRED if `code_challenge` was used in the
    * authorization request, which is mandatory in OAuth 2.1.
@@ -150,6 +152,8 @@ export interface ClientCredentialsGrantRequest {
   grant_type: "client_credentials";
   /** The confidential client identifier, used as subject of the generated token. */
   client_id: string;
+  /** The confidential client secret, used for authentication. */
+  client_secret: string;
   /** Resource Indicators per RFC 8707. */
   resource: string | string[];
   /** The requested scope, limited to the client's own permissions. */
@@ -162,6 +166,8 @@ export interface RefreshTokenGrantRequest {
   refresh_token: string;
   /** The client identifier, used for binding validation. */
   client_id: string;
+  /** The client secret. REQUIRED only for `client_credentials` grant type. */
+  client_secret?: undefined;
   /**
    * The scope of the access request. MUST NOT include any scope not
    * originally granted. If omitted, the original scope is used.

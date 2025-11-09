@@ -42,6 +42,7 @@ export type TokenGrantType =
 export interface NormalizedAuthorizationCodeGrantInput {
   grant_type: "authorization_code";
   client_id: string;
+  client_secret?: undefined;
   code: string | AuthorizationCodeClaims;
   code_verifier: string;
   accessTokenExtraClaims?: Record<string, unknown>;
@@ -51,6 +52,7 @@ export interface NormalizedAuthorizationCodeGrantInput {
 export interface NormalizedClientCredentialsGrantInput {
   grant_type: "client_credentials";
   client_id: string;
+  client_secret: string;
   resource: string | string[];
   scope?: string;
   accessTokenExtraClaims?: Record<string, unknown>;
@@ -59,6 +61,7 @@ export interface NormalizedClientCredentialsGrantInput {
 export interface NormalizedRefreshTokenGrantInput {
   grant_type: "refresh_token";
   client_id: string;
+  client_secret?: undefined;
   refresh_token: string | RefreshTokenClaims;
   requested_scope?: string;
   accessTokenExtraClaims?: Record<string, unknown>;
@@ -470,6 +473,7 @@ export function validateTokenRequest(
     return validateClientCredentialsGrantRequest({
       grant_type: "client_credentials",
       client_id: req.client_id,
+      client_secret: req.client_secret,
       resource: req.resource,
       scope: req.scope,
       accessTokenExtraClaims: req.accessTokenExtraClaims,
