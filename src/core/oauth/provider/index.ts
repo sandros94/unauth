@@ -2,9 +2,8 @@ export * from "./error";
 export * from "./internal";
 
 import type { JWK, JWKSet } from "unjwt";
-import { isPublicJWK } from "unjwt/utils";
+import { isPublicJWK, isJWKSet } from "unjwt/utils";
 
-import type { MaybePromise } from "../../../types";
 import { deepFreeze } from "../../../utils";
 
 import type {
@@ -26,7 +25,16 @@ import type {
   NormalizedAuthorizeInput,
   IssueAuthorizationCodeReturn,
   NormalizedTokenInput,
-  IssueTokenGrantReturn,
+  NormalizedAuthorizationCodeGrantInput,
+  NormalizedClientCredentialsGrantInput,
+  NormalizedRefreshTokenGrantInput,
+  IssueAuthorizationCodeGrantReturn,
+  IssueClientCredentialsGrantReturn,
+  IssueRefreshTokenGrantReturn,
+  IntrospectAuthorizationCodeCallback,
+  IntrospectRefreshTokenCallback,
+  SignAccessTokenCallback,
+  EncryptRefreshTokenCallback,
 } from "./internal";
 import {
   oauthProviderDefaults,
@@ -37,7 +45,9 @@ import {
   validateAuthorizeRequest,
   issueAuthorizationCode,
   validateTokenRequest,
-  issueTokenGrant,
+  issueAuthorizationCodeGrant,
+  issueClientCredentialsGrant,
+  issueRefreshTokenGrant,
 } from "./internal";
 
 /**
@@ -140,21 +150,53 @@ export class OAuthProvider {
     return validateTokenRequest(req, errorDetails);
   }
 
-  issueTokenGrant(
-    args: NormalizedTokenInput & {
-      refreshTokenExtraClaims?: Record<string, unknown>;
-    },
+  issueAuthorizationCodeGrant(
+    args: NormalizedAuthorizationCodeGrantInput,
     options?: {
-      introspectAuthorizationCode?: () => MaybePromise<
-        AuthorizationCodeClaims | undefined
-      >;
-      introspectRefreshToken?: () => MaybePromise<
-        RefreshTokenClaims | undefined
-      >;
+      introspectAuthorizationCode?: IntrospectAuthorizationCodeCallback;
+      signAccessToken?: SignAccessTokenCallback;
+      encryptRefreshToken?: EncryptRefreshTokenCallback;
     },
-  ): Promise<IssueTokenGrantReturn> {
-    const opts = { ...this.options, ...options };
-    return issueTokenGrant(args, opts as any); // TODO: readonly type issue
+  ): Promise<IssueAuthorizationCodeGrantReturn> {
+    return issueAuthorizationCodeGrant(args, {
+      iss: this.issuer,
+      authorizationCodeOptions: this.authorizationCodeOptions,
+      accessTokenOptions: this.accessTokenOptions,
+      refreshTokenOptions: this.refreshTokenOptions,
+      randomJti: this.randomJti,
+      ...options,
+    });
+  }
+
+  issueClientCredentialsGrant(
+    args: NormalizedClientCredentialsGrantInput,
+    options?: {
+      signAccessToken?: SignAccessTokenCallback;
+    },
+  ): Promise<IssueClientCredentialsGrantReturn> {
+    return issueClientCredentialsGrant(args, {
+      iss: this.issuer,
+      accessTokenOptions: this.accessTokenOptions,
+      randomJti: this.randomJti,
+      ...options,
+    });
+  }
+
+  issueRefreshTokenGrant(
+    args: NormalizedRefreshTokenGrantInput,
+    options?: {
+      introspectRefreshToken?: IntrospectRefreshTokenCallback;
+      signAccessToken?: SignAccessTokenCallback;
+      encryptRefreshToken?: EncryptRefreshTokenCallback;
+    },
+  ): Promise<IssueRefreshTokenGrantReturn> {
+    return issueRefreshTokenGrant(args, {
+      iss: this.issuer,
+      accessTokenOptions: this.accessTokenOptions,
+      refreshTokenOptions: this.refreshTokenOptions,
+      randomJti: this.randomJti,
+      ...options,
+    });
   }
 
   // Introspection
@@ -171,7 +213,7 @@ export class OAuthProvider {
     return introspectAccessToken({
       token,
       iss: this.issuer,
-      options: this.accessTokenOptions as any, // TODO: readonly type issue
+      options: this.accessTokenOptions,
     });
   }
 
@@ -184,8 +226,14 @@ export class OAuthProvider {
   }
 }
 
-function getPublicKeys(publicKey?: JWK | JWK[]): JWKSet {
+function getPublicKeys(publicKey?: JWK | JWK[] | JWKSet): JWKSet {
   if (publicKey !== undefined) {
+    if (isJWKSet(publicKey)) {
+      return {
+        keys: publicKey.keys.filter((key) => isPublicJWK(key)),
+      };
+    }
+
     const key = Array.isArray(publicKey) ? publicKey : [publicKey];
 
     return {

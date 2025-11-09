@@ -1,4 +1,5 @@
 import type {
+  JWKSet,
   JWK_Symmetric,
   JWK_Private,
   JWK_Public,
@@ -111,7 +112,7 @@ export interface AccessTokenOptions {
   /**
    * The public key or key set to verify the access token.
    */
-  publicKey: MaybeArray<JWK_Public>;
+  publicKey: MaybeArray<JWK_Public> | JWKSet;
   /**
    * Options for signing the access token.
    */

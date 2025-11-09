@@ -2,9 +2,8 @@ export * from "./internal";
 export { OAuthError } from "../../oauth";
 
 import type { JWK, JWKSet } from "unjwt";
-import { isPublicJWK } from "unjwt/utils";
+import { isPublicJWK, isJWKSet } from "unjwt/utils";
 
-import type { MaybePromise } from "../../../types";
 import { deepFreeze } from "../../../utils";
 
 import { OAuthProvider } from "../../oauth";
@@ -14,8 +13,6 @@ import type {
   IdTokenClaims,
   AuthorizeRequest,
   AuthorizeErrorResponse,
-  AuthorizationCodeClaims,
-  RefreshTokenClaims,
 } from "../types";
 import type {
   OIDCProviderOptions,
@@ -24,8 +21,11 @@ import type {
   OIDCUserInfoProfile,
   NormalizedAuthorizeInput,
   IssueAuthorizationCodeReturn,
-  NormalizedTokenInput,
-  IssueTokenGrantReturn,
+  NormalizedAuthorizationCodeGrantInput,
+  NormalizedRefreshTokenGrantInput,
+  IssueAuthorizationCodeGrantReturn,
+  IssueRefreshTokenGrantReturn,
+  SignIdTokenCallback,
 } from "./internal";
 import {
   oidcProviderDefaults,
@@ -33,7 +33,8 @@ import {
   introspectIdToken,
   validateAuthorizeRequest,
   issueAuthorizationCode,
-  issueTokenGrant,
+  issueAuthorizationCodeGrant,
+  issueRefreshTokenGrant,
 } from "./internal";
 
 /**
@@ -117,22 +118,43 @@ export class OIDCProvider extends OAuthProvider {
 
   // Token
 
-  override issueTokenGrant(
-    args: NormalizedTokenInput & {
-      refreshTokenExtraClaims?: Record<string, unknown>;
-      idTokenExtraClaims?: Record<string, unknown>;
-    },
+  override issueAuthorizationCodeGrant(
+    args: NormalizedAuthorizationCodeGrantInput,
     options?: {
-      introspectAuthorizationCode?: () => MaybePromise<
-        AuthorizationCodeClaims | undefined
-      >;
-      introspectRefreshToken?: () => MaybePromise<
-        RefreshTokenClaims | undefined
-      >;
+      introspectAuthorizationCode?: import("../../oauth").IntrospectAuthorizationCodeCallback;
+      signAccessToken?: import("../../oauth").SignAccessTokenCallback;
+      encryptRefreshToken?: import("../../oauth").EncryptRefreshTokenCallback;
+      signIdToken?: SignIdTokenCallback;
     },
-  ): Promise<IssueTokenGrantReturn> {
-    const opts = { ...this.options, ...options };
-    return issueTokenGrant(args, opts as any); // TODO: readonly type issue
+  ): Promise<IssueAuthorizationCodeGrantReturn> {
+    return issueAuthorizationCodeGrant(args, {
+      iss: this.issuer,
+      authorizationCodeOptions: this.authorizationCodeOptions,
+      accessTokenOptions: this.accessTokenOptions,
+      refreshTokenOptions: this.refreshTokenOptions,
+      idTokenOptions: this.idTokenOptions,
+      randomJti: this.randomJti,
+      ...options,
+    });
+  }
+
+  override issueRefreshTokenGrant(
+    args: NormalizedRefreshTokenGrantInput,
+    options?: {
+      introspectRefreshToken?: import("../../oauth").IntrospectRefreshTokenCallback;
+      signAccessToken?: import("../../oauth").SignAccessTokenCallback;
+      encryptRefreshToken?: import("../../oauth").EncryptRefreshTokenCallback;
+      signIdToken?: SignIdTokenCallback;
+    },
+  ): Promise<IssueRefreshTokenGrantReturn> {
+    return issueRefreshTokenGrant(args, {
+      iss: this.issuer,
+      accessTokenOptions: this.accessTokenOptions,
+      refreshTokenOptions: this.refreshTokenOptions,
+      idTokenOptions: this.idTokenOptions,
+      randomJti: this.randomJti,
+      ...options,
+    });
   }
 
   // Introspection
@@ -141,13 +163,19 @@ export class OIDCProvider extends OAuthProvider {
     return introspectIdToken({
       token,
       iss: this.issuer,
-      options: this.idTokenOptions as any, // TODO: readonly type issue
+      options: this.idTokenOptions,
     });
   }
 }
 
-function getPublicKeys(publicKey?: JWK | JWK[]): JWKSet {
+function getPublicKeys(publicKey?: JWK | JWK[] | JWKSet): JWKSet {
   if (publicKey !== undefined) {
+    if (isJWKSet(publicKey)) {
+      return {
+        keys: publicKey.keys.filter((key) => isPublicJWK(key)),
+      };
+    }
+
     const key = Array.isArray(publicKey) ? publicKey : [publicKey];
 
     return {

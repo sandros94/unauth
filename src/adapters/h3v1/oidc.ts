@@ -28,12 +28,19 @@ import {
   type NormalizedAuthorizeInput,
   type IssueAuthorizationCodeReturn,
   type NormalizedTokenInput,
-  type IssueTokenGrantReturn,
+  type IssueAuthorizationCodeGrantReturn,
+  type IssueClientCredentialsGrantReturn,
+  type IssueRefreshTokenGrantReturn,
   type BuildOIDCDiscoveryArgs,
   type OIDCUserInfoProfile,
   OIDCProvider,
 } from "../../core/oidc";
 export { validateRedirectUri } from "../../core/oidc";
+
+export type IssueTokenGrantReturn =
+  | IssueAuthorizationCodeGrantReturn
+  | IssueClientCredentialsGrantReturn
+  | IssueRefreshTokenGrantReturn;
 
 export interface H3OIDCProviderOptions extends OIDCProviderOptions {
   defaults?: {
@@ -141,7 +148,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
     const session = await getJWSSession<AccessTokenClaims>(event, {
       name: accessTokenName,
       sessionHeader: "Authorization",
-      key: key as any, // TODO: fix readonly type,
+      key,
       jws: {
         signOptions,
         verifyOptions,
@@ -190,7 +197,7 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
 
     const session = await getJWSSession<IdTokenClaims>(event, {
       name: idTokenName,
-      key: key as any, // TODO: fix readonly type,
+      key,
       jws: {
         signOptions,
         verifyOptions,
@@ -307,22 +314,66 @@ export function useOIDCProvider(options: H3OIDCProviderOptions) {
       idTokenExtraClaims,
     } = (await cb?.(normalized)) ?? {};
 
-    const tokenGrant = await getProvider().issueTokenGrant(
-      {
-        ...normalized,
-        accessTokenExtraClaims,
-        refreshTokenExtraClaims,
-        idTokenExtraClaims,
-      },
-      {
-        async introspectAuthorizationCode() {
-          return (await getAuthorizationCode(event)) || undefined;
-        },
-        async introspectRefreshToken() {
-          return (await getRefreshToken(event)) || undefined;
-        },
-      },
-    );
+    let tokenGrant: IssueTokenGrantReturn;
+
+    switch (normalized.grant_type) {
+      case "authorization_code": {
+        const code = await getAuthorizationCode(event);
+        if (!code) {
+          setResponseStatus(event, 400, "invalid_grant");
+          return {
+            error: "invalid_grant",
+            error_description: "Invalid authorization code",
+          };
+        }
+        tokenGrant = await getProvider().issueAuthorizationCodeGrant(
+          {
+            ...normalized,
+            code,
+            accessTokenExtraClaims,
+            refreshTokenExtraClaims,
+            idTokenExtraClaims,
+          },
+          {},
+        );
+        break;
+      }
+      case "client_credentials": {
+        tokenGrant = await getProvider().issueClientCredentialsGrant({
+          ...normalized,
+          accessTokenExtraClaims,
+        });
+        break;
+      }
+      case "refresh_token": {
+        const refresh_token = await getRefreshToken(event);
+        if (!refresh_token) {
+          setResponseStatus(event, 400, "invalid_grant");
+          return {
+            error: "invalid_grant",
+            error_description: "Invalid refresh token",
+          };
+        }
+        tokenGrant = await getProvider().issueRefreshTokenGrant(
+          {
+            ...normalized,
+            refresh_token,
+            accessTokenExtraClaims,
+            refreshTokenExtraClaims,
+            idTokenExtraClaims,
+          },
+          {},
+        );
+        break;
+      }
+      default: {
+        setResponseStatus(event, 400, "unsupported_grant_type");
+        return {
+          error: "unsupported_grant_type",
+          error_description: `Unsupported grant_type: ${(normalized as any).grant_type}`,
+        };
+      }
+    }
 
     if (!tokenGrant.success) {
       await oidcHooks.callHookParallel("tokenFailed", tokenGrant, event);

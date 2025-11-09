@@ -6,10 +6,6 @@ export type ParseType<T> = {
   [K in keyof T]: T[K];
 } & {};
 
-export type ReadonlyDeep<T> = ParseType<{
-  readonly [K in keyof T]: T[K] extends object ? ReadonlyDeep<T[K]> : T[K];
-}>;
-
 export type PartialDeep<T> = ParseType<{
   [K in keyof T]?: PartialDeep<T[K]>;
 }>;

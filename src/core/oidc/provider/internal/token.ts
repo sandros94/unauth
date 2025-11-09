@@ -5,27 +5,24 @@ import type { MaybePromise } from "../../../../types";
 
 import type {
   Result,
-  TokenRequest,
   TokenSuccessResponse,
   AccessTokenClaims,
   IdTokenClaims,
   TokenErrorResponse,
+  RefreshTokenClaims,
 } from "../../types";
 import {
   type NormalizedAuthorizationCodeGrantInput as OAuthNormalizedAuthorizationCodeGrantInput,
   type NormalizedRefreshTokenGrantInput as OAuthNormalizedRefreshTokenGrantInput,
   type NormalizedClientCredentialsGrantInput,
-  type IssueTokenGrantOptions as OAuthIssueTokenOptions,
-  type IssueClientCredentialsGrantReturn,
+  type AuthorizationCodeGrantOptions as OAuthAuthorizationCodeGrantOptions,
+  type RefreshTokenGrantOptions as OAuthRefreshTokenGrantOptions,
   issueAuthorizationCodeGrant as oauthIssueAuthorizationCodeGrant,
   issueRefreshTokenGrant as oauthIssueRefreshTokenGrant,
-  issueClientCredentialsGrant as oauthIssueClientCredentialsGrant,
-  introspectAuthorizationCode,
-  introspectRefreshToken,
-  OAuthError,
+  introspectAuthorizationCode as defaultIntrospectAuthorizationCode,
+  introspectRefreshToken as defaultIntrospectRefreshToken,
 } from "../../../oauth";
 import { type IdTokenOptions, idTokenDefaults } from "./defaults";
-import type { AuthorizationCodeClaims, RefreshTokenClaims } from "../../types";
 import { computeTokenHash } from "./utils";
 
 export {
@@ -35,6 +32,18 @@ export {
   validateTokenRequest,
   issueClientCredentialsGrant,
 } from "../../../oauth/provider/internal/token";
+
+// #region callback types
+
+/**
+ * Callback to sign an ID token.
+ * Framework adapters can override this to use their own token handling.
+ */
+export type SignIdTokenCallback = (
+  claims: IdTokenClaims,
+) => MaybePromise<string>;
+
+// #endregion callback types
 
 // #region types
 
@@ -53,8 +62,26 @@ export type NormalizedTokenInput =
   | NormalizedRefreshTokenGrantInput
   | NormalizedClientCredentialsGrantInput;
 
-export interface IssueTokenGrantOptions extends OAuthIssueTokenOptions {
+// Authorization Code Grant Options for OIDC
+export interface AuthorizationCodeGrantOptions
+  extends OAuthAuthorizationCodeGrantOptions {
   idTokenOptions: IdTokenOptions;
+  /**
+   * Override the default ID token signing.
+   * Useful for framework-specific implementations.
+   */
+  signIdToken?: SignIdTokenCallback;
+}
+
+// Refresh Token Grant Options for OIDC
+export interface RefreshTokenGrantOptions
+  extends OAuthRefreshTokenGrantOptions {
+  idTokenOptions: IdTokenOptions;
+  /**
+   * Override the default ID token signing.
+   * Useful for framework-specific implementations.
+   */
+  signIdToken?: SignIdTokenCallback;
 }
 
 export type IssueAuthorizationCodeGrantReturn = Result<
@@ -77,134 +104,115 @@ export type IssueRefreshTokenGrantReturn = Result<
   TokenErrorResponse
 >;
 
-export type IssueTokenGrantReturn =
-  | IssueAuthorizationCodeGrantReturn
-  | IssueClientCredentialsGrantReturn
-  | IssueRefreshTokenGrantReturn;
-
-interface BuildIDTokenArgs {
-  claims: Omit<IdTokenClaims, "iat" | "exp" | "at_hash">;
-  access_token: string;
-  options: IdTokenOptions;
-  currentDate?: Date;
-}
-
 // #endregion types
 
-// #region internals
+// #region payload creation
 
-async function buildIdToken(args: BuildIDTokenArgs): Promise<{
-  id_token: string;
-  idTokenClaims: IdTokenClaims;
-}> {
-  const { claims, access_token, options } = args;
-  const opts = idTokenDefaults(options);
-  const alg = opts.privateKey.alg || opts.signOptions.alg;
-  if (!alg) {
-    throw new Error("[OIDC] JWS alg is required to compute at_hash");
-  }
+/**
+ * Create ID token payload
+ */
+export function createIdTokenPayload(
+  args: {
+    iss: string;
+    aud: string;
+    sub: string;
+    nonce?: string;
+    extraClaims?: Record<string, unknown>;
+  },
+  _options: {
+    currentDate?: Date;
+    expiresIn: number;
+  },
+): Omit<IdTokenClaims, "iat" | "exp" | "at_hash"> {
+  return {
+    ...args.extraClaims,
+    iss: args.iss,
+    aud: args.aud,
+    sub: args.sub,
+    nonce: args.nonce,
+  } as Omit<IdTokenClaims, "iat" | "exp" | "at_hash">;
+}
 
-  const at_hash = await computeTokenHash(access_token, alg);
-
-  const currentDate =
-    (args.currentDate || opts.signOptions.currentDate) ?? new Date();
+/**
+ * Compute at_hash and finalize ID token claims
+ */
+export async function finalizeIdTokenClaims(
+  baseClaims: Omit<IdTokenClaims, "iat" | "exp" | "at_hash">,
+  access_token: string,
+  options: {
+    alg: string;
+    currentDate?: Date;
+    expiresIn: number;
+  },
+): Promise<IdTokenClaims> {
+  const at_hash = await computeTokenHash(access_token, options.alg);
+  const currentDate = options.currentDate ?? new Date();
   const iat = Math.floor(currentDate.getTime() / 1000);
 
-  const idTokenClaims: IdTokenClaims = {
-    ...claims,
+  return {
+    ...baseClaims,
     iat,
-    exp: iat + computeExpiresInSeconds(opts.signOptions.expiresIn),
+    exp: iat + options.expiresIn,
     at_hash,
   } as IdTokenClaims;
+}
 
-  const id_token = await sign(idTokenClaims, opts.privateKey, {
+// #endregion payload creation
+
+// #region token generation
+
+/**
+ * Sign ID token (default implementation)
+ */
+export async function defaultSignIdToken(
+  claims: IdTokenClaims,
+  options: IdTokenOptions & {
+    currentDate?: Date;
+  },
+): Promise<string> {
+  const opts = idTokenDefaults(options);
+  const currentDate = options.currentDate ?? new Date();
+
+  return sign(claims, opts.privateKey, {
     ...opts.signOptions,
     protectedHeader: { ...opts.signOptions.protectedHeader, typ: "id+jwt" },
     currentDate,
   });
-
-  return { id_token, idTokenClaims };
 }
 
-// #endregion internals
+// #endregion token generation
 
-// #region runtime
+// #region grant type handlers
 
 /**
- * Issues the token grant.
+ * Issues the `authorization_code` grant for OIDC.
  */
-export async function issueTokenGrant(
-  args: NormalizedTokenInput & {
-    refreshTokenExtraClaims?: Record<string, unknown>;
-    idTokenExtraClaims?: Record<string, unknown>;
-  },
-  options: IssueTokenGrantOptions & {
-    introspectAuthorizationCode?: () => MaybePromise<
-      AuthorizationCodeClaims | undefined
-    >;
-    introspectRefreshToken?: () => MaybePromise<RefreshTokenClaims | undefined>;
-  },
-): Promise<IssueTokenGrantReturn> {
-  const { introspectAuthorizationCode, introspectRefreshToken, ...opts } =
-    options;
-  let tokenGrant: IssueTokenGrantReturn;
-
-  switch (args.grant_type) {
-    case "authorization_code": {
-      const code = (await introspectAuthorizationCode?.()) || args.code;
-      tokenGrant = await issueAuthorizationCodeGrant(
-        {
-          ...args,
-          code,
-        },
-        opts,
-      );
-      break;
-    }
-    case "client_credentials": {
-      tokenGrant = await oauthIssueClientCredentialsGrant(args, opts);
-      break;
-    }
-    case "refresh_token": {
-      const refresh_token =
-        (await introspectRefreshToken?.()) || args.refresh_token;
-      tokenGrant = await issueRefreshTokenGrant(
-        {
-          ...args,
-          refresh_token,
-        },
-        opts,
-      );
-      break;
-    }
-    default: {
-      return {
-        success: false,
-        error: new OAuthError({
-          error: "unsupported_grant_type",
-          error_description: `Unsupported grant_type: ${(args as TokenRequest).grant_type}`,
-        }),
-      };
-    }
-  }
-
-  return tokenGrant;
-}
-
 export async function issueAuthorizationCodeGrant(
   args: NormalizedAuthorizationCodeGrantInput,
-  options: IssueTokenGrantOptions,
+  options: AuthorizationCodeGrantOptions,
 ): Promise<IssueAuthorizationCodeGrantReturn> {
-  const { iss, authorizationCodeOptions, idTokenOptions, currentDate } =
-    options;
+  const {
+    iss,
+    authorizationCodeOptions,
+    idTokenOptions,
+    introspectAuthorizationCode = (token: string) =>
+      defaultIntrospectAuthorizationCode({
+        token,
+        iss,
+        options: authorizationCodeOptions,
+      }),
+    signIdToken = (claims: IdTokenClaims) =>
+      defaultSignIdToken(claims, {
+        ...idTokenOptions,
+        currentDate: options.currentDate,
+      }),
+    currentDate,
+  } = options;
 
+  // Step 2: Introspect authorization code if it's a string
   const codeClaims =
     typeof args.code === "string"
-      ? await introspectAuthorizationCode<AuthorizationCodeClaims>({
-          token: args.code,
-          iss,
-          options: authorizationCodeOptions,
-        })
+      ? await introspectAuthorizationCode(args.code)
       : args.code;
 
   // Build OAuth tokens first
@@ -217,28 +225,52 @@ export async function issueAuthorizationCodeGrant(
         ...(codeClaims.nonce ? { nonce: codeClaims.nonce } : {}),
       },
     },
-    options,
+    {
+      ...options,
+      introspectAuthorizationCode: undefined, // Already introspected above
+    },
   );
 
   if (!oauthRes.success) {
     return { success: false, error: oauthRes.error };
   }
+
   const { access_token, refresh_token, expires_in } = oauthRes.value;
   const { accessTokenClaims, refreshTokenClaims } = oauthRes.artifacts!;
 
-  // Then build ID Token
-  const { id_token, idTokenClaims } = await buildIdToken({
-    claims: {
-      ...args.idTokenExtraClaims,
+  // Step 4: Create ID token payload
+  const idOpts = idTokenDefaults(idTokenOptions);
+  const alg = idOpts.privateKey.alg || idOpts.signOptions.alg;
+  if (!alg) {
+    throw new Error("[OIDC] JWS alg is required to compute at_hash");
+  }
+
+  const baseIdClaims = createIdTokenPayload(
+    {
       iss,
       aud: args.client_id,
       sub: accessTokenClaims.sub,
-      nonce: codeClaims.nonce,
+      nonce: (codeClaims.nonce as string) || undefined,
+      extraClaims: args.idTokenExtraClaims,
     },
+    {
+      currentDate,
+      expiresIn: computeExpiresInSeconds(idOpts.signOptions.expiresIn),
+    },
+  );
+
+  const idTokenClaims = await finalizeIdTokenClaims(
+    baseIdClaims,
     access_token,
-    options: idTokenOptions,
-    currentDate,
-  });
+    {
+      alg,
+      currentDate,
+      expiresIn: computeExpiresInSeconds(idOpts.signOptions.expiresIn),
+    },
+  );
+
+  // Step 5: Sign ID token
+  const id_token = await signIdToken(idTokenClaims);
 
   return {
     success: true,
@@ -251,31 +283,42 @@ export async function issueAuthorizationCodeGrant(
       id_token,
     },
     artifacts: {
-      accessTokenClaims: accessTokenClaims,
-      refreshTokenClaims: refreshTokenClaims,
+      accessTokenClaims,
+      refreshTokenClaims,
       idTokenClaims,
     },
   };
 }
 
+/**
+ * Issues the `refresh_token` grant for OIDC.
+ */
 export async function issueRefreshTokenGrant(
   args: NormalizedRefreshTokenGrantInput,
-  options: IssueTokenGrantOptions,
+  options: RefreshTokenGrantOptions,
 ): Promise<IssueRefreshTokenGrantReturn> {
   const {
     iss,
     refreshTokenOptions,
     idTokenOptions,
-    currentDate = new Date(),
+    introspectRefreshToken = (token: string) =>
+      defaultIntrospectRefreshToken({
+        token,
+        iss,
+        options: refreshTokenOptions,
+      }),
+    signIdToken = (claims: IdTokenClaims) =>
+      defaultSignIdToken(claims, {
+        ...idTokenOptions,
+        currentDate: options.currentDate,
+      }),
+    currentDate,
   } = options;
 
+  // Step 2: Introspect refresh token if it's a string
   const oldRTClaims =
     typeof args.refresh_token === "string"
-      ? await introspectRefreshToken<RefreshTokenClaims>({
-          token: args.refresh_token,
-          iss,
-          options: refreshTokenOptions,
-        })
+      ? await introspectRefreshToken(args.refresh_token)
       : args.refresh_token;
 
   // Build OAuth tokens first
@@ -290,6 +333,7 @@ export async function issueRefreshTokenGrant(
     },
     {
       ...options,
+      introspectRefreshToken: undefined, // Already introspected above
       currentDate,
     },
   );
@@ -297,22 +341,43 @@ export async function issueRefreshTokenGrant(
   if (!oauthRes.success) {
     return { success: false, error: oauthRes.error };
   }
+
   const { access_token, refresh_token, expires_in, scope } = oauthRes.value;
   const { accessTokenClaims, refreshTokenClaims } = oauthRes.artifacts!;
 
-  // Then build ID Token
-  const { id_token, idTokenClaims } = await buildIdToken({
-    claims: {
-      ...args.idTokenExtraClaims,
+  // Step 4: Create ID token payload
+  const idOpts = idTokenDefaults(idTokenOptions);
+  const alg = idOpts.privateKey.alg || idOpts.signOptions.alg;
+  if (!alg) {
+    throw new Error("[OIDC] JWS alg is required to compute at_hash");
+  }
+
+  const baseIdClaims = createIdTokenPayload(
+    {
       iss,
       aud: args.client_id,
       sub: accessTokenClaims.sub,
-      nonce: oldRTClaims.nonce,
+      nonce: (oldRTClaims.nonce as string) || undefined,
+      extraClaims: args.idTokenExtraClaims,
     },
+    {
+      currentDate,
+      expiresIn: computeExpiresInSeconds(idOpts.signOptions.expiresIn),
+    },
+  );
+
+  const idTokenClaims = await finalizeIdTokenClaims(
+    baseIdClaims,
     access_token,
-    options: idTokenOptions,
-    currentDate,
-  });
+    {
+      alg,
+      currentDate,
+      expiresIn: computeExpiresInSeconds(idOpts.signOptions.expiresIn),
+    },
+  );
+
+  // Step 5: Sign ID token
+  const id_token = await signIdToken(idTokenClaims);
 
   return {
     success: true,
@@ -332,4 +397,4 @@ export async function issueRefreshTokenGrant(
   };
 }
 
-// #endregion
+// #endregion grant type handlers

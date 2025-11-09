@@ -27,11 +27,18 @@ import {
   type NormalizedAuthorizeInput,
   type IssueAuthorizationCodeReturn,
   type NormalizedTokenInput,
-  type IssueTokenGrantReturn,
+  type IssueAuthorizationCodeGrantReturn,
+  type IssueClientCredentialsGrantReturn,
+  type IssueRefreshTokenGrantReturn,
   type BuildOAuthDiscoveryArgs,
   OAuthProvider,
 } from "../../core/oauth";
 export { validateRedirectUri } from "../../core/oauth";
+
+export type IssueTokenGrantReturn =
+  | IssueAuthorizationCodeGrantReturn
+  | IssueClientCredentialsGrantReturn
+  | IssueRefreshTokenGrantReturn;
 
 export interface H3OAuthProviderOptions extends OAuthProviderOptions {
   defaults?: {
@@ -120,32 +127,6 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
           .catch(() => undefined)
       : undefined;
   }
-  async function getAccessToken(
-    event: H3Event,
-  ): Promise<AccessTokenClaims | undefined> {
-    const { signOptions, verifyOptions, ...key } =
-      getProvider().accessTokenOptions;
-
-    const session = await getJWSSession<AccessTokenClaims>(event, {
-      name: accessTokenName,
-      sessionHeader: "Authorization",
-      key: key as any, // TODO: fix readonly type,
-      jws: {
-        signOptions,
-        verifyOptions,
-      },
-    }).catch(() => null);
-
-    if (!session) return undefined;
-
-    const { id, createdAt, expiresAt, data } = session;
-    return {
-      ...data,
-      jti: id,
-      iat: Math.floor(createdAt / 1000),
-      exp: Math.floor(expiresAt! / 1000),
-    };
-  }
   async function getRefreshToken(
     event: H3Event,
   ): Promise<RefreshTokenClaims | undefined> {
@@ -155,6 +136,7 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     const session = await getJWESession<RefreshTokenClaims>(event, {
       name: refreshTokenName,
       key: privateKey,
+      maxAge: encryptOptions.expiresIn,
       jwe: {
         encryptOptions,
         decryptOptions,
@@ -168,8 +150,35 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
       ...data,
       jti: id,
       iat: Math.floor(createdAt / 1000),
-      exp: Math.floor(expiresAt! / 1000),
-    };
+      exp: Math.floor(expiresAt / 1000),
+    } as RefreshTokenClaims;
+  }
+  async function getAccessToken(
+    event: H3Event,
+  ): Promise<AccessTokenClaims | undefined> {
+    const { signOptions, verifyOptions, ...key } =
+      getProvider().accessTokenOptions;
+
+    const session = await getJWSSession<AccessTokenClaims>(event, {
+      name: accessTokenName,
+      sessionHeader: "Authorization",
+      key,
+      maxAge: signOptions.expiresIn,
+      jws: {
+        signOptions,
+        verifyOptions,
+      },
+    }).catch(() => null);
+
+    if (!session) return undefined;
+
+    const { id, createdAt, expiresAt, data } = session;
+    return {
+      ...data,
+      jti: id,
+      iat: Math.floor(createdAt / 1000),
+      exp: Math.floor(expiresAt / 1000),
+    } as AccessTokenClaims;
   }
 
   async function authorize(event: H3Event, cb: OAuthAuthorizeCallback) {
@@ -268,21 +277,64 @@ export function useOAuthProvider(options: H3OAuthProviderOptions) {
     const { accessTokenExtraClaims, refreshTokenExtraClaims } =
       (await cb?.(normalized)) ?? {};
 
-    const tokenGrant = await getProvider().issueTokenGrant(
-      {
-        ...normalized,
-        accessTokenExtraClaims,
-        refreshTokenExtraClaims,
-      },
-      {
-        async introspectAuthorizationCode() {
-          return await getAuthorizationCode(event);
-        },
-        async introspectRefreshToken() {
-          return await getRefreshToken(event);
-        },
-      },
-    );
+    let tokenGrant: IssueTokenGrantReturn;
+
+    switch (normalized.grant_type) {
+      case "authorization_code": {
+        const code = await getAuthorizationCode(event);
+        if (!code) {
+          setResponseStatus(event, 400, "invalid_grant");
+          return {
+            error: "invalid_grant",
+            error_description: "Invalid authorization code",
+          };
+        }
+        tokenGrant = await getProvider().issueAuthorizationCodeGrant(
+          {
+            ...normalized,
+            code,
+            accessTokenExtraClaims,
+            refreshTokenExtraClaims,
+          },
+          {},
+        );
+        break;
+      }
+      case "client_credentials": {
+        tokenGrant = await getProvider().issueClientCredentialsGrant({
+          ...normalized,
+          accessTokenExtraClaims,
+        });
+        break;
+      }
+      case "refresh_token": {
+        const refresh_token = await getRefreshToken(event);
+        if (!refresh_token) {
+          setResponseStatus(event, 400, "invalid_grant");
+          return {
+            error: "invalid_grant",
+            error_description: "Invalid refresh token",
+          };
+        }
+        tokenGrant = await getProvider().issueRefreshTokenGrant(
+          {
+            ...normalized,
+            refresh_token,
+            accessTokenExtraClaims,
+            refreshTokenExtraClaims,
+          },
+          {},
+        );
+        break;
+      }
+      default: {
+        setResponseStatus(event, 400, "unsupported_grant_type");
+        return {
+          error: "unsupported_grant_type",
+          error_description: `Unsupported grant_type: ${(normalized as any).grant_type}`,
+        };
+      }
+    }
 
     if (!tokenGrant.success) {
       await oauthHooks.callHookParallel("tokenFailed", tokenGrant, event);

@@ -32,18 +32,29 @@ import type {
   NormalizedAuthorizationCodeGrantInput,
   NormalizedClientCredentialsGrantInput,
   NormalizedRefreshTokenGrantInput,
-  IssueTokenGrantOptions,
+  AuthorizationCodeOptions,
+  AccessTokenOptions,
+  RefreshTokenOptions,
 } from "../src/core/oauth/provider";
 
 // Helpers
 
 const fixedDate = new Date("2024-01-01T00:00:00Z");
 
+interface TokenOptions {
+  iss: string;
+  authorizationCodeOptions: AuthorizationCodeOptions;
+  accessTokenOptions: AccessTokenOptions;
+  refreshTokenOptions: RefreshTokenOptions;
+  randomJti: () => string;
+  currentDate: Date;
+}
+
 const buildTokenOptions = async (
-  overrides: Partial<IssueTokenGrantOptions> = {},
-): Promise<IssueTokenGrantOptions> => {
+  overrides: Partial<TokenOptions> = {},
+): Promise<TokenOptions> => {
   const atKeys = await generateJWK("RS256");
-  const base: IssueTokenGrantOptions = {
+  const base: TokenOptions = {
     iss: "https://issuer.example.com",
     authorizationCodeOptions: {
       privateKey: "ac-secret",

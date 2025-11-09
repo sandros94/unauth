@@ -1,4 +1,4 @@
-import { isPublicJWK, isSymmetricJWK } from "unjwt/utils";
+import { isPublicJWK, isSymmetricJWK, isJWKSet } from "unjwt/utils";
 import { hash, secureCompare } from "unsecure";
 import type { JWK_Private, JWK_Public, JWKSet } from "unjwt";
 import type { MaybeArray } from "../../../../types";
@@ -44,13 +44,21 @@ export function preferPublicKey(
     /**
      * The public key or key set to verify the access token.
      */
-    publicKey: MaybeArray<JWK_Public>;
+    publicKey: MaybeArray<JWK_Public> | JWKSet;
   },
   opts?: {
     tokenType?: "Access Token" | "ID Token" | (string & {});
   },
 ): JWK_Private | JWKSet {
-  if (options.publicKey) {
+  if (options.publicKey === undefined) {
+    throw new Error(
+      `No public key provided for ${opts?.tokenType || "Token"} verification.`,
+    );
+  } else if (isJWKSet(options.publicKey)) {
+    return {
+      keys: options.publicKey.keys.filter((key) => isPublicJWK(key)),
+    };
+  } else if (options.publicKey) {
     const key = Array.isArray(options.publicKey)
       ? options.publicKey
       : [options.publicKey];

@@ -19,23 +19,36 @@ import {
   computeTokenHash,
 } from "../src/core/oidc/provider";
 import type {
-  NormalizedAuthorizeInput,
   IssueAuthorizationCodeOptions,
-  IssueTokenGrantOptions,
+  NormalizedAuthorizeInput,
   NormalizedAuthorizationCodeGrantInput,
   NormalizedRefreshTokenGrantInput,
+  AuthorizationCodeOptions,
+  AccessTokenOptions,
+  RefreshTokenOptions,
+  IdTokenOptions,
 } from "../src/core/oidc/provider";
 
 const fixedDate = new Date("2024-01-01T00:00:00Z");
 
+interface OidcTokenOptions {
+  iss: string;
+  authorizationCodeOptions: AuthorizationCodeOptions;
+  accessTokenOptions: AccessTokenOptions;
+  refreshTokenOptions: RefreshTokenOptions;
+  idTokenOptions: IdTokenOptions;
+  randomJti: () => string;
+  currentDate: Date;
+}
+
 const buildOidcOptions = async (
-  overrides: Partial<IssueTokenGrantOptions> = {},
-): Promise<IssueTokenGrantOptions> => {
+  overrides: Partial<OidcTokenOptions> = {},
+): Promise<OidcTokenOptions> => {
   const [atKeys, idKeys] = await Promise.all([
     generateJWK("RS256"),
     generateJWK("RS256"),
   ]);
-  const base: IssueTokenGrantOptions = {
+  const base: OidcTokenOptions = {
     iss: "https://issuer.example.com",
     authorizationCodeOptions: {
       privateKey: "ac-secret",
