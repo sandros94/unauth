@@ -12,7 +12,7 @@ import {
   setCookie,
   createRouter,
   defineEventHandler,
-} from "h3";
+} from "h3v1";
 
 import type { MaybePromise } from "../../types";
 
