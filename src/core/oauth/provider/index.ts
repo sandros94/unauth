@@ -23,12 +23,12 @@ import type {
   ResolvedAccessTokenOptions,
   ResolvedRefreshTokenOptions,
   NormalizedAuthorizeInput,
-  ValidatedAuthorizeRequestResult,
+  ValidateAuthorizeRequestResult,
   IssueAuthorizationCodeReturn,
-  NormalizedTokenInput,
   NormalizedAuthorizationCodeGrantInput,
   NormalizedClientCredentialsGrantInput,
   NormalizedRefreshTokenGrantInput,
+  ValidateTokenRequestReturn,
   IssueAuthorizationCodeGrantReturn,
   IssueClientCredentialsGrantReturn,
   IssueRefreshTokenGrantReturn,
@@ -123,7 +123,7 @@ export class OAuthProvider {
   validateAuthorizeRequest(
     req: AuthorizeRequest,
     errorDetails?: Omit<AuthorizeErrorResponse, "error" | "error_description">,
-  ): ValidatedAuthorizeRequestResult {
+  ): ValidateAuthorizeRequestResult {
     return validateAuthorizeRequest(req, errorDetails);
   }
 
@@ -141,7 +141,7 @@ export class OAuthProvider {
       refreshTokenExtraClaims?: Record<string, unknown>;
     },
     errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
-  ): Result<NormalizedTokenInput, undefined, TokenErrorResponse> {
+  ): ValidateTokenRequestReturn {
     return validateTokenRequest(req, errorDetails);
   }
 

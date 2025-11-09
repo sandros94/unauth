@@ -109,6 +109,12 @@ export type NormalizedTokenInput =
   | NormalizedRefreshTokenGrantInput
   | NormalizedClientCredentialsGrantInput;
 
+export type ValidateTokenRequestReturn = Result<
+  NormalizedTokenInput,
+  undefined,
+  TokenErrorResponse
+>;
+
 // Common options for all grant types
 export interface BaseTokenGrantOptions {
   iss: string;
@@ -256,7 +262,7 @@ export function validateTokenRequest(
     refreshTokenExtraClaims?: Record<string, unknown>;
   },
   errorDetails?: Omit<TokenErrorResponse, "error" | "error_description">,
-): Result<NormalizedTokenInput, undefined, TokenErrorResponse> {
+): ValidateTokenRequestReturn {
   if (!isTokenRequest(req)) {
     return {
       success: false,
