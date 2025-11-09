@@ -25,6 +25,8 @@ import type {
   NormalizedAuthorizeInput,
   ValidateAuthorizeRequestResult,
   IssueAuthorizationCodeReturn,
+  BuildAuthorizationRedirectArgs,
+  BuildAuthorizationRedirectReturn,
   NormalizedAuthorizationCodeGrantInput,
   NormalizedClientCredentialsGrantInput,
   NormalizedRefreshTokenGrantInput,
@@ -45,6 +47,7 @@ import {
   validateRedirectUri,
   validateAuthorizeRequest,
   issueAuthorizationCode,
+  buildAuthorizationRedirect,
   validateTokenRequest,
   issueAuthorizationCodeGrant,
   issueClientCredentialsGrant,
@@ -131,6 +134,12 @@ export class OAuthProvider {
     args: NormalizedAuthorizeInput,
   ): Promise<IssueAuthorizationCodeReturn> {
     return issueAuthorizationCode(args, this.options);
+  }
+
+  buildAuthorizationRedirect(
+    args: BuildAuthorizationRedirectArgs,
+  ): BuildAuthorizationRedirectReturn {
+    return buildAuthorizationRedirect(args, this.options);
   }
 
   // Token

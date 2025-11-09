@@ -1,15 +1,12 @@
 import {
   type AuthorizeRequest,
   type Result,
-  type Success,
-  type Failure,
   type AuthorizeErrorResponse,
   type AuthorizationCodeClaims,
   type NormalizedAuthorizeInput as OAuthNormalizedAuthorizeInput,
   type IssueAuthorizationCodeOptions,
   OAuthError,
   validateAuthorizeRequest as oauthValidateAuthorizeRequest,
-  buildAuthorizationRedirect as oauthBuildAuthorizationRedirect,
   issueAuthorizationCode as oauthIssueAuthorizationCode,
 } from "../../../oauth";
 
@@ -145,15 +142,10 @@ export async function issueAuthorizationCode(
 
   // if error, return early
   if (error) {
-    return oauthBuildAuthorizationRedirect(
-      args.redirect_uri,
-      undefined,
+    return {
+      success: false,
       error,
-      options.iss,
-      args.state,
-    ) as
-      | Success<string, undefined, AuthorizeErrorResponse>
-      | Failure<AuthorizeErrorResponse>;
+    };
   }
 
   // Propagate nonce via claims so it is available to the token step

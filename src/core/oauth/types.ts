@@ -17,9 +17,17 @@ export interface AuthorizationCodeClaims extends RefreshTokenClaims {
   /** The PKCE code challenge corresponding to the verifier. */
   code_challenge: string;
   /** The PKCE method used for the challenge. */
-  code_challenge_method?: "plain" | "S256";
+  code_challenge_method: "plain" | "S256";
   /** The redirect URI used in the authorization request, if any. */
-  redirect_uri?: string;
+  redirect_uri: string;
+  scope?: string | undefined;
+  sub: string;
+  jti: string;
+  iss: string;
+  iat: number;
+  exp: number;
+  client_id: string;
+  resource: string | string[];
 }
 
 /**
@@ -202,16 +210,17 @@ export interface TokenSuccessResponse {
 
 export type TokenResponse = TokenSuccessResponse | TokenErrorResponse;
 
-export interface Success<
-  T,
-  A extends object | undefined = undefined,
-  E extends OAuthErrorDetails = OAuthErrorDetails,
-> {
-  success: true;
-  value: T;
-  artifacts?: A;
-  warnings?: E;
-}
+export type Success<T, A = undefined> = A extends undefined
+  ? {
+      success: true;
+      value: T;
+      artifacts?: undefined;
+    }
+  : {
+      success: true;
+      value: T;
+      artifacts: A;
+    };
 
 export interface Failure<E extends OAuthErrorDetails = OAuthErrorDetails> {
   success: false;
@@ -220,6 +229,6 @@ export interface Failure<E extends OAuthErrorDetails = OAuthErrorDetails> {
 
 export type Result<
   T,
-  A extends object | undefined = undefined,
+  A = undefined,
   E extends OAuthErrorDetails = OAuthErrorDetails,
-> = Success<T, A, E> | Failure<E>;
+> = Success<T, A> | Failure<E>;

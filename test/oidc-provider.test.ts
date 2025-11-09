@@ -171,7 +171,13 @@ describe("OIDC Provider", () => {
         .spyOn(oauthProvider, "issueAuthorizationCode")
         .mockResolvedValue({
           success: true,
-          value: `${redirectUri}?code=oauth-code`,
+          value: "oauth-code",
+          // @ts-expect-error testing only
+          artifacts: {
+            scope: "openid profile",
+            code_challenge_method: "S256",
+            acExtraClaims: { nonce: "nonce-123" },
+          },
         });
       const args: NormalizedAuthorizeInput = {
         ...baseRequest,
@@ -189,7 +195,7 @@ describe("OIDC Provider", () => {
       if (!result.success) {
         throw new Error("Expected success");
       }
-      expect(result.value).toBe(`${redirectUri}?code=oauth-code`);
+      expect(result.value).toBe("oauth-code");
       expect(oauthSpy).toHaveBeenCalled();
       const callArgs = oauthSpy.mock.calls[0]![0];
       expect(callArgs.acExtraClaims?.nonce).toBe("nonce-123");
@@ -212,12 +218,11 @@ describe("OIDC Provider", () => {
           },
         },
       );
-      expect(result.success).toBe(true);
-      if (!result.success) {
+      expect(result.success).toBe(false);
+      if (result.success) {
         throw new Error("Expected redirect result");
       }
-      const url = new URL(result.value);
-      expect(url.searchParams.get("error")).toBe("invalid_request");
+      expect(result.error.error).toBe("invalid_request");
       expect(oauthSpy).not.toHaveBeenCalled();
     });
   });
@@ -269,6 +274,7 @@ describe("OIDC Provider", () => {
         grant_type: "authorization_code",
         client_id: "client",
         code: {
+          redirect_uri: "https://rp.example.com/callback",
           sub: "user",
           client_id: "client",
           iss: "https://issuer.example.com",
@@ -327,6 +333,7 @@ describe("OIDC Provider", () => {
           grant_type: "authorization_code",
           client_id: "client",
           code: {
+            redirect_uri: "https://rp.example.com/callback",
             sub: "user",
             client_id: "client",
             iss: "https://issuer.example.com",

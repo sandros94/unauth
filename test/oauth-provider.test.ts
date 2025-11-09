@@ -311,23 +311,30 @@ describe("OAuth Provider", () => {
     });
 
     it("builds successful authorization redirect with code", () => {
-      const res = buildAuthorizationRedirect(
-        redirectUri,
-        "auth-code",
-        undefined,
-        "state123",
-        "https://issuer",
+      const result = buildAuthorizationRedirect(
+        {
+          codeOrError: "auth-code",
+          request: {
+            state: "state123",
+            redirect_uri: redirectUri,
+          },
+        },
+        {
+          iss: "https://issuer",
+        },
       );
-      expect(res.success).toBe(true);
-      if (!res.success) {
+
+      expect(result.success).toBe(true);
+      if (!result.success) {
         throw new Error("Expected success");
       }
-      const url = new URL(res.value);
+      const url = result.value;
+
+      expect(url).toBeInstanceOf(URL);
       expect(url.pathname).toBe("/callback");
       expect(url.searchParams.get("code")).toBe("auth-code");
       expect(url.searchParams.get("state")).toBe("state123");
       expect(url.searchParams.get("iss")).toBe("https://issuer");
-      expect(res.warnings).toBeUndefined();
     });
 
     it("propagates errors into redirect when code generation fails", () => {
@@ -335,36 +342,50 @@ describe("OAuth Provider", () => {
         error: "invalid_request" as const,
         error_description: "boom",
       };
-      const res = buildAuthorizationRedirect(
-        redirectUri,
-        undefined,
-        error,
-        "state",
-        "https://issuer",
+      const result = buildAuthorizationRedirect(
+        {
+          codeOrError: error,
+          request: {
+            state: "state",
+            redirect_uri: redirectUri,
+          },
+        },
+        {
+          iss: "https://issuer",
+        },
       );
-      expect(res.success).toBe(true);
-      if (!res.success) {
+
+      expect(result.success).toBe(true);
+      if (!result.success) {
         throw new Error("Expected success");
       }
-      const url = new URL(res.value);
+      const url = result.value;
+
+      expect(url).toBeInstanceOf(URL);
+      expect(url.pathname).toBe("/callback");
       expect(url.searchParams.get("error")).toBe("invalid_request");
       expect(url.searchParams.get("error_description")).toBe("boom");
-      expect(res.warnings?.error).toBe("invalid_request");
     });
 
     it("rejects build redirect when redirect_uri missing", () => {
-      const res = buildAuthorizationRedirect(
-        "",
-        "code",
-        undefined,
-        "state",
-        "https://issuer",
+      const result = buildAuthorizationRedirect(
+        {
+          codeOrError: "auth-code",
+          request: {
+            redirect_uri: "",
+            state: "state",
+          },
+        },
+        {
+          iss: "https://issuer",
+        },
       );
-      expect(res.success).toBe(false);
-      if (res.success) {
+      expect(result.success).toBe(false);
+      if (result.success) {
         throw new Error("Expected failure");
       }
-      expect(res.error.error_description).toBe(
+      const error = result.error;
+      expect(error.error_description).toBe(
         "Missing redirect_uri for authorization redirect",
       );
     });
@@ -396,8 +417,7 @@ describe("OAuth Provider", () => {
       if (!result.success) {
         throw new Error("Expected success");
       }
-      const url = new URL(result.value);
-      expect(url.searchParams.get("code")).toBe("mock-ac-code");
+      expect(result.value).toBe("mock-ac-code");
       expect(result.artifacts).toEqual(
         expect.objectContaining({
           sub: "user",
@@ -432,15 +452,13 @@ describe("OAuth Provider", () => {
           currentDate: new Date("2024-01-01T00:00:00Z"),
         },
       );
-      expect(result.success).toBe(true);
-      if (!result.success) {
+      expect(result.success).toBe(false);
+      if (result.success) {
         throw new Error("Expected success");
       }
-      const url = new URL(result.value);
-      expect(url.searchParams.get("error")).toBe("server_error");
-      expect(url.searchParams.get("state")).toBe("mystate");
-      expect(result.artifacts).toBeUndefined();
-      expect(result.warnings?.error_description).toBe(
+      const error = result.error;
+      expect(error.error).toBe("server_error");
+      expect(error.error_description).toBe(
         "Failed to generate authorization code",
       );
     });
@@ -479,6 +497,7 @@ describe("OAuth Provider", () => {
       exp: Math.floor(fixedDate.getTime() / 1000) + 600,
       jti: "ac-jti",
       resource: ["https://api"],
+      redirect_uri: "https://app.example.com/callback",
       scope: "read",
       code_challenge: "verifier",
       code_challenge_method: "plain" as const,

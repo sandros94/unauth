@@ -40,25 +40,6 @@ export type ValidateAuthorizeRequestResult = Result<
   AuthorizeErrorResponse
 >;
 
-export interface IssueAuthorizationCodeOptions {
-  iss: string;
-  authorizationCodeOptions: AuthorizationCodeOptions;
-  /**
-   * A function to generate a unique identifier for tokens.
-   */
-  randomJti?: () => string;
-  /**
-   * Date to use when computing NumericDate claims, defaults to `new Date()`.
-   */
-  currentDate?: Date;
-}
-
-export type IssueAuthorizationCodeReturn = Result<
-  string,
-  AuthorizationCodeClaims,
-  AuthorizeErrorResponse
->;
-
 // #endregion types
 
 // #region internals
@@ -274,62 +255,26 @@ export function validateAuthorizeRequest(
 
 // #endregion validations
 
-// #region runtime
+// #region issueAuthorizationCode
 
-/**
- * Build redirect URI with either ?code= or ?error= fragment/query params as per OAuth 2.1
- * Note: OAuth 2.1 uses query component for authorization code; we preserve given state.
- */
-export function buildAuthorizationRedirect(
-  redirect_uri: string,
-  code: string | undefined,
-  errorDetails: AuthorizeErrorResponse | undefined,
-  state: string | undefined,
-  iss: string | undefined,
-): Result<string, AuthorizeErrorResponse, AuthorizeErrorResponse> {
-  if (!redirect_uri) {
-    return {
-      success: false,
-      error: authorizeError(
-        "invalid_request",
-        "Missing redirect_uri for authorization redirect",
-        errorDetails,
-      ),
-    };
-  }
-
-  const url = new URL(redirect_uri);
-  const params = url.searchParams;
-  if (iss) {
-    params.set("iss", iss);
-  }
-  if (state) {
-    params.set("state", state);
-  }
-
-  if (code) {
-    params.set("code", code);
-
-    url.search = params.toString();
-    return {
-      success: true,
-      value: url.toString(),
-    };
-  } else {
-    const error = errorDetails?.error || "server_error";
-    const error_description =
-      errorDetails?.error_description || "Unknown error";
-    params.set("error", error);
-    params.set("error_description", error_description);
-
-    url.search = params.toString();
-    return {
-      success: true,
-      value: url.toString(),
-      warnings: authorizeError(error, error_description, errorDetails),
-    };
-  }
+export interface IssueAuthorizationCodeOptions {
+  iss: string;
+  authorizationCodeOptions: AuthorizationCodeOptions;
+  /**
+   * A function to generate a unique identifier for tokens.
+   */
+  randomJti?: () => string;
+  /**
+   * Date to use when computing NumericDate claims, defaults to `new Date()`.
+   */
+  currentDate?: Date;
 }
+
+export type IssueAuthorizationCodeReturn = Result<
+  string,
+  AuthorizationCodeClaims,
+  AuthorizeErrorResponse
+>;
 
 export async function issueAuthorizationCode(
   args: NormalizedAuthorizeInput,
@@ -377,13 +322,17 @@ export async function issueAuthorizationCode(
   }
 
   if (!client_id || !code_challenge || !resource) {
-    // This should have been caught in validation, throwing as a last resort
-    throw new OAuthError({
-      error: "invalid_request",
-      error_description: `Missing required parameters in authorization request: ${[client_id ? "" : "client_id", code_challenge ? "" : "code_challenge", resource ? "" : "resource"].filter(Boolean).join(", ")}`,
-      state,
-      iss,
-    });
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        `Missing required parameters in authorization request: ${[client_id ? "" : "client_id", code_challenge ? "" : "code_challenge", resource ? "" : "resource"].filter(Boolean).join(", ")}`,
+        {
+          state,
+          iss,
+        },
+      ),
+    };
   }
 
   const opts = authorizationCodeDefaults(authorizationCodeOptions);
@@ -430,29 +379,77 @@ export async function issueAuthorizationCode(
     return undefined;
   });
 
-  const redirect = buildAuthorizationRedirect(
-    redirect_uri,
-    code,
-    error,
-    state,
-    iss,
-  );
-
-  return redirect.success
+  return code === undefined
     ? {
-        success: true,
-        value: redirect.value,
-        ...(code
-          ? {
-              artifacts: claims,
-              warnings: undefined,
-            }
-          : {
-              artifacts: undefined,
-              warnings: redirect.warnings,
-            }),
+        success: false,
+        error: error!,
       }
-    : redirect;
+    : {
+        success: true,
+        value: code,
+        artifacts: claims,
+      };
 }
 
-// #endregion functions
+// #region buildAuthorizationRedirect
+
+export type BuildAuthorizationRedirectArgs = {
+  codeOrError: string | AuthorizeErrorResponse;
+  request: Pick<NormalizedAuthorizeInput, "redirect_uri" | "state">;
+};
+export type BuildAuthorizationRedirectReturn = Result<
+  URL,
+  undefined,
+  AuthorizeErrorResponse
+>;
+
+/**
+ * Build redirect URI with either ?code= or ?error= fragment/query params as per OAuth 2.1
+ * Note: OAuth 2.1 uses query component for authorization code; we preserve given state.
+ */
+export function buildAuthorizationRedirect(
+  args: BuildAuthorizationRedirectArgs,
+  options: {
+    iss: string;
+  },
+): BuildAuthorizationRedirectReturn {
+  const { codeOrError, request } = args;
+  const { redirect_uri, state } = request;
+
+  if (!redirect_uri) {
+    return {
+      success: false,
+      error: authorizeError(
+        "invalid_request",
+        "Missing redirect_uri for authorization redirect",
+      ),
+    };
+  }
+
+  const url = new URL(redirect_uri);
+  const params = url.searchParams;
+  if (options.iss) {
+    params.set("iss", options.iss);
+  }
+  if (state) {
+    params.set("state", state);
+  }
+
+  if (typeof codeOrError === "string") {
+    params.set("code", codeOrError);
+
+    url.search = params.toString();
+  } else {
+    const error = codeOrError?.error || "server_error";
+    const error_description = codeOrError?.error_description || "Unknown error";
+    params.set("error", error);
+    params.set("error_description", error_description);
+
+    url.search = params.toString();
+  }
+
+  return {
+    success: true,
+    value: url,
+  };
+}
