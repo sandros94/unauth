@@ -83,20 +83,23 @@ try {
   // Note: userinfo is not applicable for client_credentials (no end-user subject).
   const ccScope = "api.read";
   const ccTokens = await client
-    .clientCredentialsGrant(await client.discovery(
-      issuer,
-      clientId,
+    .clientCredentialsGrant(
+      await client.discovery(
+        issuer,
+        clientId,
+        {
+          client_secret: "client-secret",
+        },
+        undefined,
+        {
+          execute: [client.allowInsecureRequests],
+        },
+      ),
       {
-        client_secret: "client-secret",
+        scope: ccScope,
+        resource: "https://api.example.com/",
       },
-      undefined,
-      {
-        execute: [client.allowInsecureRequests],
-      },
-    ), {
-      scope: ccScope,
-      resource: "https://api.example.com/",
-    })
+    )
     .catch((error_) => {
       console.error("Error during client_credentials:", error_.cause);
       throw error_;

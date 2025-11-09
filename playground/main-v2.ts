@@ -69,7 +69,10 @@ api.get("/authorize", async (event) => {
     });
   }
   const normalized = validation.value;
-  console.log("Normalized authorization request:", JSON.stringify(normalized, null, 2));
+  console.log(
+    "Normalized authorization request:",
+    JSON.stringify(normalized, null, 2),
+  );
 
   const redirect = await provider.issueAuthorizationCode({
     ...normalized,
@@ -117,7 +120,10 @@ api.post("/token", async (event) => {
   if (normalized.grant_type === "client_credentials") {
     // mock check secret
     // eslint-disable-next-line unicorn/no-lonely-if
-    if (normalized.client_id !== "test-client" || normalized.client_secret !== "client-secret") {
+    if (
+      normalized.client_id !== "test-client" ||
+      normalized.client_secret !== "client-secret"
+    ) {
       throw HTTPError.status(401, "Invalid client credentials");
     }
   }
