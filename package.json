@@ -22,9 +22,9 @@
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
-    "./basic": {
-      "types": "./dist/basic.d.mts",
-      "default": "./dist/basic.mjs"
+    "./h3v2": {
+      "types": "./dist/h3v2.d.mts",
+      "import": "./dist/h3v2.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -42,7 +42,7 @@
     "bench": "vitest bench --run"
   },
   "dependencies": {
-    "unjwt": "^0.5.39",
+    "unjwt": "https://pkg.pr.new/unjwt@99f53da",
     "unsecure": "^0.1.0"
   },
   "devDependencies": {
@@ -52,16 +52,20 @@
     "@vitest/coverage-v8": "^4.1.0",
     "automd": "^0.4.3",
     "changelogen": "^0.6.2",
+    "cookie-esv1": "npm:cookie-es@^1.2.2",
+    "cookie-esv2": "npm:cookie-es@^2.0.0",
     "h3v1": "npm:h3@^1.15.10",
     "h3v2": "npm:h3@^2.0.1-rc.18",
     "obuild": "^0.4.32",
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0",
+    "rolldown": "1.0.0-rc.11",
     "supertest": "^7.2.2",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "vitest": "^4.1.0"
   },
   "peerDependencies": {
+    "cookie-es": "^1.2.2 || ^2.0.0",
     "h3": "^1.15.4 || >=2.0.1-rc.18 || ^2.0.1"
   },
   "peerDependenciesMeta": {
