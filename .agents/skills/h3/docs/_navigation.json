@@ -1,0 +1,311 @@
+[
+  {
+    "slug": "guide",
+    "path": "/guide",
+    "title": "Guide",
+    "order": 1,
+    "icon": "i-ph:book-open-duotone",
+    "children": [
+      {
+        "slug": "",
+        "path": "/guide",
+        "title": "Getting Started",
+        "order": 0,
+        "icon": "pixel:play"
+      },
+      {
+        "slug": "basics",
+        "path": "/guide/basics",
+        "title": "Guide",
+        "order": 1,
+        "icon": "ph:book-open-duotone",
+        "page": false,
+        "children": [
+          {
+            "slug": "lifecycle",
+            "path": "/guide/basics/lifecycle",
+            "title": "Request Lifecycle",
+            "order": 1,
+            "icon": "icon-park-outline:handle-round"
+          },
+          {
+            "slug": "routing",
+            "path": "/guide/basics/routing",
+            "title": "Routing",
+            "order": 2,
+            "icon": "solar:routing-bold"
+          },
+          {
+            "slug": "middleware",
+            "path": "/guide/basics/middleware",
+            "title": "Middleware",
+            "order": 3,
+            "icon": "mdi:middleware-outline"
+          },
+          {
+            "slug": "handler",
+            "path": "/guide/basics/handler",
+            "title": "Event Handlers",
+            "order": 4,
+            "icon": "mdi:function"
+          },
+          {
+            "slug": "response",
+            "path": "/guide/basics/response",
+            "title": "Sending Response",
+            "order": 5,
+            "icon": "tabler:json"
+          },
+          {
+            "slug": "error",
+            "path": "/guide/basics/error",
+            "title": "Error Handling",
+            "order": 6,
+            "icon": "tabler:error-404"
+          },
+          {
+            "slug": "nested-apps",
+            "path": "/guide/basics/nested-apps",
+            "title": "Nested Apps",
+            "order": 7,
+            "icon": "material-symbols-light:layers-outline"
+          }
+        ]
+      },
+      {
+        "slug": "api",
+        "path": "/guide/api",
+        "title": "API",
+        "order": 900,
+        "icon": "material-symbols-light:api-rounded",
+        "page": false,
+        "children": [
+          {
+            "slug": "h3",
+            "path": "/guide/api/h3",
+            "title": "H3",
+            "order": 1,
+            "icon": "material-symbols:bolt-rounded"
+          },
+          {
+            "slug": "h3event",
+            "path": "/guide/api/h3event",
+            "title": "H3Event",
+            "order": 2,
+            "icon": "material-symbols:data-object-rounded"
+          }
+        ]
+      },
+      {
+        "slug": "advanced",
+        "path": "/guide/advanced",
+        "title": "Advanced",
+        "order": 901,
+        "icon": "hugeicons:more-01",
+        "page": false,
+        "children": [
+          {
+            "slug": "plugins",
+            "path": "/guide/advanced/plugins",
+            "title": "Plugins",
+            "order": 1,
+            "icon": "clarity:plugin-line"
+          },
+          {
+            "slug": "websocket",
+            "path": "/guide/advanced/websocket",
+            "title": "WebSockets",
+            "order": 2,
+            "icon": "hugeicons:live-streaming-02"
+          },
+          {
+            "slug": "nightly",
+            "path": "/guide/advanced/nightly",
+            "title": "Nightly Builds",
+            "order": 9,
+            "icon": "game-icons:barn-owl"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "utils",
+    "path": "/utils",
+    "title": "Utils",
+    "order": 2,
+    "children": [
+      {
+        "slug": "",
+        "path": "/utils",
+        "title": "Community",
+        "order": 0,
+        "icon": "pixelarticons:github",
+        "to": "/utils/community"
+      },
+      {
+        "slug": "request",
+        "path": "/utils/request",
+        "title": "Request",
+        "order": 1,
+        "icon": "material-symbols-light:input"
+      },
+      {
+        "slug": "response",
+        "path": "/utils/response",
+        "title": "Response",
+        "order": 2,
+        "icon": "material-symbols-light:output"
+      },
+      {
+        "slug": "cookie",
+        "path": "/utils/cookie",
+        "title": "Cookie",
+        "order": 3,
+        "icon": "material-symbols:cookie-outline"
+      },
+      {
+        "slug": "security",
+        "path": "/utils/security",
+        "title": "Security",
+        "order": 4,
+        "icon": "wpf:key-security"
+      },
+      {
+        "slug": "proxy",
+        "path": "/utils/proxy",
+        "title": "Proxy",
+        "order": 5,
+        "icon": "arcticons:super-proxy"
+      },
+      {
+        "slug": "mcp",
+        "path": "/utils/mcp",
+        "title": "MCP",
+        "order": 6,
+        "icon": "material-symbols:swap-calls"
+      },
+      {
+        "slug": "more",
+        "path": "/utils/more",
+        "title": "More utils",
+        "order": 9,
+        "icon": "mingcute:plus-line"
+      },
+      {
+        "slug": "community",
+        "path": "/utils/community",
+        "title": "Community",
+        "order": 99,
+        "icon": "lets-icons:external"
+      }
+    ]
+  },
+  {
+    "slug": "examples",
+    "path": "/examples",
+    "title": "Examples",
+    "order": 4,
+    "children": [
+      {
+        "slug": "",
+        "path": "/examples",
+        "title": "Examples",
+        "order": 0,
+        "icon": "ph:code"
+      },
+      {
+        "slug": "handle-cookie",
+        "path": "/examples/handle-cookie",
+        "title": "Cookies",
+        "order": null,
+        "icon": "ph:arrow-right"
+      },
+      {
+        "slug": "handle-session",
+        "path": "/examples/handle-session",
+        "title": "Sessions",
+        "order": null,
+        "icon": "ph:arrow-right"
+      },
+      {
+        "slug": "serve-static-assets",
+        "path": "/examples/serve-static-assets",
+        "title": "Static Assets",
+        "order": null,
+        "icon": "ph:arrow-right"
+      },
+      {
+        "slug": "stream-response",
+        "path": "/examples/stream-response",
+        "title": "Stream Response",
+        "order": null,
+        "icon": "ph:arrow-right"
+      },
+      {
+        "slug": "validate-data",
+        "path": "/examples/validate-data",
+        "title": "Validate Data",
+        "order": null,
+        "icon": "ph:arrow-right"
+      }
+    ]
+  },
+  {
+    "slug": "migration",
+    "path": "/migration",
+    "title": "Migration",
+    "order": 5,
+    "children": [
+      {
+        "slug": "",
+        "path": "/migration",
+        "title": "Migration",
+        "order": 0,
+        "icon": "icons8:up-round"
+      }
+    ]
+  },
+  {
+    "slug": "blog",
+    "path": "/blog",
+    "title": "Blog",
+    "order": 99,
+    "children": [
+      {
+        "slug": "v1.8",
+        "path": "/blog/v1.8",
+        "title": "H3 1.8 - Towards the Edge of the Web",
+        "order": 1,
+        "date": "2023-08-15",
+        "category": "release",
+        "authors": [
+          {
+            "name": "Pooya Parsa",
+            "github": "pi0"
+          }
+        ]
+      },
+      {
+        "slug": "v2-beta",
+        "path": "/blog/v2-beta",
+        "title": "H3 v2 beta",
+        "order": 2,
+        "date": "2025-06-10",
+        "category": "release",
+        "authors": [
+          {
+            "name": "Pooya Parsa",
+            "github": "pi0"
+          }
+        ]
+      },
+      {
+        "slug": "",
+        "path": "/blog",
+        "title": "Blog",
+        "order": null
+      }
+    ]
+  }
+]
