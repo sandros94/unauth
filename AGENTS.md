@@ -1,17 +1,17 @@
 <!-- ⚠️  MAINTENANCE NOTICE
-  This file and the `.agents/` folder are the **single source of truth**
+  This file and the `.agent/` folder are the **single source of truth**
   for any AI agent working on this project. They MUST be kept up-to-date
   whenever the project structure, conventions, tooling, or plans change.
   If you change something in the codebase that invalidates information here
-  or in any `.agents/` document, update the relevant files in the same PR. -->
+  or in any `.agent/` document, update the relevant files in the same PR. -->
 
 ## Core Principle — Ask First
 
 **When in doubt, ask before acting.** It is always more important to understand the vision and the request than to assume. There is no shame or wasted time in asking clarifying questions — this applies to every conversation and every task in this project.
 
-## Agent Memory — `.agents/` Folder
+## Agent Memory — `.agent/` Folder
 
-The `.agents/` directory is the **memory** of this project for AI agents. It is organized as follows:
+The `.agent/` directory is the **memory** of this project for AI agents. It is organized as follows:
 
 ### `skills/`
 
@@ -21,17 +21,17 @@ Dependency-specific skills. These are installed or updated by the user and provi
 
 Standard approaches, patterns, and implementation guides developed for this project. These documents describe _how_ we build things here.
 
-| File                                                                        | Description                                       |
-| --------------------------------------------------------------------------- | ------------------------------------------------- |
-| [`contribution/testing.md`](.agents/contribution/testing.md) (if available) | Testing strategy, test types, and known patterns. |
+| File                                                                       | Description                                       |
+| -------------------------------------------------------------------------- | ------------------------------------------------- |
+| [`contribution/testing.md`](.agent/contribution/testing.md) (if available) | Testing strategy, test types, and known patterns. |
 
 ### `vision/`
 
-If available use [`vision/IDENTITY.md`](.agents/vision/IDENTITY.md) for project identity, core principles, and high-level goals. Use other vision documents for design and planning information that describes _what_ the project should become in each area. Contents come from external discussions, planned designs, and similar sources. Users may bring documents that need slight adaptation to fit the project context before being stored here.
+If available use [`vision/IDENTITY.md`](.agent/vision/IDENTITY.md) for project identity, core principles, and high-level goals. Use other vision documents for design and planning information that describes _what_ the project should become in each area. Contents come from external discussions, planned designs, and similar sources. Users may bring documents that need slight adaptation to fit the project context before being stored here.
 
 **Important:** if a technical limitation is discovered during implementation that conflicts with a vision document, **stop and update the vision document first** with a new approach or solution before writing any code. Vision documents are the drawing board — go back to it before implementing workarounds.
 
-### [`TODO.md`](.agents/TODO.md)
+### [`TODO.md`](.agent/TODO.md)
 
 Tracks current and next steps for project-specific implementations. Completed items are removed once committed — there is no need to accumulate history of past work.
 
@@ -56,7 +56,7 @@ Each script is independent — `test` does **not** run lint or type-check.
 
 ## Repository Structure
 
-- `.agents/` — Agent memory: skills, contribution guides, vision documents, and TODO.
+- `.agent/` — Agent memory: skills, contribution guides, vision documents, and TODO.
 - `.github/` — GitHub configuration (funding, workflows).
 - `src/` — Library source code.
 - `test/` — Tests (unit, nuxt environment, e2e).
@@ -65,7 +65,7 @@ Each script is independent — `test` does **not** run lint or type-check.
 
 ## Testing Strategy
 
-See [`.agents/contribution/testing.md`](.agents/contribution/testing.md) (if available) for full documentation.
+See [`.agent/contribution/testing.md`](.agent/contribution/testing.md) (if available) for full documentation.
 
 - `pnpm test` — Run all vitest tests.
 - `pnpm test:coverage` — Run tests with coverage reporting.
