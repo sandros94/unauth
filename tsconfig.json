@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "target": "esnext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "moduleDetection": "force",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -13,13 +13,15 @@
     "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
     "noImplicitOverride": true,
+    "noEmit": true,
     "skipLibCheck": true,
-    "noImplicitAny": true,
-    "outDir": "dist",
-    "sourceMap": true,
-    "lib": ["ESNext", "DOM"]
+    "paths": {
+      "#h3v1": ["./node_modules/h3v1/dist/index"],
+      "#h3v2": ["./node_modules/h3v2/dist/index"]
+    }
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "skills"]
 }

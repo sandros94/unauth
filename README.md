@@ -1,14 +1,10 @@
 # unauth
 
-<!-- automd:badges bundlephobia style="flat" color="FFDC3B" -->
+[![npm version](https://npmx.dev/api/registry/badge/version/unauth?name=true)](https://npmx.dev/package/unauth)
+[![npm downloads](https://npmx.dev/api/registry/badge/downloads/unauth)](https://npmx.dev/package/unauth)
+[![bundle size](https://npmx.dev/api/registry/badge/size/unauth)](https://npmx.dev/package/unauth)
 
-[![npm version](https://img.shields.io/npm/v/unauth?color=FFDC3B)](https://npmjs.com/package/unauth)
-[![npm downloads](https://img.shields.io/npm/dm/unauth?color=FFDC3B)](https://npm.chart.dev/unauth)
-[![bundle size](https://img.shields.io/bundlephobia/minzip/unauth?color=FFDC3B)](https://bundlephobia.com/package/unauth)
-
-<!-- /automd -->
-
-A collection of low-level, and high-level server-agnostic, OAuth 2.1 and OpenID Connect utilities based on JWT ([`unjwt`](https://github.com/sandros94/unjwt)). Adapters for popular frameworks are available (PRs are welcome for more!).
+A collection of low-level and high-level, server-agnostic, Authentication and Authorization utilities.
 
 > [!WARNING]
 > This package is in active development. It is not recommended for production use yet unless you are willing to help with testing and feedback.
@@ -16,229 +12,187 @@ A collection of low-level, and high-level server-agnostic, OAuth 2.1 and OpenID 
 
 ## Features
 
-- OAuth 2.1 core and extensions:
-  - Authorization Code Grant (with PKCE)
-  - Refresh Token Grant
-  - Client Credentials Grant
-  - JWT Bearer Token Grant (RFC 9068)
-  - Token Introspection (RFC 7662) (planned in adapters)
-  - Token Revocation (RFC 7009) (planned in adapters)
-- OpenID Connect Core 1.0:
-  - ID Tokens
-  - UserInfo Endpoint
-  - Discovery Endpoint
-- Framework adapters:
-  - [H3 v1](https://v1.h3.dev) (also for use with Nuxt, Nitro, etc.)
-- Works in Node.js, Deno, Bun and Browsers
-- Fully typed
+- **Session management** — Encrypted JWE sessions with auto-refresh
+- **Token pairs** — Access (JWS) + Refresh (JWE) token lifecycle with coordinated login/logout
+- **CSRF protection** — Double-submit cookie pattern with HMAC
+- **Middleware** — `requireSession`, `optionalSession`, `requireAuth`, `optionalAuth`
+- **Runtime-agnostic** — Built on Web Crypto API
+- **OAuth 2.1 and OIDC** — Planned
 
 Built on top of minimal dependencies:
 
-- [`unjwt`](https://github.com/sandros94/unjwt)
-- [`unsecure`](https://github.com/sandros94/unsecure)
+- [`unjwt`](https://github.com/sandros94/unjwt) — Low-level JWT (JWS/JWE/JWK) via Web Crypto
+- [`unsecure`](https://github.com/sandros94/unsecure) — Cryptographic utilities (HMAC, secure compare, etc.)
 
 ## Usage
 
 Install the package:
 
 ```sh
-# ✨ Auto-detect (supports npm, yarn, pnpm, deno and bun)
 npx nypm install unauth
 ```
 
-Import:
+### Session
 
-**ESM** (Node.js, Bun, Deno)
-
-```js
-// Main functions
-import { OAuthProvider } from "unauth/oauth";
-import { OIDCProvider } from "unauth/oidc";
-```
-
-**CDN** (Deno, Bun and Browsers)
-
-```js
-// Main functions
-import { OAuthProvider } from "https://esm.sh/unauth/oauth";
-import { OIDCProvider } from "https://esm.sh/unauth/oidc";
-```
-
-### Quick start (OIDC)
+Encrypted session cookies (JWE) with auto-refresh support.
 
 ```ts
-import { OIDCProvider } from "unauth/oidc";
-import { generateJWK } from "unauth/utils";
+import { defineSession, generateJWK, requireSession } from "unauth/h3v2";
 
-// Configure the provider once during startup.
-const [atJwk, idJwk] = await Promise.all([
-  generateJWK("RS256", { kid: "at-rsa-1" }),
-  generateJWK("RS256", { kid: "id-rsa-1" }),
-]);
-const oidc = useOIDCProvider({
-  issuer: "https://auth.example.com",
-  authorizationCodeOptions: {
-    privateKey: "ac-secret",
+const sessionKey = await generateJWK("A256GCM");
+
+const useSession = defineSession<{ userId: string; role: string }>({
+  key: sessionKey,
+  maxAge: "7D",
+  hooks: {
+    async onRefresh({ session, refresh }) {
+      // Refresh with updated data from your database
+      const user = await db.users.findById(session.data.userId);
+      await refresh({ userId: user.id, role: user.role });
+    },
   },
-  refreshTokenOptions: {
-    privateKey: "rt-secret",
-  },
-  accessTokenOptions: atJwk,
-  idTokenOptions: idJwk,
 });
 
-// In your authorize endpoint
-const authorize = oidc.validateAuthorizeRequest(req.query);
-if (!authorize.success) {
-  return redirectWithError(authorize.error);
-}
-
-const code = await oidc.issueAuthorizationCode({
-  ...authorize.value,
-  subject: "user-123",
-  redirect_uri: authorize.value.redirect_uri ?? DEFAULT_REDIRECT_URI,
-});
-
-// In your token endpoint
-const normalized = oidc.validateTokenRequest(req.body);
-if (!normalized.success) {
-  return normalized.error;
-}
-
-const grant = await oauth.issueTokenGrant(validation.value);
-if (!grant.success) {
-  return grant.error;
-}
-
-const idToken = await oidc.introspectIdToken(grant.value.id_token);
+const app = new H3()
+  .post("/login", async (event) => {
+    const session = await useSession(event);
+    await session.update({ userId: "u1", role: "admin" });
+    return { ok: true };
+  })
+  .get(
+    "/me",
+    async (event) => {
+      const session = await useSession(event);
+      return { user: session.data };
+    },
+    { middleware: [requireSession(useSession)] },
+  )
+  .post("/logout", async (event) => {
+    const session = await useSession(event);
+    await session.clear();
+    return { ok: true };
+  });
 ```
 
-### Quick start (OAuth only)
+The `onRefresh` hook fires when the session crosses the `refreshAfter` threshold (default: 75% of `maxAge`). You control what happens:
+
+- `await refresh()` — Sliding window (re-issue with same data)
+- `await refresh({ role: "admin" })` — Update data during refresh
+- `await clear()` — Destroy the session
+- Don't call either — Skip, session stays as-is
+
+### Token Pair
+
+Access token (JWS, short-lived, client-readable) + refresh token (JWE, long-lived, encrypted) with coordinated lifecycle.
 
 ```ts
-import { OAuthProvider } from "unauth/oauth";
-import { generateJWK } from "unauth/utils";
+import { defineTokenPair, generateJWK, requireAuth } from "unauth/h3v2";
 
-// Configure the provider once during startup.
-const atJwk = await generateJWK("RS256", { kid: "at-rsa-1" });
-const oauth = useOAuthProvider({
-  issuer: "https://auth.example.com",
-  authorizationCodeOptions: {
-    privateKey: "ac-secret",
+const atKeys = await generateJWK("ES256");
+const rtKey = await generateJWK("A256GCM");
+
+const useAuth = defineTokenPair<
+  { sub: string; permissions: string[] },
+  { sub: string; family: string }
+>({
+  access: { key: atKeys, maxAge: "15m" },
+  refresh: { key: rtKey, maxAge: "30D" },
+  hooks: {
+    async onRefresh({ refresh, issue }) {
+      const user = await db.users.findById(refresh.data.sub);
+      if (!user || user.suspended) return; // don't issue — AT stays empty
+      await issue({
+        accessData: { sub: user.id, permissions: user.permissions },
+        // refreshData is optional — omit to rotate with current data
+      });
+    },
+    onAfterRefresh({ access, refresh, previousRefresh }) {
+      logger.info("token_refresh", {
+        sub: access.data.sub,
+        newAtId: access.id,
+        oldRtId: previousRefresh.id,
+        newRtId: refresh.id,
+      });
+    },
   },
-  refreshTokenOptions: {
-    privateKey: "rt-secret",
-  },
-  accessTokenOptions: atJwk,
 });
 
-const validation = oauth.validateTokenRequest(req.body);
-if (!validation.success) {
-  return validation.error;
-}
-
-const grant = await oauth.issueTokenGrant(validation.value);
-if (!grant.success) {
-  return grant.error;
-}
-
-// Later, verify tokens issued by the provider
-const accessClaims = await oauth.introspectAccessToken(
-  grant.value.access_token,
-);
+const app = new H3()
+  .post("/login", async (event) => {
+    const auth = await useAuth(event);
+    await auth.issue({
+      accessData: { sub: user.id, permissions: user.permissions },
+      refreshData: { sub: user.id, family: crypto.randomUUID() },
+    });
+    return { ok: true };
+  })
+  .get(
+    "/me",
+    async (event) => {
+      const { access } = await useAuth(event);
+      return { user: access.data };
+    },
+    { middleware: [requireAuth(useAuth)] },
+  )
+  .post("/logout", async (event) => {
+    const auth = await useAuth(event);
+    await auth.revoke();
+    return { ok: true };
+  });
 ```
 
-> [!NOTE]
-> For advanced use-cases you can import the lower-level helpers directly, e.g. `import { issueAuthorizationCode } from "unauth/oauth"` or `import { buildUserInfo } from "unauth/oidc"`, to compose custom flows while keeping the same core primitives.
+When the access token expires:
 
-### Adapters
+- `onRefresh` fires with the valid refresh token
+- Call `issue({ accessData, refreshData? })` to re-issue the AT and rotate the RT
+- Call `revoke()` to clear both tokens (e.g., user banned, family revoked)
+- Don't call either to skip (AT stays empty, RT preserved)
+- Throw to forward errors to `onError` without destroying tokens
 
-- **H3 v1**: For use with [H3 v1](https://v1.h3.dev)
+Both `access` and `refresh` are unjwt session managers exposed directly — call `.update()` or `.clear()` on them for escape-hatch scenarios that bypass hooks.
 
-#### Minimal H3 v1 Example
+### CSRF
 
-In the following example instead of using `useOIDCProvider` or `useOAuthProvider`, we use `createOIDCRouter` (or `createOAuthRouter`) which creates an H3 router with all the necessary endpoints that can be mounted as a sub-app. We also provide an `authorize` hook to validate the client and redirect URI.
+Double-submit cookie pattern with HMAC-generated tokens.
 
 ```ts
-import {
-  createApp,
-  createRouter,
-  defineEventHandler,
-  getQuery,
-  useBase,
-} from "h3";
-import { createOIDCRouter, validateRedirectUri } from "unauth/h3/oidc";
-import { generateJWK } from "unauth";
+import { defineCsrf } from "unauth/h3v2";
 
-const [atJwk, idJwk] = await Promise.all([
-  generateJWK("RS256", { kid: "at-rsa-1" }),
-  generateJWK("RS256", { kid: "id-rsa-1" }),
-]);
+const csrf = defineCsrf({ secret: process.env.CSRF_SECRET! });
 
-// If the first argument is a string, it will return a handler with a base
-const oidcRouter = createOIDCRouter({
-  issuer: "http://localhost:3000",
-  discovery: {
-    // the base path where the OIDC endpoints will be served
-    // (e.g. /oidc/v1/.well-known/openid-configuration)
-    base: "/oidc/v1",
-    // you can also override individual endpoints here, e.g.:
-    // authorization_endpoint: "/oidc/v1/authorize",
-  },
+const app = new H3()
+  .get("/form", handler, { middleware: [csrf] })
+  .post("/form", handler, { middleware: [csrf] });
+```
 
-  authorizationCodeOptions: {
-    privateKey: "ac-secret",
-  },
-  refreshTokenOptions: {
-    privateKey: "rt-secret",
-  },
-  accessTokenOptions: atJwk, // we can directly pass keys and use default options
-  idTokenOptions: idJwk, // same as accessTokenOptions
+### Middleware
 
-  // Hook that is called when the /authorize endpoint is hit
-  authorize: async (input) => {
-    // in a real app, you'd look up the client_id and allowed redirect URIs in your database
-    if (input.client_id !== "test-client") {
-      return {
-        error: "invalid_client",
-        error_description: "Unknown client",
-      };
-    }
-    const validRedirectUri = validateRedirectUri(input.redirect_uri, [
-      "http://localhost:3000/callback", // this is the one requested
-      "http://localhost:3000/alt-callback",
-    ]);
-    if (!validRedirectUri.success) {
-      return validRedirectUri.error;
-    }
+Separate middleware for sessions and token pairs:
 
-    // in a real app, you'd determine this from the user's login session
-    const subject = "user-123";
+```ts
+import { requireSession, optionalSession } from "unauth/h3v2";
+import { requireAuth, optionalAuth } from "unauth/h3v2";
 
-    return {
-      subject,
-      redirect_uri: validRedirectUri.value,
-    };
-  },
+// Session middleware
+app.get("/me", handler, { middleware: [requireSession(useSession)] });
+app.get("/feed", handler, { middleware: [optionalSession(useSession)] });
+
+// Token pair middleware
+app.get("/me", handler, { middleware: [requireAuth(useAuth)] });
+app.get("/feed", handler, { middleware: [optionalAuth(useAuth)] });
+
+// With authorization checks
+app.delete("/admin/users/:id", handler, {
+  middleware: [
+    requireAuth(useAuth, {
+      onAuthenticated({ session }) {
+        if (!session.data.permissions.includes("admin:users:delete")) {
+          throw new HTTPError("Forbidden", { status: 403 });
+        }
+      },
+    }),
+  ],
 });
-
-// Create an H3 app instance
-export const app = createApp();
-const router = createRouter();
-
-// Simple callback endpoint for manual testing; used by the scripted test (which intercepts the Location header)
-router.get(
-  "/callback",
-  defineEventHandler((event) => {
-    const q = getQuery<{ code?: string; state?: string }>(event);
-    return `Callback received. code=${q.code ?? "<none>"} state=${q.state ?? "<none>"}`;
-  }),
-);
-
-// Use the same base as used in `createOIDCRouter`
-router.use("/oidc/v1/**", useBase("/oidc/v1", oidcRouter.handler));
-
-app.use(router);
 ```
 
 ## Development
@@ -257,7 +211,7 @@ app.use(router);
 
 ## Why unauth?
 
-I started by building `unjwt`, as I needed a cryptographycally secure way to transmit sensitive information between various programming languages and servers. Not long after I started requiring some standardization, in particular on how to prepare and expect authorization data to be shared between parties (client and servers), but as I was testing various libraries I've never been satisfied by their DX (although most of them were great for someone that already knows the topic).
+I started by building `unjwt`, as I needed a cryptographically secure way to transmit sensitive information between various programming languages and servers. Not long after I started requiring some standardization, in particular on how to prepare and expect authorization data to be shared between parties (client and servers), but as I was testing various libraries I've never been satisfied by their DX (although most of them were great for someone that already knows the topic).
 So I started building `unauth` as a collection of low-level primitives that then can be wrapped in higher-level abstractions, via adapters, to provide a "batteries included" experience while retaining control and flexibility of using your preferred storage, database and web frameworks.
 
 ## Credits

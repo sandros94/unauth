@@ -2,119 +2,82 @@
   "name": "unauth",
   "version": "0.0.5",
   "description": "Low-level OIDC utilities",
-  "repository": "sandros94/unauth",
   "license": "MIT",
-  "sideEffects": false,
-  "type": "module",
   "author": {
     "name": "Sandro Circi",
     "email": "sandro.circi@digitoolmedia.com"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sandros94/unauth.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
-    "./oauth": {
-      "types": "./dist/oauth.d.mts",
-      "default": "./dist/oauth.mjs"
+    "./h3v2": {
+      "types": "./dist/h3v2.d.mts",
+      "import": "./dist/h3v2.mjs"
     },
-    "./oidc": {
-      "types": "./dist/oidc.d.mts",
-      "default": "./dist/oidc.mjs"
-    },
-    "./utils": {
-      "types": "./dist/utils.d.mts",
-      "default": "./dist/utils.mjs"
-    },
-    "./adapters/h3": {
-      "types": "./dist/adapters/h3v1.d.mts",
-      "default": "./dist/adapters/h3v1.mjs"
-    },
-    "./adapters/h3/oauth": {
-      "types": "./dist/adapters/h3v1/oauth.d.mts",
-      "default": "./dist/adapters/h3v1/oauth.mjs"
-    },
-    "./adapters/h3/oidc": {
-      "types": "./dist/adapters/h3v1/oidc.d.mts",
-      "default": "./dist/adapters/h3v1/oidc.mjs"
-    },
-    "./adapters/h3v1": {
-      "types": "./dist/adapters/h3v1.d.mts",
-      "default": "./dist/adapters/h3v1.mjs"
-    },
-    "./adapters/h3v1/oauth": {
-      "types": "./dist/adapters/h3v1/oauth.d.mts",
-      "default": "./dist/adapters/h3v1/oauth.mjs"
-    },
-    "./adapters/h3v1/oidc": {
-      "types": "./dist/adapters/h3v1/oidc.d.mts",
-      "default": "./dist/adapters/h3v1/oidc.mjs"
-    }
+    "./package.json": "./package.json"
   },
-  "main": "./dist/index.mjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
-  "files": [
-    "dist"
-  ],
   "scripts": {
-    "build": "unbuild",
-    "dev": "npx --yes listhen -w ./playground/main.ts",
-    "dev:v2": "node --experimental-strip-types --watch ./playground/main-v2.ts",
-    "lint": "eslint . && prettier -c .",
-    "lint:fix": "automd && eslint . --fix && prettier -w .",
+    "build": "obuild",
+    "dev": "node --watch ./playground/main.ts",
+    "dev:prepare": "obuild --stub",
+    "lint": "oxlint . && oxfmt --check .",
+    "fmt": "automd && oxlint --fix . && oxfmt .",
     "prepack": "pnpm build",
-    "release": "pnpm test && pnpm prepack && changelogen --release --push --publish",
-    "test": "pnpm lint && pnpm test:types && vitest run --slowTestThreshold=500",
-    "test:coverage": "pnpm lint && pnpm test:types && vitest run --coverage --slowTestThreshold=500",
-    "test:types": "tsc --noEmit --skipLibCheck",
+    "release": "pnpm test && pnpm prepack && changelogen --release --push",
+    "test": "vitest run --slowTestThreshold=1000",
+    "test:coverage": "vitest run --coverage --slowTestThreshold=1000",
+    "typecheck": "tsgo --noEmit",
     "bench": "vitest bench --run"
+  },
+  "dependencies": {
+    "unjwt": "^0.5.40",
+    "unsecure": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/supertest": "^7.2.0",
+    "@typescript/native-preview": "7.0.0-dev.20260322.1",
+    "@vitest/coverage-v8": "^4.1.0",
+    "automd": "^0.4.3",
+    "changelogen": "^0.6.2",
+    "cookie-esv1": "npm:cookie-es@^1.2.2",
+    "cookie-esv2": "npm:cookie-es@^2.0.0",
+    "h3v1": "npm:h3@^1.15.10",
+    "h3v2": "npm:h3@^2.0.1-rc.18",
+    "obuild": "^0.4.32",
+    "oxfmt": "^0.41.0",
+    "oxlint": "^1.56.0",
+    "rolldown": "1.0.0-rc.11",
+    "supertest": "^7.2.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.0"
+  },
+  "peerDependencies": {
+    "cookie-es": "^1.2.2 || ^2.0.0",
+    "h3": "^1.15.4 || >=2.0.1-rc.18 || ^2.0.1"
+  },
+  "peerDependenciesMeta": {
+    "h3": {
+      "optional": true
+    }
   },
   "resolutions": {
     "unauth": "link:."
   },
-  "dependencies": {
-    "hookable": "^5.5.3",
-    "unjwt": "^0.5.26",
-    "unsecure": "^0.0.4"
+  "engines": {
+    "node": "^22.12 || >=24"
   },
-  "devDependencies": {
-    "@types/node": "^22",
-    "@vitest/coverage-v8": "^4.0.8",
-    "automd": "^0.4.2",
-    "changelogen": "^0.6.2",
-    "cookie-esv1": "npm:cookie-es@^1.2.2",
-    "cookie-esv2": "npm:cookie-es@^2.0.0",
-    "eslint": "^9.39.1",
-    "eslint-config-unjs": "^0.5.0",
-    "h3v1": "npm:h3@^1.15.4",
-    "h3v2": "npm:h3@^2.0.1-rc.5",
-    "prettier": "^3.6.2",
-    "typescript": "^5.9.3",
-    "unbuild": "^3.6.1",
-    "vitest": "^4.0.8"
-  },
-  "peerDependencies": {
-    "cookie-es": "^1.2.2 || ^2.0.0",
-    "h3": "^1.15.4 || >=2.0.1-rc.5 || ^2.0.1",
-    "rou3": "^0.7.10"
-  },
-  "peerDependenciesMeta": {
-    "cookie-es": {
-      "optional": true
-    },
-    "h3": {
-      "optional": true
-    },
-    "rou3": {
-      "optional": true
-    }
-  },
-  "pnpm": {
-    "ignoredBuiltDependencies": [
-      "@parcel/watcher"
-    ]
-  },
-  "packageManager": "pnpm@10.18.3"
+  "packageManager": "pnpm@10.32.1"
 }
