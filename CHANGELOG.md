@@ -1,5 +1,50 @@
 # Changelog
 
+## v0.0.6
+
+[compare changes](https://github.com/sandros94/unauth/compare/v0.0.5...v0.0.6)
+
+### 🚀 Enhancements
+
+- ⚠️  Enhance OIDC provider with support for JWK sets and improved token handling ([74712fb](https://github.com/sandros94/unauth/commit/74712fb))
+- **h3v2:** Add csrf and session utilities ([ad0607f](https://github.com/sandros94/unauth/commit/ad0607f))
+- **h3v2:** Add token-pairs utilities ([c614f66](https://github.com/sandros94/unauth/commit/c614f66))
+
+### 🩹 Fixes
+
+- Set rou3 as optional peerDep ([0aeebea](https://github.com/sandros94/unauth/commit/0aeebea))
+- **h3:** Better support unjwt adapters and h3 context ([2fa36db](https://github.com/sandros94/unauth/commit/2fa36db))
+- Add client_secret field to authorization code and client credentials grant types ([6170360](https://github.com/sandros94/unauth/commit/6170360))
+
+### 💅 Refactors
+
+- ⚠️  AuthorizationCode method and redirect ([cf61aac](https://github.com/sandros94/unauth/commit/cf61aac))
+
+### 🏡 Chore
+
+- Update deps ([7b90379](https://github.com/sandros94/unauth/commit/7b90379))
+- Update h3 v2 and rou3 deps ([84c3dcb](https://github.com/sandros94/unauth/commit/84c3dcb))
+- Update deps ([0593995](https://github.com/sandros94/unauth/commit/0593995))
+- Update `unjwt` ([fd457ef](https://github.com/sandros94/unauth/commit/fd457ef))
+- Update unjwt ([53db953](https://github.com/sandros94/unauth/commit/53db953))
+- Update unjwt ([fc9e46f](https://github.com/sandros94/unauth/commit/fc9e46f))
+- Install uspertest ([014e644](https://github.com/sandros94/unauth/commit/014e644))
+- ⚠️  Reset project ([6396d13](https://github.com/sandros94/unauth/commit/6396d13))
+- Init unsecure skill ([67736dd](https://github.com/sandros94/unauth/commit/67736dd))
+- Fix agent docs ([6c0ea4b](https://github.com/sandros94/unauth/commit/6c0ea4b))
+- Fix agent docs" ([bbb945e](https://github.com/sandros94/unauth/commit/bbb945e))
+- Update `unjwt` ([feb86a6](https://github.com/sandros94/unauth/commit/feb86a6))
+
+#### ⚠️ Breaking Changes
+
+- ⚠️  Enhance OIDC provider with support for JWK sets and improved token handling ([74712fb](https://github.com/sandros94/unauth/commit/74712fb))
+- ⚠️  AuthorizationCode method and redirect ([cf61aac](https://github.com/sandros94/unauth/commit/cf61aac))
+- ⚠️  Reset project ([6396d13](https://github.com/sandros94/unauth/commit/6396d13))
+
+### ❤️ Contributors
+
+- Sandro Circi ([@sandros94](https://github.com/sandros94))
+
 ## v0.0.5
 
 [compare changes](https://github.com/sandros94/unauth/compare/v0.0.4...v0.0.5)
