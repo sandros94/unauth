@@ -6,7 +6,7 @@
 
 ### 🚀 Enhancements
 
-- ⚠️  Enhance OIDC provider with support for JWK sets and improved token handling ([74712fb](https://github.com/sandros94/unauth/commit/74712fb))
+- ⚠️ Enhance OIDC provider with support for JWK sets and improved token handling ([74712fb](https://github.com/sandros94/unauth/commit/74712fb))
 - **h3v2:** Add csrf and session utilities ([ad0607f](https://github.com/sandros94/unauth/commit/ad0607f))
 - **h3v2:** Add token-pairs utilities ([c614f66](https://github.com/sandros94/unauth/commit/c614f66))
 
@@ -18,7 +18,7 @@
 
 ### 💅 Refactors
 
-- ⚠️  AuthorizationCode method and redirect ([cf61aac](https://github.com/sandros94/unauth/commit/cf61aac))
+- ⚠️ AuthorizationCode method and redirect ([cf61aac](https://github.com/sandros94/unauth/commit/cf61aac))
 
 ### 🏡 Chore
 
@@ -29,7 +29,7 @@
 - Update unjwt ([53db953](https://github.com/sandros94/unauth/commit/53db953))
 - Update unjwt ([fc9e46f](https://github.com/sandros94/unauth/commit/fc9e46f))
 - Install uspertest ([014e644](https://github.com/sandros94/unauth/commit/014e644))
-- ⚠️  Reset project ([6396d13](https://github.com/sandros94/unauth/commit/6396d13))
+- ⚠️ Reset project ([6396d13](https://github.com/sandros94/unauth/commit/6396d13))
 - Init unsecure skill ([67736dd](https://github.com/sandros94/unauth/commit/67736dd))
 - Fix agent docs ([6c0ea4b](https://github.com/sandros94/unauth/commit/6c0ea4b))
 - Fix agent docs" ([bbb945e](https://github.com/sandros94/unauth/commit/bbb945e))
@@ -37,9 +37,9 @@
 
 #### ⚠️ Breaking Changes
 
-- ⚠️  Enhance OIDC provider with support for JWK sets and improved token handling ([74712fb](https://github.com/sandros94/unauth/commit/74712fb))
-- ⚠️  AuthorizationCode method and redirect ([cf61aac](https://github.com/sandros94/unauth/commit/cf61aac))
-- ⚠️  Reset project ([6396d13](https://github.com/sandros94/unauth/commit/6396d13))
+- ⚠️ Enhance OIDC provider with support for JWK sets and improved token handling ([74712fb](https://github.com/sandros94/unauth/commit/74712fb))
+- ⚠️ AuthorizationCode method and redirect ([cf61aac](https://github.com/sandros94/unauth/commit/cf61aac))
+- ⚠️ Reset project ([6396d13](https://github.com/sandros94/unauth/commit/6396d13))
 
 ### ❤️ Contributors
 
