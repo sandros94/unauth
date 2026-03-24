@@ -12,51 +12,114 @@ import type {
 import { updateJWESession, clearJWESession, useJWESession } from "unjwt/adapters/h3v2";
 import { computeExpiresInSeconds } from "unjwt/utils";
 
-export {
-  type JWK,
-  type JWK_oct,
-  type JWK_RSA,
-  type JWK_EC,
-  type JWK_OKP,
-  generateJWK,
-  importJWKFromPEM,
-  exportJWKToPEM,
-  deriveJWKFromPassword,
-} from "unjwt/adapters/h3v2";
-
+/**
+ * Extended session hooks for h3v2.
+ *
+ * Extends unjwt's `SessionHooksJWE` with:
+ * - `onRead` augmented with a `clear()` function
+ * - `onRefresh` for auto-refresh with `refresh()` and `clear()` functions
+ */
 export interface H3SessionHooks<
   T extends Record<string, any> = SessionClaims,
   MaxAge extends ExpiresIn | undefined = ExpiresIn | undefined,
 > extends Omit<SessionHooksJWE<T, MaxAge>, "onRead"> {
+  /**
+   * Fires after the session is successfully read and validated.
+   * Receives a `clear()` function to destroy the session if needed
+   * (e.g., the user is banned).
+   *
+   * Not called when `onRefresh` fires (they are mutually exclusive).
+   */
   onRead?(args: {
     session: SessionJWE<T, MaxAge>;
     event: HTTPEvent;
     config: SessionConfigJWE<T, MaxAge>;
+    /** Destroy the session (delete cookie, reset state). */
     clear(): Promise<void>;
   }): void | Promise<void>;
 
+  /**
+   * Fires when the session has crossed the `refreshAfter` threshold.
+   *
+   * Call `refresh()` to re-issue the session:
+   * - `refresh()` — sliding window (same data, new jti/iat/exp)
+   * - `refresh({ role: 'admin' })` — merge partial data
+   * - `refresh(old => ({ count: old.count + 1 }))` — callback update
+   *
+   * Don't call `refresh()` to skip. Call `clear()` to destroy.
+   * Throwing forwards to `onError`.
+   *
+   * If no `onRefresh` hook is registered, the default behavior
+   * is automatic sliding window.
+   */
   onRefresh?(args: {
     session: SessionJWE<T, MaxAge>;
     event: HTTPEvent;
     config: SessionConfigJWE<T, MaxAge>;
+    /** Re-issue the session. Accepts the same update format as `session.update()`. */
     refresh(update?: SessionUpdate<T>): Promise<void>;
+    /** Destroy the session (delete cookie, reset state). */
     clear(): Promise<void>;
   }): void | Promise<void>;
 }
 
+/**
+ * Options for {@link defineSession}.
+ *
+ * Extends unjwt's `SessionConfigJWE` with `refreshAfter` and the
+ * extended {@link H3SessionHooks}.
+ */
 export interface H3SessionOptions<T extends SessionData> extends Omit<
   SessionConfigJWE<T>,
   "hooks"
 > {
+  /**
+   * When to auto-refresh the session, as a ratio of `maxAge` (0 to 1).
+   * For example, `0.75` means refresh after 75% of the session's
+   * lifetime has elapsed.
+   *
+   * Set to `false` to disable auto-refresh.
+   * @default 0.75
+   */
   refreshAfter?: number | false;
+  /** Lifecycle hooks. */
   hooks?: H3SessionHooks<T>;
 }
 
+/** Session manager type alias. Always has a defined `expiresAt`. */
 export type SessionManager<T extends SessionData> = BaseSessionManager<T, ExpiresIn>;
+
+/** Return type of {@link defineSession}. */
 export type DefineSessionReturn<T extends SessionData> = (
   event: HTTPEvent,
 ) => Promise<SessionManager<T>>;
 
+/**
+ * Creates an encrypted session (JWE) composable with auto-refresh support.
+ *
+ * Returns a function that resolves the session for the current request.
+ * The session is cached per-request by unjwt — calling the composable
+ * multiple times in the same request is free.
+ *
+ * @example
+ * ```ts
+ * const useSession = defineSession<{ userId: string }>({
+ *   key: await generateJWK("A256GCM"),
+ *   maxAge: "7D",
+ *   hooks: {
+ *     async onRefresh({ session, refresh }) {
+ *       const user = await db.users.findById(session.data.userId);
+ *       await refresh({ userId: user.id, role: user.role });
+ *     },
+ *   },
+ * });
+ * ```
+ *
+ * @default name "auth-session"
+ * @default maxAge "7D"
+ * @default refreshAfter 0.75
+ * @default cookie `{ httpOnly: true, secure: true, sameSite: "lax", path: "/" }`
+ */
 export function defineSession<T extends SessionData>(
   options: H3SessionOptions<T>,
 ): DefineSessionReturn<T> {
@@ -141,10 +204,25 @@ export function defineSession<T extends SessionData>(
   };
 }
 
+/** Configuration for {@link requireSession} and {@link optionalSession}. */
 export interface SessionMiddlewareConfig<T extends SessionData> {
+  /**
+   * Called after successful authentication, before the route handler.
+   * Use for authorization checks (roles, permissions, etc.).
+   * Throw to block the request.
+   */
   onAuthenticated?(ctx: { session: SessionManager<T>; event: HTTPEvent }): void | Promise<void>;
 }
 
+/**
+ * Middleware that requires an authenticated session.
+ * Throws `HTTPError 401` if no valid session exists.
+ *
+ * @example
+ * ```ts
+ * app.get("/me", handler, { middleware: [requireSession(useSession)] });
+ * ```
+ */
 export function requireSession<T extends SessionData>(
   useSession: DefineSessionReturn<T>,
   config?: SessionMiddlewareConfig<T>,
@@ -159,6 +237,16 @@ export function requireSession<T extends SessionData>(
   };
 }
 
+/**
+ * Middleware that allows unauthenticated requests.
+ * Resolves the session but does not throw if absent.
+ * `onAuthenticated` only fires when a valid session exists.
+ *
+ * @example
+ * ```ts
+ * app.get("/feed", handler, { middleware: [optionalSession(useSession)] });
+ * ```
+ */
 export function optionalSession<T extends SessionData>(
   useSession: DefineSessionReturn<T>,
   config?: SessionMiddlewareConfig<T>,

@@ -185,37 +185,83 @@ function defineCsrf(options: H3CsrfOptions): (event: H3Event) => Promise<void>;
 
 ---
 
-## 8. `defineTokenPair` — Access + Refresh Token Pair (Planned)
+## 8. `defineTokenPair` — Access + Refresh Token Pair
+
+### Status: ✅ Implemented with tests (100% coverage on token-pair.ts)
 
 Access token (JWS, short-lived, client-readable) + refresh token (JWE, long-lived, encrypted).
+Built directly on unjwt's lower-level functions — does NOT compose `defineSession`.
+Middleware (`requireAuth`, `optionalAuth`) lives in the same file.
 
-**Built directly on unjwt's lower-level functions** — does NOT compose `defineSession`.
-Middleware (`requireAuth`, `optionalAuth`) will live in the same file.
+### Key types
+
+- `TokenPairSessionManager<T>` — type alias over unjwt's `BaseSessionManager<T, ExpiresIn>`
+- `TokenPair<TAccess, TRefresh>` — `{ access, refresh, issue(), revoke() }`
+- `DefineTokenPairReturn<TAccess, TRefresh>` — composable return type
+- `SessionSnapshot<T>` — read-only `{ id, data, createdAt, expiresAt }` used in `onAfterRefresh`
 
 ### Core mechanics
 
-- AT config is `SessionConfigJWS` with `onExpire` hook wired to the refresh logic.
-- Inside `onExpire`: read RT via `getJWESession`, call user's `onRefresh` hook, re-issue AT via `updateJWSSession`, rotate RT via `updateJWESession`.
-- `login()` issues RT first then AT.
-- `logout()` fires `onClear` hook then clears both.
-- Direct access to underlying session managers is the escape hatch.
+- AT config is `SessionConfigJWS` with `onExpire` wired to the refresh logic.
+- Inside `onExpire`: read RT via `useJWESession` (safe — different cache key), call `onRefresh`, re-issue AT via `updateJWSSession` (lower-level), rotate RT via `updateJWESession`.
+- **Critical:** `useJWSSession` must NEVER be called inside `onExpire` — deadlocks on the cached promise. Only `updateJWSSession` is safe.
+- `issue()` creates RT first then AT. `revoke()` fires `onRevoke` then clears both.
 
-### `onRefresh` hook — `issue()` function pattern
+### `onRefresh` — `issue()` + `revoke()` function pattern
 
 ```ts
 onRefresh(args: {
-  refresh: SessionManager<TRefresh>;
-  access: SessionManager<TAccess>;
+  refresh: TokenPairSessionManager<TRefresh>;
   event: HTTPEvent;
-  issue(accessData: TAccess): Promise<void>;
+  issue(arg: {
+    accessData: SessionUpdate<TAccess>;
+    refreshData?: SessionUpdate<TRefresh>;
+  }): Promise<void>;
+  revoke(): Promise<void>;
 }): void | Promise<void>;
 ```
 
-| Action                              | Effect                                         |
-| ----------------------------------- | ---------------------------------------------- |
-| `await issue({ sub, permissions })` | AT re-issued, RT rotated (new jti/iat/exp)     |
-| Don't call `issue()`                | No refresh — AT stays empty, RT preserved      |
-| Throw                               | Error path → `onError`, RT preserved, AT empty |
+No `access` in context — AT is always expired when `onRefresh` fires.
+`issue()` accepts `SessionUpdate` (partial object or `(old) => partial` callback) for both tokens —
+`accessData` is required, `refreshData` is optional (omit to rotate with current data).
+
+| Action                                               | Effect                                                  |
+| ---------------------------------------------------- | ------------------------------------------------------- |
+| `await issue({ accessData: { sub, permissions } })`  | AT re-issued, RT rotated with current data              |
+| `await issue({ accessData: ..., refreshData: ... })` | AT re-issued, RT rotated with updated data              |
+| `await revoke()`                                     | Both tokens cleared (e.g., user banned, family revoked) |
+| Don't call either                                    | No refresh — AT stays empty, RT preserved               |
+| Throw                                                | Error path → `onError`, RT preserved, AT empty          |
+
+### `onAfterRefresh` — plain snapshots
+
+Uses `SessionSnapshot<T>` instead of full `SessionManager` because we can't safely obtain a SessionManager inside `onExpire`.
+
+### `maxAge` is required — runtime guard for JS consumers
+
+Both `access.maxAge` and `refresh.maxAge` are required (`ExpiresIn`, non-optional).
+TypeScript enforces this at compile time. For JavaScript consumers, `defineTokenPair()`
+throws eagerly at call time (app startup) if either is missing:
+
+```
+[unauth] access.maxAge is required for defineTokenPair
+[unauth] refresh.maxAge is required for defineTokenPair
+```
+
+**Rationale:** Token lifetimes are security-critical. There is no sensible universal
+default — the right value depends on the threat model. Unlike `defineSession` (which
+defaults to `"7D"` for convenience), token pairs force an explicit choice. A missing
+`maxAge` would silently produce tokens that never expire, which is a security hole.
+
+**Note for future OAuth 2.1 / OIDC implementations:** Apply the same pattern —
+any security-critical duration (authorization code lifetime, ID token maxAge,
+refresh token absolute expiry, etc.) should be required with a runtime guard.
+TypeScript types catch this for TS consumers; the runtime check catches it for JS.
+
+### Defaults
+
+- AT: name `"access_token"`, cookie `httpOnly: false, secure: true, sameSite: "lax"`
+- RT: name `"refresh_token"`, cookie `httpOnly: true, secure: true, sameSite: "lax"`
 
 ---
 
@@ -238,4 +284,4 @@ unauth/h3v2 (runtime)
 | ------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `unauth/h3v2` | `defineSession`, `requireSession`, `optionalSession`, `SessionManager<T>`, `DefineSessionReturn<T>`, key utils | ✅ Implemented + tested |
 | `unauth/h3v2` | `defineCsrf`                                                                                                   | ✅ Implemented + tested |
-| `unauth/h3v2` | `defineTokenPair`, `requireAuth`, `optionalAuth`                                                               | 🔲 Planned              |
+| `unauth/h3v2` | `defineTokenPair`, `requireAuth`, `optionalAuth`                                                               | ✅ Implemented + tested |

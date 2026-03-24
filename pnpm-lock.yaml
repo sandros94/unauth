@@ -18,8 +18,8 @@ importers:
         specifier: ^1.15.4 || >=2.0.1-rc.18 || ^2.0.1
         version: 2.0.1-rc.18
       unjwt:
-        specifier: https://pkg.pr.new/unjwt@99f53da
-        version: https://pkg.pr.new/unjwt@99f53da(cookie-es@2.0.0)(h3@2.0.1-rc.18)(rou3@0.7.10)
+        specifier: https://pkg.pr.new/unjwt@cc70f51
+        version: https://pkg.pr.new/unjwt@cc70f51(cookie-es@2.0.0)(h3@2.0.1-rc.18)(rou3@0.7.10)
       unsecure:
         specifier: ^0.1.0
         version: 0.1.0
@@ -1712,8 +1712,8 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  unjwt@https://pkg.pr.new/unjwt@99f53da:
-    resolution: {integrity: sha512-A/JTON4cdIbYaBAX9SBa9iNdXX7U4RWjtEDpRx4KwnKGpkLwr7ZjINK4zviQWae/3akTE7zZI7E5K02v6RUokA==, tarball: https://pkg.pr.new/unjwt@99f53da}
+  unjwt@https://pkg.pr.new/unjwt@cc70f51:
+    resolution: {integrity: sha512-xSCCes7GHuU1vaTcNmCedxCyeugzKPua+3Jxu3GSfgiI3Phr/gkUyvrzUCJkTGyCfoYSai3WLYSfCeT8zu+YlQ==, tarball: https://pkg.pr.new/unjwt@cc70f51}
     version: 0.5.39
     engines: {node: ^22.12 || >=24}
     peerDependencies:
@@ -3251,7 +3251,7 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  unjwt@https://pkg.pr.new/unjwt@99f53da(cookie-es@2.0.0)(h3@2.0.1-rc.18)(rou3@0.7.10):
+  unjwt@https://pkg.pr.new/unjwt@cc70f51(cookie-es@2.0.0)(h3@2.0.1-rc.18)(rou3@0.7.10):
     optionalDependencies:
       cookie-es: 2.0.0
       h3: 2.0.1-rc.18
