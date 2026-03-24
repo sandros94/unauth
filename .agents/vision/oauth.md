@@ -46,6 +46,7 @@ Shared concerns (client authentication, scope validation) are internal helpers. 
 ### No Reuse of `defineSession` / `defineTokenPair`
 
 OAuth bearer tokens are fundamentally different from cookie-based sessions:
+
 - Delivered via JSON response body, not `Set-Cookie` headers
 - Validated via `Authorization: Bearer` header, not cookies
 - Storage is database-backed (developer-provided), not cookie-backed
@@ -114,6 +115,7 @@ test/
 ## 3. Build & Export Configuration
 
 **package.json** — add:
+
 ```jsonc
 "./h3v2/oauth": {
   "types": "./dist/h3v2-oauth.d.mts",
@@ -148,10 +150,7 @@ type OAuthGrantType =
   | "refresh_token"
   | "urn:ietf:params:oauth:grant-type:device_code";
 
-type ClientAuthMethod =
-  | "client_secret_post"
-  | "client_secret_basic"
-  | "none";
+type ClientAuthMethod = "client_secret_post" | "client_secret_basic" | "none";
 
 // --- Authorization code ---
 interface AuthorizationCodeData {
@@ -200,10 +199,7 @@ interface IntrospectionResponse {
 
 // --- Shared hook types ---
 interface ClientHooks {
-  onFindClient(args: {
-    clientId: string;
-    event: HTTPEvent;
-  }): Promise<OAuthClient | undefined>;
+  onFindClient(args: { clientId: string; event: HTTPEvent }): Promise<OAuthClient | undefined>;
 
   onVerifyClientSecret?(args: {
     client: OAuthClient;
@@ -265,10 +261,7 @@ interface OAuthAuthorizeOptions {
       | { error: OAuthErrorCode; errorDescription?: string }
       | { redirect: string }
     >;
-    onSaveAuthorizationCode(args: {
-      code: AuthorizationCodeData;
-      event: HTTPEvent;
-    }): Promise<void>;
+    onSaveAuthorizationCode(args: { code: AuthorizationCodeData; event: HTTPEvent }): Promise<void>;
     onError?(args: { error: unknown; event: HTTPEvent }): void | Promise<void>;
   };
 }
@@ -279,6 +272,7 @@ function defineOAuthAuthorize(
 ```
 
 **Behavior:**
+
 - Validates `response_type=code` (only one allowed in 2.1)
 - Validates `redirect_uri` exact match against registered URIs
 - Validates `code_challenge` presence and `code_challenge_method=S256`
@@ -356,12 +350,11 @@ interface OAuthTokenOptions {
   };
 }
 
-function defineOAuthToken(
-  options: OAuthTokenOptions,
-): (event: HTTPEvent) => Promise<Response>;
+function defineOAuthToken(options: OAuthTokenOptions): (event: HTTPEvent) => Promise<Response>;
 ```
 
 **Behavior:**
+
 - Extracts client credentials (Basic auth or POST body)
 - Validates client via `onFindClient`
 - Authenticates confidential clients via `onVerifyClientSecret`
@@ -377,6 +370,7 @@ function defineOAuthToken(
 - Headers: `Content-Type: application/json`, `Cache-Control: no-store`
 
 **Runtime guards (throw at factory call time):**
+
 - `accessToken.key` is required
 - `accessToken.maxAge` is required
 - `hooks.onFindClient` is required
@@ -401,10 +395,7 @@ interface OAuthDeviceAuthorizationOptions {
     onFindClient: ClientHooks["onFindClient"];
     onVerifyClientSecret?: ClientHooks["onVerifyClientSecret"];
     /** Store the device code data for later polling. */
-    onSaveDeviceCode(args: {
-      deviceCode: DeviceCodeData;
-      event: HTTPEvent;
-    }): Promise<void>;
+    onSaveDeviceCode(args: { deviceCode: DeviceCodeData; event: HTTPEvent }): Promise<void>;
     onError?(args: { error: unknown; event: HTTPEvent }): void | Promise<void>;
   };
 }
@@ -415,6 +406,7 @@ function defineOAuthDeviceAuthorization(
 ```
 
 **Behavior:**
+
 - Validates client (public clients allowed)
 - Generates `device_code` (long, opaque) and `user_code` (short, user-friendly, e.g., `ABCD-1234`)
 - Calls `onSaveDeviceCode`
@@ -446,6 +438,7 @@ function defineOAuthRevocation(
 ```
 
 **Behavior:**
+
 - Authenticates client
 - Calls `onRevokeToken`
 - Always returns 200 (per RFC 7009)
@@ -476,6 +469,7 @@ function defineOAuthIntrospection(
 ```
 
 **Behavior:**
+
 - Authenticates client
 - If `accessToken.key` is provided and `tokenTypeHint` is `"access_token"` (or no hint), attempts JWS verification first
 - Falls back to `onIntrospectToken` hook for opaque tokens / refresh tokens
@@ -520,18 +514,19 @@ function defineOAuthIntrospection(
 
 Following the project's established pattern:
 
-| Module | Import style | Reason |
-|--------|-------------|--------|
-| `unjwt/jws` | Static | Regular dependency |
-| `unsecure` | Static | Regular dependency |
-| `h3v2` (types) | Static `import type` | Erased at build |
-| `h3v2` (runtime values) | `await import("h3v2")` | Optional peer dep |
+| Module                  | Import style           | Reason             |
+| ----------------------- | ---------------------- | ------------------ |
+| `unjwt/jws`             | Static                 | Regular dependency |
+| `unsecure`              | Static                 | Regular dependency |
+| `h3v2` (types)          | Static `import type`   | Erased at build    |
+| `h3v2` (runtime values) | `await import("h3v2")` | Optional peer dep  |
 
 ---
 
 ## 8. OIDC Extensibility
 
 The architecture accommodates future OIDC by:
+
 1. `onAccessTokenClaims` can return an `id_token` field to the response
 2. `onAuthorize` can be extended with OIDC-specific fields (`nonce`, `acr_values`)
 3. A future `defineOIDCProvider` can compose the existing endpoint factories
@@ -542,6 +537,7 @@ The architecture accommodates future OIDC by:
 ## 9. Implementation Sequence
 
 ### Phase 1: Foundation
+
 Files: `_types.ts`, `_errors.ts`, `_pkce.ts`, `_client-auth.ts`, `_token.ts`
 
 1. Define all shared types
@@ -552,6 +548,7 @@ Files: `_types.ts`, `_errors.ts`, `_pkce.ts`, `_client-auth.ts`, `_token.ts`
 6. Write unit tests for PKCE and error formatting
 
 ### Phase 2: Authorization Code Grant
+
 Files: `authorize.ts`, `token.ts`, `_grant-authorization-code.ts`
 
 1. Implement authorization endpoint (`defineOAuthAuthorize`)
@@ -560,6 +557,7 @@ Files: `authorize.ts`, `token.ts`, `_grant-authorization-code.ts`
 4. Write integration tests for the full auth code + PKCE flow
 
 ### Phase 3: Client Credentials + Refresh
+
 Files: `_grant-client-credentials.ts`, `_grant-refresh-token.ts`
 
 1. Implement client credentials grant
@@ -567,6 +565,7 @@ Files: `_grant-client-credentials.ts`, `_grant-refresh-token.ts`
 3. Write tests for both
 
 ### Phase 4: Device Authorization
+
 Files: `device-authorization.ts`, `_grant-device-code.ts`
 
 1. Implement device authorization endpoint (`defineOAuthDeviceAuthorization`)
@@ -574,6 +573,7 @@ Files: `device-authorization.ts`, `_grant-device-code.ts`
 3. Write tests
 
 ### Phase 5: Revocation + Introspection
+
 Files: `revocation.ts`, `introspection.ts`
 
 1. Implement revocation endpoint (`defineOAuthRevocation`)
@@ -581,6 +581,7 @@ Files: `revocation.ts`, `introspection.ts`
 3. Write tests
 
 ### Phase 6: Integration
+
 Files: `h3v2-oauth.ts`, `package.json`, `build.config.ts`, `src/index.ts`
 
 1. Create the barrel file
