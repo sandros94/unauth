@@ -18,8 +18,8 @@ importers:
         specifier: ^1.15.4 || >=2.0.1-rc.18 || ^2.0.1
         version: 2.0.1-rc.18
       unjwt:
-        specifier: ^0.5.40
-        version: 0.5.40(cookie-es@2.0.0)(h3@2.0.1-rc.18)(rou3@0.7.10)
+        specifier: https://pkg.pr.new/unjwt@78358dd
+        version: https://pkg.pr.new/unjwt@78358dd(cookie-es@2.0.0)(h3@2.0.1-rc.18)(rou3@0.7.10)
       unsecure:
         specifier: ^0.1.0
         version: 0.1.0
@@ -1712,12 +1712,13 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  unjwt@0.5.40:
-    resolution: {integrity: sha512-a5xkl6e0IJKJOgRXju/l7TtK6pbmfFbp963y6iUTaNmPJBICPLbm+OBkwLUHjTzV/k8NVej6iW6Xu5bJnRWVHg==}
+  unjwt@https://pkg.pr.new/unjwt@78358dd:
+    resolution: {integrity: sha512-3jye15jNtW6XVTkhI1aXjFafrzCguUjsIM4BOeYSfDM8e80Kt0HgtBFbFNHsPlXG4IGGnZgiKqcD8eiUw62KXA==, tarball: https://pkg.pr.new/unjwt@78358dd}
+    version: 0.5.40
     engines: {node: ^22.12 || >=24}
     peerDependencies:
       cookie-es: ^1.2.2 || ^2.0.0
-      h3: ^1.15.4 || >=2.0.1-rc.5 || ^2.0.1
+      h3: ^1.15.4 || >=2.0.1-rc.18 || ^2.0.1
       rou3: ^0.7.10
     peerDependenciesMeta:
       cookie-es:
@@ -3250,7 +3251,7 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  unjwt@0.5.40(cookie-es@2.0.0)(h3@2.0.1-rc.18)(rou3@0.7.10):
+  unjwt@https://pkg.pr.new/unjwt@78358dd(cookie-es@2.0.0)(h3@2.0.1-rc.18)(rou3@0.7.10):
     optionalDependencies:
       cookie-es: 2.0.0
       h3: 2.0.1-rc.18

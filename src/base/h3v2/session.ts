@@ -31,7 +31,7 @@ export interface H3SessionHooks<
    * Not called when `onRefresh` fires (they are mutually exclusive).
    */
   onRead?(args: {
-    session: SessionJWE<T, MaxAge>;
+    session: SessionJWE<T, MaxAge> & { id: string; token: string };
     event: HTTPEvent;
     config: SessionConfigJWE<T, MaxAge>;
     /** Destroy the session (delete cookie, reset state). */
@@ -53,7 +53,7 @@ export interface H3SessionHooks<
    * is automatic sliding window.
    */
   onRefresh?(args: {
-    session: SessionJWE<T, MaxAge>;
+    session: SessionJWE<T, MaxAge> & { id: string; token: string };
     event: HTTPEvent;
     config: SessionConfigJWE<T, MaxAge>;
     /** Re-issue the session. Accepts the same update format as `session.update()`. */
@@ -163,6 +163,7 @@ export function defineSession<T extends SessionData>(
                 });
               } catch (err) {
                 await options.hooks.onError?.({
+                  session,
                   error: err,
                   event,
                   config,
@@ -173,6 +174,7 @@ export function defineSession<T extends SessionData>(
                 await updateJWESession(event, config);
               } catch (err) {
                 await options.hooks?.onError?.({
+                  session,
                   error: err,
                   event,
                   config,

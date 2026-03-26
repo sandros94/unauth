@@ -42,7 +42,7 @@
     "bench": "vitest bench --run"
   },
   "dependencies": {
-    "unjwt": "^0.5.40",
+    "unjwt": "https://pkg.pr.new/unjwt@78358dd",
     "unsecure": "^0.1.0"
   },
   "devDependencies": {
@@ -79,5 +79,5 @@
   "engines": {
     "node": "^22.12 || >=24"
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@10.33.0"
 }
