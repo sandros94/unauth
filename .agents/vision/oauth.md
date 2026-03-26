@@ -64,6 +64,7 @@ Cookies provide frictionless SSR support (Nuxt, Nitro). The JSON body is spec-co
 ### DB-less by Default
 
 The baseline flow requires **no database**:
+
 - Authorization codes are self-contained JWE tokens
 - Access tokens are JWS sessions (cookie-backed)
 - Refresh tokens are JWE sessions (cookie-backed)
@@ -74,6 +75,7 @@ Developers who need server-side token revocation add it via the optional `onChec
 ### Mirrors `defineTokenPair`
 
 The OAuth module uses the same unjwt primitives and patterns as `defineTokenPair`:
+
 - `useJWSSession` for AT, `useJWESession` for RT
 - Per-request caching via unjwt's `event.context` (no re-caching)
 - unjwt lifecycle hooks (`onRead`, `onUpdate`, `onClear`, `onExpire`) wired to OAuth-specific logic
@@ -86,11 +88,11 @@ The developer **can** also use `defineSession` alongside for the authorization s
 
 Three distinct keys for security separation:
 
-| Key | Type | Used by | Purpose |
-|-----|------|---------|---------|
-| AT key | JWS (asymmetric/symmetric) | Token, Introspection, Revocation | Sign/verify access tokens |
-| RT key | JWE (symmetric/asymmetric) | Token | Encrypt/decrypt refresh tokens |
-| Code key | JWE (symmetric/asymmetric) | Authorize, Token | Encrypt/decrypt auth codes |
+| Key      | Type                       | Used by                          | Purpose                        |
+| -------- | -------------------------- | -------------------------------- | ------------------------------ |
+| AT key   | JWS (asymmetric/symmetric) | Token, Introspection, Revocation | Sign/verify access tokens      |
+| RT key   | JWE (symmetric/asymmetric) | Token                            | Encrypt/decrypt refresh tokens |
+| Code key | JWE (symmetric/asymmetric) | Authorize, Token                 | Encrypt/decrypt auth codes     |
 
 ### Client Model: Full Spec-Compliant
 
@@ -165,6 +167,7 @@ test/
 ## 3. Build & Export Configuration
 
 **package.json** — add:
+
 ```jsonc
 "./h3v2/oauth": {
   "types": "./dist/h3v2-oauth.d.mts",
@@ -199,10 +202,7 @@ type OAuthGrantType =
   | "refresh_token"
   | "urn:ietf:params:oauth:grant-type:device_code";
 
-type ClientAuthMethod =
-  | "client_secret_post"
-  | "client_secret_basic"
-  | "none";
+type ClientAuthMethod = "client_secret_post" | "client_secret_basic" | "none";
 
 // --- Device code ---
 interface DeviceCodeData {
@@ -239,10 +239,7 @@ interface IntrospectionResponse {
 
 // --- Shared hook types ---
 interface ClientHooks {
-  onFindClient(args: {
-    clientId: string;
-    event: HTTPEvent;
-  }): Promise<OAuthClient | undefined>;
+  onFindClient(args: { clientId: string; event: HTTPEvent }): Promise<OAuthClient | undefined>;
 
   onVerifyClientSecret?(args: {
     client: OAuthClient;
@@ -330,6 +327,7 @@ function defineOAuthAuthorize(
 ```
 
 **Behavior:**
+
 - Validates `response_type=code` (only value allowed in 2.1)
 - Validates `redirect_uri` exact match against `client.redirectUris`
 - Validates `code_challenge` presence and `code_challenge_method=S256`
@@ -422,12 +420,11 @@ interface OAuthTokenOptions {
   };
 }
 
-function defineOAuthToken(
-  options: OAuthTokenOptions,
-): (event: HTTPEvent) => Promise<Response>;
+function defineOAuthToken(options: OAuthTokenOptions): (event: HTTPEvent) => Promise<Response>;
 ```
 
 **Behavior:**
+
 - Extracts client credentials (Basic auth or POST body)
 - Validates client via `onFindClient`
 - Authenticates confidential clients via `onVerifyClientSecret`
@@ -442,6 +439,7 @@ function defineOAuthToken(
 - Headers: `Content-Type: application/json`, `Cache-Control: no-store`
 
 **Runtime guards:**
+
 - `accessToken.key` and `accessToken.maxAge` are required
 - `refreshToken.key` and `refreshToken.maxAge` are required
 - `hooks.onFindClient` is required
@@ -452,17 +450,14 @@ function defineOAuthToken(
 ```ts
 interface OAuthDeviceAuthorizationOptions {
   deviceCodeLifetime: ExpiresIn;
-  pollingInterval?: number;          // @default 5
+  pollingInterval?: number; // @default 5
   verificationUri: string;
-  verificationUriComplete?: string;  // template with {user_code}
+  verificationUriComplete?: string; // template with {user_code}
   scopes?: string[];
   hooks: {
     onFindClient: ClientHooks["onFindClient"];
     onVerifyClientSecret?: ClientHooks["onVerifyClientSecret"];
-    onSaveDeviceCode(args: {
-      deviceCode: DeviceCodeData;
-      event: HTTPEvent;
-    }): Promise<void>;
+    onSaveDeviceCode(args: { deviceCode: DeviceCodeData; event: HTTPEvent }): Promise<void>;
     onValidateScope?(args: {
       requestedScope: string;
       client: OAuthClient;
@@ -478,6 +473,7 @@ function defineOAuthDeviceAuthorization(
 ```
 
 **Behavior:**
+
 - Validates client (public clients allowed)
 - Generates `device_code` (long, opaque) and `user_code` (short, e.g., `BCDG-HJKL`)
 - Calls `onSaveDeviceCode`
@@ -566,19 +562,20 @@ If `accessToken.key` is provided, attempts local JWS verification first. Falls b
 
 ## 7. Import Strategy
 
-| Module | Import style | Reason |
-|--------|-------------|--------|
-| `unjwt/adapters/h3v2` | Static | Regular dependency (session adapters) |
-| `unjwt/jwe` | Static | Regular dependency (auth code encrypt/decrypt) |
-| `unsecure` | Static | Regular dependency (hash, secureCompare) |
-| `h3v2` (types) | Static `import type` | Erased at build |
-| `h3v2` (runtime values) | `await import("h3v2")` | Optional peer dep |
+| Module                  | Import style           | Reason                                         |
+| ----------------------- | ---------------------- | ---------------------------------------------- |
+| `unjwt/adapters/h3v2`   | Static                 | Regular dependency (session adapters)          |
+| `unjwt/jwe`             | Static                 | Regular dependency (auth code encrypt/decrypt) |
+| `unsecure`              | Static                 | Regular dependency (hash, secureCompare)       |
+| `h3v2` (types)          | Static `import type`   | Erased at build                                |
+| `h3v2` (runtime values) | `await import("h3v2")` | Optional peer dep                              |
 
 ---
 
 ## 8. OIDC Extensibility
 
 The architecture accommodates future OIDC by:
+
 1. `onAccessTokenClaims` can return custom claims; token response can be extended with `id_token`
 2. `onAuthorize` can be extended with OIDC-specific fields (`nonce`, `acr_values`)
 3. A future `defineOIDCProvider` can compose the existing endpoint factories
@@ -590,6 +587,7 @@ The architecture accommodates future OIDC by:
 ## 9. Implementation Sequence
 
 ### Phase 1: Foundation
+
 Files: `_types.ts`, `_errors.ts`, `_pkce.ts`, `_client-auth.ts`, `_response.ts`
 
 1. Define all shared types
@@ -600,6 +598,7 @@ Files: `_types.ts`, `_errors.ts`, `_pkce.ts`, `_client-auth.ts`, `_response.ts`
 6. Write unit tests for PKCE and error formatting
 
 ### Phase 2: Authorization Code Grant
+
 Files: `authorize.ts`, `token.ts`, `_grant-authorization-code.ts`
 
 1. Implement authorization endpoint (`defineOAuthAuthorize`) with JWE code generation
@@ -608,6 +607,7 @@ Files: `authorize.ts`, `token.ts`, `_grant-authorization-code.ts`
 4. Write integration tests for the full auth code + PKCE flow (db-less)
 
 ### Phase 3: Client Credentials + Refresh
+
 Files: `_grant-client-credentials.ts`, `_grant-refresh-token.ts`
 
 1. Implement client credentials grant (AT only, no RT)
@@ -615,6 +615,7 @@ Files: `_grant-client-credentials.ts`, `_grant-refresh-token.ts`
 3. Write tests for both
 
 ### Phase 4: Device Authorization
+
 Files: `device-authorization.ts`, `_grant-device-code.ts`
 
 1. Implement device authorization endpoint (`defineOAuthDeviceAuthorization`)
@@ -622,6 +623,7 @@ Files: `device-authorization.ts`, `_grant-device-code.ts`
 3. Write tests
 
 ### Phase 5: Revocation + Introspection
+
 Files: `revocation.ts`, `introspection.ts`
 
 1. Implement revocation endpoint (`defineOAuthRevocation`)
@@ -629,6 +631,7 @@ Files: `revocation.ts`, `introspection.ts`
 3. Write tests
 
 ### Phase 6: Integration
+
 Files: `h3v2-oauth.ts`, `package.json`, `build.config.ts`, `src/index.ts`
 
 1. Create the barrel file
@@ -643,7 +646,7 @@ Files: `h3v2-oauth.ts`, `package.json`, `build.config.ts`, `src/index.ts`
 - **Request body parsing:** Token endpoint reads `application/x-www-form-urlencoded`. Use h3v2's `readFormData` or `readBody` via dynamic import.
 - **Redirect responses:** Use `new Response(null, { status: 302, headers: { Location: url } })` for platform neutrality.
 - **Error handling split:** Authorization endpoint errors before `redirect_uri` validation must NOT redirect. Errors after validation redirect with error params. Token endpoint errors always return JSON.
-- **Session adapter cookie names:** Default AT/RT cookie names should differ from `defineTokenPair` defaults to avoid conflicts when both are used. Suggest `oauth_at` / `oauth_rt`.
+- **Session adapter cookie names:** OAuth uses the spec-canonical `access_token` / `refresh_token` cookie names. `defineTokenPair` was updated to use `auth_at` / `auth_rt` to avoid conflicts.
 - **Device code user code:** Must be short, unambiguous, easy to type. Use consonants only (`BCDFGHJKLMNPQRSTVWXZ`, no vowels to avoid offensive words) in `XXXX-XXXX` format.
 - **JWE auth code size:** A JWE containing grant params will be longer than an opaque code (~200-400 chars). This is fine for redirect URLs but worth noting.
 

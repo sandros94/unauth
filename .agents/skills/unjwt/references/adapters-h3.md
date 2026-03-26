@@ -85,15 +85,29 @@ interface SessionConfigJWS<T, MaxAge> {
 
 ## Lifecycle Hooks
 
-Both adapters support these hooks:
+Both adapters support these hooks. The `session` in `onRead` and `onUpdate` is guaranteed to have `id: string` and `token: string` (both always present).
 
 ```ts
 interface SessionHooks<T, MaxAge> {
-  onRead?(args: { session; event; config }): void | Promise<void>;
-  onUpdate?(args: { session; oldSession; event; config }): void | Promise<void>;
-  onClear?(args: { session; event; config }): void | Promise<void>;
-  onExpire?(args: { event; error; config }): void | Promise<void>;
-  onError?(args: { event; error; config }): void | Promise<void>;
+  onRead?(args: {
+    session: Session & { id: string; token: string };
+    event;
+    config;
+  }): void | Promise<void>;
+  onUpdate?(args: {
+    session: Session & { id: string; token: string };
+    oldSession;
+    event;
+    config;
+  }): void | Promise<void>;
+  onClear?(args: { oldSession; event; config }): void | Promise<void>;
+  onExpire?(args: {
+    session: { id?; createdAt?; expiresAt?; token: string };
+    event;
+    error;
+    config;
+  }): void | Promise<void>;
+  onError?(args: { session; event; error; config }): void | Promise<void>;
 }
 ```
 
