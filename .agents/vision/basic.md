@@ -260,8 +260,8 @@ TypeScript types catch this for TS consumers; the runtime check catches it for J
 
 ### Defaults
 
-- AT: name `"access_token"`, cookie `httpOnly: false, secure: true, sameSite: "lax"`
-- RT: name `"refresh_token"`, cookie `httpOnly: true, secure: true, sameSite: "lax"`
+- AT: name `"auth_at"`, cookie `httpOnly: false, secure: true, sameSite: "lax"`
+- RT: name `"auth_rt"`, cookie `httpOnly: true, secure: true, sameSite: "lax"`
 
 ---
 

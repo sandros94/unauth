@@ -194,7 +194,7 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
   const rtConfig = {
     key: options.refresh.key,
     maxAge: options.refresh.maxAge,
-    name: options.refresh.name ?? "refresh_token",
+    name: options.refresh.name ?? "auth_rt",
     cookie: {
       httpOnly: true,
       secure: true,
@@ -215,7 +215,7 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
   const atConfig = {
     key: options.access.key,
     maxAge: options.access.maxAge,
-    name: options.access.name ?? "access_token",
+    name: options.access.name ?? "auth_at",
     cookie: {
       httpOnly: false,
       secure: true,
