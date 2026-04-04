@@ -187,7 +187,60 @@ describe("defineTokenPair", () => {
     expect(body.refreshId).toBeNull();
   });
 
-  it("refreshes access token when expired via onRefresh + issue()", async () => {
+  it("refreshes access token when AT cookie is missing but RT is valid", async () => {
+    const useAuth = createUseAuth({
+      async onRefresh({ refresh, issue }) {
+        await issue({ accessData: { sub: refresh.data.sub, permissions: ["read", "restored"] } });
+      },
+    });
+
+    app.post("/login", async (event) => {
+      const auth = await useAuth(event);
+      await auth.issue({
+        accessData: { sub: "u1", permissions: ["read"] },
+        refreshData: { sub: "u1", family: "fam1" },
+      });
+      return { ok: true };
+    });
+    app.get("/me", async (event) => {
+      const { access } = await useAuth(event);
+      return {
+        accessId: access.id ?? null,
+        accessData: access.data,
+      };
+    });
+
+    const jar = cookieJar();
+
+    const loginRes = await app.request("/login", { method: "POST" });
+    jar.update(loginRes.headers);
+
+    // Simulate the browser dropping the AT cookie after Max-Age expires:
+    // remove only the AT from the jar, keeping the httpOnly RT intact.
+    const rtOnly = cookieJar();
+    rtOnly.update(loginRes.headers);
+    // Overwrite with a jar that only carries the RT cookie
+    const rtOnlyString = rtOnly
+      .toString()
+      .split("; ")
+      .filter((c) => c.startsWith("auth_rt"))
+      .join("; ");
+
+    // Request with RT only — AT is missing, should trigger onRefresh
+    const refreshRes = await app.request("/me", {
+      headers: { Cookie: rtOnlyString },
+    });
+    jar.update(refreshRes.headers);
+
+    const afterRes = await app.request("/me", {
+      headers: { Cookie: jar.toString() },
+    });
+    const body = await afterRes.json();
+    expect(body.accessId).toBeTypeOf("string");
+    expect(body.accessData.permissions).toEqual(["read", "restored"]);
+  });
+
+  it("refreshes access token when AT is expired via onRefresh + issue()", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
 

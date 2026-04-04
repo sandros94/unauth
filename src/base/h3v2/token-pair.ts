@@ -238,65 +238,53 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
           });
         }
       },
-      async onExpire({ event: ev }) {
-        const refresh = await useJWESession<TRefresh, ExpiresIn>(ev, rtConfig);
-        if (!refresh.id) return;
-
-        const previousRefresh = { ...refresh, id: refresh.id };
-
-        let issued = false;
-        let revoked = false;
-        let issuedAccess: SessionSnapshot<TAccess> | undefined;
-
-        const issue = async (arg: {
-          accessData: SessionUpdate<TAccess>;
-          refreshData?: SessionUpdate<TRefresh>;
-        }): Promise<void> => {
-          const at = await updateJWSSession<TAccess, ExpiresIn>(ev, atConfig, arg.accessData);
-          await refresh.update(arg.refreshData);
-          issuedAccess = {
-            ...at,
-            id: at.id!,
-          };
-          issued = true;
-        };
-
-        const revoke = async (): Promise<void> => {
-          await refresh.clear();
-          revoked = true;
-        };
-
-        try {
-          await options.hooks.onRefresh({
-            refresh: refresh,
-            event: ev,
-            issue,
-            revoke,
-          });
-        } catch (err) {
-          await options.hooks.onError?.({
-            error: err,
-            source: "access",
-            event: ev,
-          });
-          return;
-        }
-
-        if (revoked || !issued || !issuedAccess) return;
-
-        await options.hooks.onAfterRefresh?.({
-          access: issuedAccess,
-          refresh: { ...refresh, id: refresh.id! },
-          previousRefresh,
-          event: ev,
-        });
-      },
     },
   } satisfies SessionConfigJWS<TAccess, ExpiresIn>;
 
   return async (event: HTTPEvent): Promise<TokenPair<TAccess, TRefresh>> => {
     const access = await useJWSSession<TAccess, ExpiresIn>(event, atConfig);
     const refresh = await useJWESession<TRefresh, ExpiresIn>(event, rtConfig);
+
+    // Auto-refresh: AT is absent (missing cookie or expired JWT) but RT is valid.
+    // Handles both cases uniformly — the browser deletes AT cookies when Max-Age
+    // elapses, so by the time a request arrives the AT cookie may simply be gone.
+    if (!access.id && refresh.id) {
+      const previousRefresh = { ...refresh, id: refresh.id };
+
+      let issued = false;
+      let revoked = false;
+      let issuedAccess: SessionSnapshot<TAccess> | undefined;
+
+      const issue = async (arg: {
+        accessData: SessionUpdate<TAccess>;
+        refreshData?: SessionUpdate<TRefresh>;
+      }): Promise<void> => {
+        const at = await updateJWSSession<TAccess, ExpiresIn>(event, atConfig, arg.accessData);
+        await refresh.update(arg.refreshData);
+        issuedAccess = { ...at, id: at.id! };
+        issued = true;
+      };
+
+      const revoke = async (): Promise<void> => {
+        await refresh.clear();
+        revoked = true;
+      };
+
+      try {
+        await options.hooks.onRefresh({ refresh, event, issue, revoke });
+      } catch (err) {
+        await options.hooks.onError?.({ error: err, source: "access", event });
+      }
+
+      if (!revoked && issued && issuedAccess) {
+        await options.hooks.onAfterRefresh?.({
+          access: issuedAccess,
+          refresh: { ...refresh, id: refresh.id! },
+          previousRefresh,
+          event,
+        });
+      }
+    }
 
     return {
       get access() {
