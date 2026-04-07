@@ -16,8 +16,8 @@ export {
   type JWK_Asymmetric,
   type JWK_Symmetric,
   generateJWK,
-  importJWKFromPEM,
-  exportJWKToPEM,
+  importFromPEM,
+  exportToPEM,
   deriveJWKFromPassword,
 } from "unjwt/adapters/h3v2";
 

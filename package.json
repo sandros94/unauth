@@ -42,7 +42,7 @@
     "bench": "vitest bench --run"
   },
   "dependencies": {
-    "unjwt": "https://pkg.pr.new/unjwt@78358dd",
+    "unjwt": "^0.6.0",
     "unsecure": "^0.1.0"
   },
   "devDependencies": {
