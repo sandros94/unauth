@@ -16,17 +16,11 @@
   ],
   "type": "module",
   "sideEffects": false,
-  "types": "./dist/index.d.mts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
-    },
-    "./h3v2": {
-      "types": "./dist/h3v2.d.mts",
-      "import": "./dist/h3v2.mjs"
-    },
-    "./package.json": "./package.json"
+    "./base/h3": {
+      "types": "./dist/base/h3/index.d.mts",
+      "import": "./dist/base/h3/index.mjs"
+    }
   },
   "scripts": {
     "build": "obuild",
@@ -36,48 +30,35 @@
     "fmt": "automd && oxlint --fix . && oxfmt .",
     "prepack": "pnpm build",
     "release": "pnpm test && pnpm prepack && changelogen --release --push",
+    "stub": "obuild --stub",
     "test": "vitest run --slowTestThreshold=1000",
     "test:coverage": "vitest run --coverage --slowTestThreshold=1000",
     "typecheck": "tsgo --noEmit",
     "bench": "vitest bench --run"
   },
   "dependencies": {
-    "unjwt": "^0.6.1",
-    "unsecure": "^0.1.0"
+    "cookie-es": "^3.1.1",
+    "h3": "^2.0.1-rc.20",
+    "unjwt": "^0.7.0",
+    "unsecure": "^0.2.1"
   },
   "devDependencies": {
     "@types/node": "^24",
     "@types/supertest": "^7.2.0",
-    "@typescript/native-preview": "7.0.0-dev.20260322.1",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@typescript/native-preview": "7.0.0-dev.20260420.1",
+    "@vitest/coverage-v8": "^4.1.4",
     "automd": "^0.4.3",
     "changelogen": "^0.6.2",
-    "cookie-esv1": "npm:cookie-es@^1.2.2",
-    "cookie-esv2": "npm:cookie-es@^2.0.0",
-    "h3v1": "npm:h3@^1.15.10",
-    "h3v2": "npm:h3@^2.0.1-rc.18",
     "obuild": "^0.4.32",
-    "oxfmt": "^0.41.0",
-    "oxlint": "^1.56.0",
-    "rolldown": "1.0.0-rc.11",
+    "oxfmt": "^0.46.0",
+    "oxlint": "^1.61.0",
+    "rolldown": "1.0.0-rc.16",
     "supertest": "^7.2.2",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.0"
-  },
-  "peerDependencies": {
-    "cookie-es": "^1.2.2 || ^2.0.0",
-    "h3": "^1.15.4 || >=2.0.1-rc.18 || ^2.0.1"
-  },
-  "peerDependenciesMeta": {
-    "h3": {
-      "optional": true
-    }
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
   },
   "resolutions": {
     "unauth": "link:."
-  },
-  "engines": {
-    "node": "^22.12 || >=24"
   },
   "packageManager": "pnpm@10.33.0"
 }

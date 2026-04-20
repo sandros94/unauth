@@ -1,7 +1,7 @@
-import type { H3Event } from "h3v2";
+import { type H3Event, getCookie, setCookie, HTTPError } from "h3";
 import { hmac } from "unsecure";
 import { secureCompare } from "unsecure";
-import type { CookieSerializeOptions } from "cookie-esv2";
+import type { CookieSerializeOptions } from "cookie-es";
 
 /** Framework-agnostic CSRF configuration. */
 export interface CsrfConfig {
@@ -55,8 +55,6 @@ export function defineCsrf(options: H3CsrfOptions): (event: H3Event) => Promise<
   } as const;
 
   return async (event: H3Event): Promise<void> => {
-    const { getCookie, setCookie, HTTPError } = await import("h3v2");
-
     const method = event.req.method.toUpperCase();
 
     if (protectedMethods.includes(method)) {
@@ -75,7 +73,7 @@ export function defineCsrf(options: H3CsrfOptions): (event: H3Event) => Promise<
       if (!existing) {
         const nonce = crypto.randomUUID();
         const token = await hmac(options.secret, nonce);
-        setCookie(event, cookieName, token, cookieOptions);
+        setCookie(event, cookieName, token as unknown as string, cookieOptions);
       }
     }
   };

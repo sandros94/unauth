@@ -16,12 +16,12 @@ export {
   type JWK_Asymmetric,
   type JWK_Symmetric,
   generateJWK,
-  importFromPEM,
-  exportToPEM,
+  importPEM,
+  exportPEM,
   deriveJWKFromPassword,
 } from "unjwt/adapters/h3v2";
 
-export { type CsrfConfig, type H3CsrfOptions, defineCsrf } from "./base/h3v2/csrf.ts";
+export { type CsrfConfig, type H3CsrfOptions, defineCsrf } from "./csrf.ts";
 
 export {
   type H3SessionHooks,
@@ -30,7 +30,7 @@ export {
   defineSession,
   requireSession,
   optionalSession,
-} from "./base/h3v2/session.ts";
+} from "./session.ts";
 
 export {
   type TokenPair,
@@ -42,4 +42,4 @@ export {
   defineTokenPair,
   requireAuth,
   optionalAuth,
-} from "./base/h3v2/token-pair.ts";
+} from "./token-pair.ts";

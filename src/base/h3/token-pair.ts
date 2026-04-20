@@ -1,4 +1,4 @@
-import type { HTTPEvent } from "h3";
+import { type HTTPEvent, HTTPError } from "h3";
 import type {
   SessionConfigJWE,
   SessionConfigJWS,
@@ -339,7 +339,6 @@ export function requireAuth<TAccess extends SessionData, TRefresh extends Sessio
   return async (event: HTTPEvent): Promise<void> => {
     const { access } = await useAuth(event);
     if (!access.id) {
-      const { HTTPError } = await import("h3v2");
       throw new HTTPError("Unauthorized", { status: 401 });
     }
     await config?.onAuthenticated?.({ session: access, event });

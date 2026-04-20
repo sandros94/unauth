@@ -1,4 +1,4 @@
-import type { HTTPEvent } from "h3";
+import { type HTTPEvent, HTTPError } from "h3";
 import type {
   SessionConfigJWE,
   SessionHooksJWE,
@@ -10,7 +10,7 @@ import type {
   ExpiresIn,
 } from "unjwt/adapters/h3v2";
 import { updateJWESession, clearJWESession, useJWESession } from "unjwt/adapters/h3v2";
-import { computeExpiresInSeconds } from "unjwt/utils";
+import { computeDurationInSeconds } from "unjwt/utils";
 
 /**
  * Extended session hooks for h3v2.
@@ -142,7 +142,7 @@ export function defineSession<T extends SessionData>(
         const clear = (): Promise<void> => clearJWESession(event, config);
 
         if (refreshAfter !== false && session.id) {
-          const maxAgeSec = computeExpiresInSeconds(config.maxAge!);
+          const maxAgeSec = computeDurationInSeconds(config.maxAge!);
           const maxAgeMs = maxAgeSec * 1000;
           const elapsed = Date.now() - session.createdAt;
           const threshold = maxAgeMs * refreshAfter;
@@ -232,7 +232,6 @@ export function requireSession<T extends SessionData>(
   return async (event: HTTPEvent): Promise<void> => {
     const session = await useSession(event);
     if (!session.id) {
-      const { HTTPError } = await import("h3v2");
       throw new HTTPError("Unauthorized", { status: 401 });
     }
     await config?.onAuthenticated?.({ session, event });
