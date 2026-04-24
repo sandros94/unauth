@@ -11,7 +11,7 @@ import {
 
 import { cookieJar } from "./_utils.ts";
 
-let key: JWK_oct;
+let key: JWK_oct<"A256GCMKW">;
 
 beforeAll(async () => {
   key = await generateJWK("A256GCMKW");

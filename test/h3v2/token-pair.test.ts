@@ -15,8 +15,8 @@ import { cookieJar } from "./_utils.ts";
 type AccessData = { sub: string; permissions: string[] };
 type RefreshData = { sub: string; family: string };
 
-let atKey: JWK_Pair;
-let rtKey: JWK_oct;
+let atKey: JWK_Pair<"ES256">;
+let rtKey: JWK_oct<"A256GCMKW">;
 
 beforeAll(async () => {
   atKey = await generateJWK("ES256");
