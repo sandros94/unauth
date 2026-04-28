@@ -13,10 +13,6 @@
 
 The `.agents/` directory is the **memory** of this project for AI agents. It is organized as follows:
 
-### `skills/`
-
-Dependency-specific skills. These are installed or updated by the user and provide framework/library documentation that agents should consult when working with those technologies. Individual skill files are **not** tracked in this document — just know they are available when relevant to the task at hand.
-
 ### `contribution/`
 
 Standard approaches, patterns, and implementation guides developed for this project. These documents describe _how_ we build things here.
@@ -56,7 +52,7 @@ Each script is independent — `test` does **not** run lint or type-check.
 
 ## Repository Structure
 
-- `.agents/` — Agent memory: skills, contribution guides, vision documents, and TODO.
+- `.agents/` — Agent memory: contribution guides, vision documents, and TODO.
 - `.github/` — GitHub configuration (funding, workflows).
 - `src/` — Library source code.
 - `test/` — Tests (unit, nuxt environment, e2e).
