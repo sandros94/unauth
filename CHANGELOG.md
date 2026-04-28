@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.0.9
+
+[compare changes](https://github.com/sandros94/unauth/compare/v0.0.8...v0.0.9)
+
+### 🩹 Fixes
+
+- Update token pair names to 'auth_at' and 'auth_rt' for future consistency ([c2d28a9](https://github.com/sandros94/unauth/commit/c2d28a9))
+- **base:** Properly support missing at in defineTokenPair ([6a093d2](https://github.com/sandros94/unauth/commit/6a093d2))
+
+### 🏡 Chore
+
+- Update unjwt to upstream dev release ([109dfcf](https://github.com/sandros94/unauth/commit/109dfcf))
+- Update unjwt ([4968a97](https://github.com/sandros94/unauth/commit/4968a97))
+- Update unjwt ([14abb7c](https://github.com/sandros94/unauth/commit/14abb7c))
+- Update deps and drop support for h3 v1 ([e11383e](https://github.com/sandros94/unauth/commit/e11383e))
+- Update deps ([a91dd78](https://github.com/sandros94/unauth/commit/a91dd78))
+- Update AGENTS.md ([b7e10bf](https://github.com/sandros94/unauth/commit/b7e10bf))
+
+### ❤️ Contributors
+
+- Sandro Circi ([@sandros94](https://github.com/sandros94))
+
 ## v0.0.6
 
 [compare changes](https://github.com/sandros94/unauth/compare/v0.0.5...v0.0.6)
