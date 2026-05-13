@@ -11,6 +11,12 @@ import type {
 } from "unjwt/adapters/h3v2";
 import { updateJWESession, clearJWESession, useJWESession } from "unjwt/adapters/h3v2";
 import { computeDurationInSeconds } from "unjwt/utils";
+import {
+  DEFAULT_SESSION_NAME,
+  DEFAULT_SESSION_MAX_AGE,
+  DEFAULT_REFRESH_AFTER,
+  DEFAULT_SECURE_COOKIE,
+} from "../_internal/defaults.ts";
 
 /**
  * Extended session hooks for h3v2.
@@ -123,17 +129,14 @@ export type DefineSessionReturn<T extends SessionData> = (
 export function defineSession<T extends SessionData>(
   options: H3SessionOptions<T>,
 ): DefineSessionReturn<T> {
-  const refreshAfter = options.refreshAfter ?? 0.75;
+  const refreshAfter = options.refreshAfter ?? DEFAULT_REFRESH_AFTER;
 
   const jweConfig = {
-    name: options.name ?? "auth-session",
-    maxAge: options.maxAge ?? ("7D" as const),
+    name: options.name ?? DEFAULT_SESSION_NAME,
+    maxAge: options.maxAge ?? DEFAULT_SESSION_MAX_AGE,
     key: options.key,
     cookie: {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
+      ...DEFAULT_SECURE_COOKIE,
       ...options.cookie,
     } as const,
     jwe: options.jwe,

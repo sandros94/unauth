@@ -9,21 +9,18 @@ import type {
   ExpiresIn,
 } from "unjwt/adapters/h3v1";
 import { useJWSSession, useJWESession, getJWESession, updateJWSSession } from "unjwt/adapters/h3v1";
+import {
+  DEFAULT_AT_NAME,
+  DEFAULT_RT_NAME,
+  DEFAULT_AT_COOKIE,
+  DEFAULT_SECURE_COOKIE,
+} from "../_internal/defaults.ts";
+import type { SessionSnapshot as _SessionSnapshot } from "../_internal/token-pair.ts";
 
 /** Session manager type alias for token pair sessions. Always has a defined `expiresAt`. */
 export type TokenPairSessionManager<T extends SessionData> = BaseSessionManager<T, ExpiresIn>;
 
-/** Read-only snapshot of a session, used in {@link H3TokenPairHooks.onAfterRefresh}. */
-interface SessionSnapshot<T extends SessionData> {
-  /** The unique identifier for this session (jti). */
-  readonly id: string;
-  /** The JWT payload (excluding jti, exp, iat). */
-  readonly data: SessionData<T>;
-  /** The timestamp in seconds when this session was created (iat). */
-  readonly createdAt: number;
-  /** The timestamp in seconds when this session will expire (exp). */
-  readonly expiresAt: number;
-}
+type SessionSnapshot<T extends SessionData> = _SessionSnapshot<SessionData<T>>;
 
 /**
  * The resolved token pair.
@@ -194,12 +191,9 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
   const rtConfig = {
     key: options.refresh.key,
     maxAge: options.refresh.maxAge,
-    name: options.refresh.name ?? "auth_rt",
+    name: options.refresh.name ?? DEFAULT_RT_NAME,
     cookie: {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
+      ...DEFAULT_SECURE_COOKIE,
       ...options.refresh.cookie,
     } as const,
     jwe: options.refresh.jwe,
@@ -218,12 +212,9 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
   const atConfig = {
     key: options.access.key,
     maxAge: options.access.maxAge,
-    name: options.access.name ?? "auth_at",
+    name: options.access.name ?? DEFAULT_AT_NAME,
     cookie: {
-      httpOnly: false,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
+      ...DEFAULT_AT_COOKIE,
       ...options.access.cookie,
     } as const,
     jws: options.access.jws,

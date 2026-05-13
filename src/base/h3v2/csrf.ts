@@ -1,17 +1,15 @@
 import { type H3Event, getCookie, setCookie, HTTPError } from "h3v2";
-import { hmac } from "unsecure";
 import { secureCompare } from "unsecure";
 import type { CookieSerializeOptions } from "cookie-esv3";
+import {
+  DEFAULT_CSRF_NAME,
+  DEFAULT_CSRF_HEADER,
+  DEFAULT_PROTECTED_METHODS,
+  DEFAULT_CSRF_COOKIE,
+} from "../_internal/defaults.ts";
+import { type CsrfConfig, createCsrfToken } from "../_internal/csrf.ts";
 
-/** Framework-agnostic CSRF configuration. */
-export interface CsrfConfig {
-  /** Cookie name for the CSRF token. @default "csrf" */
-  name?: string;
-  /** Header name to validate against. @default "x-csrf-token" */
-  headerName?: string;
-  /** HTTP methods that require CSRF validation. @default ["POST", "PUT", "DELETE", "PATCH"] */
-  protectedMethods?: string[];
-}
+export type { CsrfConfig };
 
 /** h3v2-specific CSRF options. */
 export interface H3CsrfOptions extends CsrfConfig {
@@ -20,8 +18,6 @@ export interface H3CsrfOptions extends CsrfConfig {
   /** Cookie serialization options. `httpOnly` is always forced to `false`. */
   cookie?: CookieSerializeOptions & { chunkMaxLength?: number };
 }
-
-const DEFAULT_PROTECTED_METHODS = ["POST", "PUT", "DELETE", "PATCH"];
 
 /**
  * Creates a CSRF protection middleware using the double-submit cookie pattern.
@@ -43,13 +39,11 @@ const DEFAULT_PROTECTED_METHODS = ["POST", "PUT", "DELETE", "PATCH"];
  * ```
  */
 export function defineCsrf(options: H3CsrfOptions): (event: H3Event) => Promise<void> {
-  const cookieName = options.name ?? "csrf";
-  const headerName = options.headerName ?? "x-csrf-token";
+  const cookieName = options.name ?? DEFAULT_CSRF_NAME;
+  const headerName = options.headerName ?? DEFAULT_CSRF_HEADER;
   const protectedMethods = options.protectedMethods ?? DEFAULT_PROTECTED_METHODS;
   const cookieOptions = {
-    secure: true,
-    sameSite: "lax",
-    path: "/",
+    ...DEFAULT_CSRF_COOKIE,
     ...options.cookie,
     httpOnly: false,
   } as const;
@@ -71,9 +65,8 @@ export function defineCsrf(options: H3CsrfOptions): (event: H3Event) => Promise<
     } else {
       const existing = getCookie(event, cookieName);
       if (!existing) {
-        const nonce = crypto.randomUUID();
-        const token = await hmac(options.secret, nonce);
-        setCookie(event, cookieName, token as unknown as string, cookieOptions);
+        const token = await createCsrfToken(options.secret);
+        setCookie(event, cookieName, token, cookieOptions);
       }
     }
   };
