@@ -32,7 +32,7 @@
   },
   "scripts": {
     "build": "obuild",
-    "dev": "node --watch ./playground/main.ts",
+    "dev": "pnpm -F unauth-playground dev",
     "dev:prepare": "obuild --stub",
     "lint": "oxlint . && oxfmt --check .",
     "fmt": "automd && oxlint --fix . && oxfmt .",

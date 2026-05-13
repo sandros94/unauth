@@ -1,13 +1,14 @@
 {
   "name": "unauth-playground",
-  "version": "0.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch ./main.ts",
-    "bun": "bun --watch main.ts",
-    "deno": "deno --watch -A main.ts"
+    "dev": "h3 serve",
+    "start": "h3 serve --prod"
   },
-  "dependencies": {
-    "unauth": "workspace:*"
+  "devDependencies": {
+    "h3": "^2.0.1-rc.22",
+    "unauth": "^0.0.8",
+    "unjwt": "^0.7.1"
   }
 }

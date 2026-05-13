@@ -82,10 +82,16 @@ importers:
         version: 4.1.4(@types/node@24.12.0)(@vitest/coverage-v8@4.1.4)(vite@6.3.5(@types/node@24.12.0)(jiti@2.6.1))
 
   playground:
-    dependencies:
+    devDependencies:
+      h3:
+        specifier: ^2.0.1-rc.22
+        version: 2.0.1-rc.22
       unauth:
         specifier: link:..
         version: link:..
+      unjwt:
+        specifier: ^0.7.1
+        version: 0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1)
 
 packages:
 
@@ -3272,6 +3278,12 @@ snapshots:
     optionalDependencies:
       cookie-es: 3.1.1
       h3: 1.15.11
+      rou3: 0.8.1
+
+  unjwt@0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1):
+    optionalDependencies:
+      cookie-es: 3.1.1
+      h3: 2.0.1-rc.22
       rou3: 0.8.1
 
   unsecure@0.2.2: {}
