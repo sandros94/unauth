@@ -1,4 +1,4 @@
-import { type HTTPEvent, HTTPError } from "h3";
+import { type H3Event, createError } from "h3v1";
 import type {
   SessionConfigJWE,
   SessionConfigJWS,
@@ -7,8 +7,8 @@ import type {
   SessionClaims,
   SessionUpdate,
   ExpiresIn,
-} from "unjwt/adapters/h3v2";
-import { useJWSSession, useJWESession, getJWESession, updateJWSSession } from "unjwt/adapters/h3v2";
+} from "unjwt/adapters/h3v1";
+import { useJWSSession, useJWESession, getJWESession, updateJWSSession } from "unjwt/adapters/h3v1";
 
 /** Session manager type alias for token pair sessions. Always has a defined `expiresAt`. */
 export type TokenPairSessionManager<T extends SessionData> = BaseSessionManager<T, ExpiresIn>;
@@ -57,7 +57,7 @@ export interface H3TokenPairHooks<
   onReadAccess?(args: {
     access: SessionSnapshot<TAccess>;
     refresh: SessionSnapshot<TRefresh>;
-    event: HTTPEvent;
+    event: H3Event;
   }): void | Promise<void>;
 
   /**
@@ -66,7 +66,7 @@ export interface H3TokenPairHooks<
    */
   onReadRefresh?(args: {
     refresh: SessionSnapshot<TRefresh>;
-    event: HTTPEvent;
+    event: H3Event;
   }): void | Promise<void>;
 
   /**
@@ -80,7 +80,7 @@ export interface H3TokenPairHooks<
    */
   onRefresh(args: {
     refresh: TokenPairSessionManager<TRefresh>;
-    event: HTTPEvent;
+    event: H3Event;
     /** Re-issue the access token with the given data and rotate the refresh token. */
     issue(arg: {
       accessData: SessionUpdate<TAccess>;
@@ -99,7 +99,7 @@ export interface H3TokenPairHooks<
     access: SessionSnapshot<TAccess>;
     refresh: SessionSnapshot<TRefresh>;
     previousRefresh: SessionSnapshot<TRefresh>;
-    event: HTTPEvent;
+    event: H3Event;
   }): void | Promise<void>;
 
   /**
@@ -110,7 +110,7 @@ export interface H3TokenPairHooks<
   onRevoke?(args: {
     access: TokenPairSessionManager<TAccess>;
     refresh: TokenPairSessionManager<TRefresh>;
-    event: HTTPEvent;
+    event: H3Event;
   }): void | Promise<void>;
 
   /**
@@ -119,7 +119,7 @@ export interface H3TokenPairHooks<
   onError?(args: {
     error: unknown;
     source: "access" | "refresh";
-    event: HTTPEvent;
+    event: H3Event;
   }): void | Promise<void>;
 }
 
@@ -150,7 +150,7 @@ export interface H3TokenPairOptions<TAccess extends SessionData, TRefresh extend
 
 /** Return type of {@link defineTokenPair}. */
 export type DefineTokenPairReturn<TAccess extends SessionData, TRefresh extends SessionData> = (
-  event: HTTPEvent,
+  event: H3Event,
 ) => Promise<TokenPair<TAccess, TRefresh>>;
 
 /**
@@ -206,7 +206,10 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
     hooks: {
       async onRead({ session, event }) {
         if (session.id) {
-          await options.hooks.onReadRefresh?.({ refresh: { ...session, id: session.id }, event });
+          await options.hooks.onReadRefresh?.({
+            refresh: { ...session, id: session.id },
+            event: event as H3Event,
+          });
         }
       },
     },
@@ -234,14 +237,14 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
           await options.hooks.onReadAccess({
             access: { ...session, id: session.id },
             refresh: { ...refresh, id: refresh.id! },
-            event,
+            event: event as H3Event,
           });
         }
       },
     },
   } satisfies SessionConfigJWS<TAccess, ExpiresIn>;
 
-  return async (event: HTTPEvent): Promise<TokenPair<TAccess, TRefresh>> => {
+  return async (event: H3Event): Promise<TokenPair<TAccess, TRefresh>> => {
     const access = await useJWSSession<TAccess, ExpiresIn>(event, atConfig);
     const refresh = await useJWESession<TRefresh, ExpiresIn>(event, rtConfig);
 
@@ -319,27 +322,27 @@ export interface TokenPairMiddlewareConfig<TAccess extends SessionData> {
    */
   onAuthenticated?(ctx: {
     session: TokenPairSessionManager<TAccess>;
-    event: HTTPEvent;
+    event: H3Event;
   }): void | Promise<void>;
 }
 
 /**
  * Middleware that requires a valid access token.
- * Throws `HTTPError 401` if no valid access token exists.
+ * Throws `createError` with status 401 if no valid access token exists.
  *
  * @example
  * ```ts
- * app.get("/me", handler, { middleware: [requireAuth(useAuth)] });
+ * app.use("/me", defineEventHandler({ onRequest: requireAuth(useAuth), handler }));
  * ```
  */
 export function requireAuth<TAccess extends SessionData, TRefresh extends SessionData>(
   useAuth: DefineTokenPairReturn<TAccess, TRefresh>,
   config?: TokenPairMiddlewareConfig<TAccess>,
-): (event: HTTPEvent) => Promise<void> {
-  return async (event: HTTPEvent): Promise<void> => {
+): (event: H3Event) => Promise<void> {
+  return async (event: H3Event): Promise<void> => {
     const { access } = await useAuth(event);
     if (!access.id) {
-      throw new HTTPError("Unauthorized", { status: 401 });
+      throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
     }
     await config?.onAuthenticated?.({ session: access, event });
   };
@@ -352,14 +355,14 @@ export function requireAuth<TAccess extends SessionData, TRefresh extends Sessio
  *
  * @example
  * ```ts
- * app.get("/feed", handler, { middleware: [optionalAuth(useAuth)] });
+ * app.use("/feed", defineEventHandler({ onRequest: optionalAuth(useAuth), handler }));
  * ```
  */
 export function optionalAuth<TAccess extends SessionData, TRefresh extends SessionData>(
   useAuth: DefineTokenPairReturn<TAccess, TRefresh>,
   config?: TokenPairMiddlewareConfig<TAccess>,
-): (event: HTTPEvent) => Promise<void> {
-  return async (event: HTTPEvent): Promise<void> => {
+): (event: H3Event) => Promise<void> {
+  return async (event: H3Event): Promise<void> => {
     const { access } = await useAuth(event);
     if (access.id) {
       await config?.onAuthenticated?.({ session: access, event });

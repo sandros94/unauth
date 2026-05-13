@@ -1,4 +1,4 @@
-import { type HTTPEvent, HTTPError } from "h3";
+import { type H3Event, createError } from "h3v1";
 import type {
   SessionConfigJWE,
   SessionHooksJWE,
@@ -8,12 +8,12 @@ import type {
   SessionClaims,
   SessionUpdate,
   ExpiresIn,
-} from "unjwt/adapters/h3v2";
-import { updateJWESession, clearJWESession, useJWESession } from "unjwt/adapters/h3v2";
+} from "unjwt/adapters/h3v1";
+import { updateJWESession, clearJWESession, useJWESession } from "unjwt/adapters/h3v1";
 import { computeDurationInSeconds } from "unjwt/utils";
 
 /**
- * Extended session hooks for h3v2.
+ * Extended session hooks for h3v1.
  *
  * Extends unjwt's `SessionHooksJWE` with:
  * - `onRead` augmented with a `clear()` function
@@ -32,7 +32,7 @@ export interface H3SessionHooks<
    */
   onRead?(args: {
     session: SessionJWE<T, MaxAge> & { id: string; token: string };
-    event: HTTPEvent;
+    event: H3Event;
     config: SessionConfigJWE<T, MaxAge>;
     /** Destroy the session (delete cookie, reset state). */
     clear(): Promise<void>;
@@ -54,7 +54,7 @@ export interface H3SessionHooks<
    */
   onRefresh?(args: {
     session: SessionJWE<T, MaxAge> & { id: string; token: string };
-    event: HTTPEvent;
+    event: H3Event;
     config: SessionConfigJWE<T, MaxAge>;
     /** Re-issue the session. Accepts the same update format as `session.update()`. */
     refresh(update?: SessionUpdate<T>): Promise<void>;
@@ -91,7 +91,7 @@ export type SessionManager<T extends SessionData> = BaseSessionManager<T, Expire
 
 /** Return type of {@link defineSession}. */
 export type DefineSessionReturn<T extends SessionData> = (
-  event: HTTPEvent,
+  event: H3Event,
 ) => Promise<SessionManager<T>>;
 
 /**
@@ -156,7 +156,7 @@ export function defineSession<T extends SessionData>(
               try {
                 await options.hooks.onRefresh({
                   session,
-                  event,
+                  event: event as H3Event,
                   config,
                   refresh,
                   clear,
@@ -184,7 +184,13 @@ export function defineSession<T extends SessionData>(
             return;
           }
         }
-        await options.hooks?.onRead?.({ ...ctxRest, session, event, config, clear });
+        await options.hooks?.onRead?.({
+          ...ctxRest,
+          session,
+          event: event as H3Event,
+          config,
+          clear,
+        });
       },
       async onUpdate(ctx) {
         await options.hooks?.onUpdate?.(ctx);
@@ -201,7 +207,7 @@ export function defineSession<T extends SessionData>(
     },
   } satisfies SessionConfigJWE<T, ExpiresIn>;
 
-  return async (event: HTTPEvent): Promise<SessionManager<T>> => {
+  return async (event: H3Event): Promise<SessionManager<T>> => {
     return useJWESession<T, typeof jweConfig.maxAge>(event, jweConfig);
   };
 }
@@ -213,26 +219,26 @@ export interface SessionMiddlewareConfig<T extends SessionData> {
    * Use for authorization checks (roles, permissions, etc.).
    * Throw to block the request.
    */
-  onAuthenticated?(ctx: { session: SessionManager<T>; event: HTTPEvent }): void | Promise<void>;
+  onAuthenticated?(ctx: { session: SessionManager<T>; event: H3Event }): void | Promise<void>;
 }
 
 /**
  * Middleware that requires an authenticated session.
- * Throws `HTTPError 401` if no valid session exists.
+ * Throws `createError` with status 401 if no valid session exists.
  *
  * @example
  * ```ts
- * app.get("/me", handler, { middleware: [requireSession(useSession)] });
+ * app.use("/me", defineEventHandler({ onRequest: requireSession(useSession), handler }));
  * ```
  */
 export function requireSession<T extends SessionData>(
   useSession: DefineSessionReturn<T>,
   config?: SessionMiddlewareConfig<T>,
-): (event: HTTPEvent) => Promise<void> {
-  return async (event: HTTPEvent): Promise<void> => {
+): (event: H3Event) => Promise<void> {
+  return async (event: H3Event): Promise<void> => {
     const session = await useSession(event);
     if (!session.id) {
-      throw new HTTPError("Unauthorized", { status: 401 });
+      throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
     }
     await config?.onAuthenticated?.({ session, event });
   };
@@ -245,14 +251,14 @@ export function requireSession<T extends SessionData>(
  *
  * @example
  * ```ts
- * app.get("/feed", handler, { middleware: [optionalSession(useSession)] });
+ * app.use("/feed", defineEventHandler({ onRequest: optionalSession(useSession), handler }));
  * ```
  */
 export function optionalSession<T extends SessionData>(
   useSession: DefineSessionReturn<T>,
   config?: SessionMiddlewareConfig<T>,
-): (event: HTTPEvent) => Promise<void> {
-  return async (event: HTTPEvent): Promise<void> => {
+): (event: H3Event) => Promise<void> {
+  return async (event: H3Event): Promise<void> => {
     const session = await useSession(event);
     if (session.id) {
       await config?.onAuthenticated?.({ session, event });

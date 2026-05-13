@@ -3,3 +3,5 @@ packages:
   - playground
 
 ignoreWorkspaceRootCheck: true
+patchedDependencies:
+  unjwt@0.7.1: patches/unjwt@0.7.1.patch

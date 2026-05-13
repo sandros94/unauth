@@ -16,11 +16,7 @@
     "allowImportingTsExtensions": true,
     "noImplicitOverride": true,
     "noEmit": true,
-    "skipLibCheck": true,
-    "paths": {
-      "#h3v1": ["./node_modules/h3v1/dist/index"],
-      "#h3v2": ["./node_modules/h3v2/dist/index"]
-    }
+    "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
   "exclude": ["node_modules", "dist", "skills"]

@@ -1,7 +1,7 @@
-import { type H3Event, getCookie, setCookie, HTTPError } from "h3";
+import { type H3Event, getCookie, setCookie, getHeader, createError } from "h3v1";
 import { hmac } from "unsecure";
 import { secureCompare } from "unsecure";
-import type { CookieSerializeOptions } from "cookie-es";
+import type { CookieSerializeOptions } from "cookie-esv1";
 
 /** Framework-agnostic CSRF configuration. */
 export interface CsrfConfig {
@@ -13,7 +13,7 @@ export interface CsrfConfig {
   protectedMethods?: string[];
 }
 
-/** h3v2-specific CSRF options. */
+/** h3v1-specific CSRF options. */
 export interface H3CsrfOptions extends CsrfConfig {
   /** Secret for HMAC-based token generation. */
   secret: string;
@@ -38,8 +38,7 @@ const DEFAULT_PROTECTED_METHODS = ["POST", "PUT", "DELETE", "PATCH"];
  * ```ts
  * const csrf = defineCsrf({ secret: process.env.CSRF_SECRET! });
  *
- * app.get("/form", handler, { middleware: [csrf] });
- * app.post("/form", handler, { middleware: [csrf] });
+ * app.use("/form", defineEventHandler({ onRequest: csrf, handler }));
  * ```
  */
 export function defineCsrf(options: H3CsrfOptions): (event: H3Event) => Promise<void> {
@@ -55,18 +54,18 @@ export function defineCsrf(options: H3CsrfOptions): (event: H3Event) => Promise<
   } as const;
 
   return async (event: H3Event): Promise<void> => {
-    const method = event.req.method.toUpperCase();
+    const method = event.method.toUpperCase();
 
     if (protectedMethods.includes(method)) {
       const cookieToken = getCookie(event, cookieName);
-      const headerToken = event.req.headers.get(headerName);
+      const headerToken = getHeader(event, headerName);
 
       if (!cookieToken || !headerToken) {
-        throw new HTTPError("CSRF token missing", { status: 403 });
+        throw createError({ statusCode: 403, statusMessage: "CSRF token missing" });
       }
 
       if (!secureCompare(cookieToken, headerToken)) {
-        throw new HTTPError("CSRF token mismatch", { status: 403 });
+        throw createError({ statusCode: 403, statusMessage: "CSRF token mismatch" });
       }
     } else {
       const existing = getCookie(event, cookieName);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
-import { H3, HTTPError } from "h3";
+import { H3, HTTPError } from "h3v2";
 
 import {
   type JWK_oct,
@@ -7,7 +7,7 @@ import {
   generateJWK,
   optionalSession,
   requireSession,
-} from "../../src/base/h3/index.ts";
+} from "../../src/base/h3v2/index.ts";
 
 import { cookieJar } from "./_utils.ts";
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { H3 } from "h3";
+import { H3 } from "h3v2";
 
-import { defineCsrf } from "../../src/base/h3/csrf.ts";
+import { defineCsrf } from "../../src/base/h3v2/csrf.ts";
 
 function parseCookie(headers: Headers, name: string): string | undefined {
   const setCookie = headers.get("set-cookie");

@@ -18,8 +18,16 @@
   "sideEffects": false,
   "exports": {
     "./base/h3": {
-      "types": "./dist/base/h3/index.d.mts",
-      "import": "./dist/base/h3/index.mjs"
+      "types": "./dist/base/h3v2/index.d.mts",
+      "import": "./dist/base/h3v2/index.mjs"
+    },
+    "./base/h3v1": {
+      "types": "./dist/base/h3v1/index.d.mts",
+      "import": "./dist/base/h3v1/index.mjs"
+    },
+    "./base/h3v2": {
+      "types": "./dist/base/h3v2/index.d.mts",
+      "import": "./dist/base/h3v2/index.mjs"
     }
   },
   "scripts": {
@@ -37,9 +45,6 @@
     "bench": "vitest bench --run"
   },
   "dependencies": {
-    "cookie-es": "^3.1.1",
-    "h3": "^2.0.1-rc.20",
-    "unjwt": "^0.7.1",
     "unsecure": "^0.2.2"
   },
   "devDependencies": {
@@ -49,13 +54,34 @@
     "@vitest/coverage-v8": "^4.1.4",
     "automd": "^0.4.3",
     "changelogen": "^0.6.2",
+    "cookie-esv1": "npm:cookie-es@^1.2.3",
+    "cookie-esv3": "npm:cookie-es@^3.1.1",
+    "h3v1": "npm:h3@^1.15.11",
+    "h3v2": "npm:h3@^2.0.1-rc.20",
     "obuild": "^0.4.32",
     "oxfmt": "^0.46.0",
     "oxlint": "^1.61.0",
     "rolldown": "1.0.0-rc.17",
     "supertest": "^7.2.2",
     "typescript": "^6.0.3",
+    "unjwt": "^0.7.1",
     "vitest": "^4.1.4"
+  },
+  "peerDependencies": {
+    "cookie-es": "^1.2.3 || ^3.1.1",
+    "h3": "^1.15.4 || >=2.0.1-rc.20 || ^2.0.1",
+    "unjwt": "^0.7.1"
+  },
+  "peerDependenciesMeta": {
+    "cookie-es": {
+      "optional": true
+    },
+    "h3": {
+      "optional": true
+    },
+    "unjwt": {
+      "optional": true
+    }
   },
   "resolutions": {
     "unauth": "link:."

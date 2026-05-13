@@ -1,4 +1,4 @@
-import { H3, serve } from "h3";
+import { H3, serve } from "h3v2";
 
 const app = new H3();
 
