@@ -1,3 +1,16 @@
+/**
+ * Framework-agnostic cookie helpers shared by every adapter test suite
+ * under `test/base/<adapter>/`.
+ */
+
+/**
+ * In-memory cookie jar that mirrors browser behavior for cross-request tests:
+ * apply each response's `Set-Cookie` via `update()`, then read the joined
+ * `Cookie` header back via `toString()`.
+ *
+ * Cookies with `Max-Age=0` (or negative) are treated as a delete instruction
+ * and removed from the jar.
+ */
 export function cookieJar() {
   const jar: Record<string, string> = {};
 
@@ -27,4 +40,14 @@ export function cookieJar() {
         .join("; ");
     },
   };
+}
+
+/** Extracts a single cookie value by name from a `Set-Cookie` response header. */
+export function parseCookie(headers: Headers, name: string): string | undefined {
+  const setCookie = headers.get("set-cookie");
+
+  const regex = new RegExp(`(?:^|,\\s*)${name}=([^;]+)`);
+  const match = setCookie?.match(regex);
+
+  return match ? match[1] : undefined;
 }

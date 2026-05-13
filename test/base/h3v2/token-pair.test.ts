@@ -8,9 +8,9 @@ import {
   defineTokenPair,
   requireAuth,
   optionalAuth,
-} from "../../src/base/h3v2/index.ts";
+} from "../../../src/base/h3v2/index.ts";
 
-import { cookieJar } from "./_utils.ts";
+import { cookieJar } from "../_internal/cookies.ts";
 
 type AccessData = { sub: string; permissions: string[] };
 type RefreshData = { sub: string; family: string };

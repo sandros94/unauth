@@ -1,16 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { H3 } from "h3v2";
 
-import { defineCsrf } from "../../src/base/h3v2/csrf.ts";
+import { defineCsrf } from "../../../src/base/h3v2/csrf.ts";
 
-function parseCookie(headers: Headers, name: string): string | undefined {
-  const setCookie = headers.get("set-cookie");
-
-  const regex = new RegExp(`(?:^|,\\s*)${name}=([^;]+)`);
-  const match = setCookie?.match(regex);
-
-  return match ? match[1] : undefined;
-}
+import { parseCookie } from "../_internal/cookies.ts";
 
 describe("defineCsrf", () => {
   let app: H3;

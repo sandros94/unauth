@@ -7,9 +7,9 @@ import {
   generateJWK,
   optionalSession,
   requireSession,
-} from "../../src/base/h3v2/index.ts";
+} from "../../../src/base/h3v2/index.ts";
 
-import { cookieJar } from "./_utils.ts";
+import { cookieJar } from "../_internal/cookies.ts";
 
 let key: JWK_oct<"A256GCMKW">;
 
