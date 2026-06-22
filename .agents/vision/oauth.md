@@ -1,6 +1,6 @@
 # OAuth 2.1 Authorization Server — Design Document
 
-> **Status:** Draft v3 — updated for unjwt adapter improvements and resource protection middleware
+> **Status:** Draft v4 — review fixes: response/cookie correctness, optional RT, device status union, discovery endpoints
 > **Scope:** `unauth/h3v2/oauth` — composable-per-endpoint OAuth 2.1 authorization server toolkit
 > **Dependencies:** `unjwt` (JWS/JWE session adapters, low-level encrypt/decrypt), `unsecure` (PKCE hashing, secure compare), `h3` (peer)
 
@@ -19,6 +19,8 @@ import {
   defineOAuthDeviceAuthorization,
   defineOAuthRevocation,
   defineOAuthIntrospection,
+  defineOAuthMetadata,
+  defineOAuthJwks,
   requireOAuth,
   optionalOAuth,
 } from "unauth/h3v2/oauth";
@@ -28,12 +30,16 @@ const token = defineOAuthToken({ ... });
 const deviceAuthorize = defineOAuthDeviceAuthorization({ ... });
 const revoke = defineOAuthRevocation({ ... });
 const introspect = defineOAuthIntrospection({ ... });
+const metadata = defineOAuthMetadata({ ... });
+const jwks = defineOAuthJwks({ ... });
 
 app.all("/oauth/authorize", authorize);
 app.post("/oauth/token", token);
 app.post("/oauth/device_authorization", deviceAuthorize);
 app.post("/oauth/revoke", revoke);
 app.post("/oauth/introspect", introspect);
+app.get("/.well-known/oauth-authorization-server", metadata);
+app.get("/.well-known/jwks.json", jwks);
 
 // Protect resource endpoints
 app.get("/api/me", handler, { middleware: [requireOAuth(oauthTokenConfig)] });
@@ -66,6 +72,8 @@ The token endpoint returns the standard OAuth JSON response **and** sets cookies
 
 Cookies provide frictionless SSR support (Nuxt, Nitro). The JSON body is spec-compliant for traditional OAuth clients. Cookies default to on (matching unjwt adapter behavior); developers can opt out with `cookie: false` on the unjwt config.
 
+**Important — h3v2 response behavior:** When a handler returns a raw `new Response(...)`, h3v2 merges prepared headers as defaults but may override them. To ensure cookies set by unjwt's session adapters (via `setCookie(event, ...)`) survive, the token endpoint must **not** return a raw `Response`. Instead, it sets `Cache-Control` and `Content-Type` on `event.res.headers` and returns a plain object (which h3v2 auto-serializes to JSON and merges all prepared headers including `Set-Cookie`). Non-cookie endpoints (authorize, revocation, introspection) can safely return `Response` objects since they don't rely on unjwt cookie-setting.
+
 ### DB-less by Default
 
 The baseline flow requires **no database**:
@@ -75,7 +83,7 @@ The baseline flow requires **no database**:
 - Refresh tokens are JWE sessions (cookie-backed)
 - PKCE prevents third-party auth code replay without needing jti tracking
 
-Developers who need server-side token revocation add it via the optional `onCheckRevoked` hook. No opinionated features like token family IDs are built in — the developer can store whatever they need in the session data and check it in the hook.
+**Honest limitation — refresh token rotation:** Stateless JWE refresh tokens cannot detect reuse without server-side state. OAuth 2.1 requires rotation-with-reuse-detection (or sender-constraining) for public clients. In db-less mode, a rotated-away RT remains valid until its `exp`. For true spec-compliant rotation, developers must implement the `onCheckRevoked` hook with jti tracking (store the current valid jti, reject any other). No opinionated rotation strategy is built in — the developer can use jti blocklists, token family IDs, or any custom logic via `onCheckRevoked` + session data.
 
 ### Mirrors `defineTokenPair`
 
@@ -93,11 +101,11 @@ The developer **can** also use `defineSession` alongside for the authorization s
 
 Three distinct keys for security separation:
 
-| Key      | Type                       | Used by                                    | Purpose                        |
-| -------- | -------------------------- | ------------------------------------------ | ------------------------------ |
+| Key      | Type                       | Used by                                     | Purpose                        |
+| -------- | -------------------------- | ------------------------------------------- | ------------------------------ |
 | AT key   | JWS (asymmetric/symmetric) | Token, Introspection, Revocation, Middleware | Sign/verify access tokens      |
-| RT key   | JWE (symmetric/asymmetric) | Token                                      | Encrypt/decrypt refresh tokens |
-| Code key | JWE (symmetric/asymmetric) | Authorize, Token                           | Encrypt/decrypt auth codes     |
+| RT key   | JWE (symmetric/asymmetric) | Token                                       | Encrypt/decrypt refresh tokens |
+| Code key | JWE (symmetric/asymmetric) | Authorize, Token                            | Encrypt/decrypt auth codes     |
 
 ### Client Model: Full Spec-Compliant
 
@@ -117,8 +125,10 @@ The hook is part of the shared `OAuthTokenConfig` type, so it fires both during 
 
 `requireOAuth` and `optionalOAuth` protect non-OAuth resource endpoints, analogous to `requireAuth` / `optionalAuth` from `defineTokenPair`. They read the access token from:
 
-1. `Authorization: Bearer <token>` header (via unjwt's `sessionHeader: "Authorization"`)
+1. `Authorization: Bearer <token>` header (via unjwt's `sessionHeader`)
 2. Cookie fallback (for same-origin SSR clients)
+
+**Note:** The exact header-vs-cookie precedence of unjwt's `sessionHeader` option needs verification against the unjwt source during implementation. If `sessionHeader` disables cookie reading, the middleware will need to attempt header-based reading first, then fall back to a separate cookie-based read.
 
 Both share the `OAuthTokenConfig` type with `defineOAuthToken` for consistent key/cookie/revocation configuration.
 
@@ -126,7 +136,7 @@ Both share the `OAuthTokenConfig` type with `defineOAuthToken` for consistent ke
 
 1. **Authorization Code + PKCE** (OAuth 2.1, mandatory S256)
 2. **Client Credentials** (RFC 6749)
-3. **Refresh Token** (RFC 6749)
+3. **Refresh Token** (RFC 6749) — requires `refreshToken` config
 4. **Device Authorization** (RFC 8628) — requires storage hooks
 
 ### OAuth 2.1 Security Enforcement
@@ -135,7 +145,9 @@ Both share the `OAuthTokenConfig` type with `defineOAuthToken` for consistent ke
 - No implicit grant (removed in 2.1)
 - No resource owner password credentials (removed in 2.1)
 - Redirect URI exact match (no pattern matching)
+- `redirect_uri` re-validated at the token endpoint against the value bound in the auth code
 - Authorization codes: PKCE-protected; optional hook for strict single-use enforcement
+- DB-less refresh token rotation documented as a known limitation for public clients (see above)
 
 ---
 
@@ -162,6 +174,8 @@ src/
             ├── device-authorization.ts       (~120 LoC: defineOAuthDeviceAuthorization)
             ├── revocation.ts         (~80 LoC: defineOAuthRevocation)
             ├── introspection.ts      (~80 LoC: defineOAuthIntrospection)
+            ├── metadata.ts           (~80 LoC: defineOAuthMetadata — RFC 8414)
+            ├── jwks.ts               (~40 LoC: defineOAuthJwks)
             └── middleware.ts         (~80 LoC: requireOAuth, optionalOAuth)
 ```
 
@@ -175,6 +189,7 @@ test/
         ├── device-authorization.test.ts
         ├── revocation.test.ts
         ├── introspection.test.ts
+        ├── metadata.test.ts
         ├── middleware.test.ts
         ├── pkce.test.ts
         └── _utils.ts              (test helpers: mock client store, token store)
@@ -204,8 +219,10 @@ test/
 - `defineOAuthDeviceAuthorization`, `OAuthDeviceAuthorizationOptions`
 - `defineOAuthRevocation`, `OAuthRevocationOptions`
 - `defineOAuthIntrospection`, `OAuthIntrospectionOptions`
+- `defineOAuthMetadata`, `OAuthMetadataOptions`
+- `defineOAuthJwks`, `OAuthJwksOptions`
 - `requireOAuth`, `optionalOAuth`, `OAuthTokenConfig`
-- `OAuthClient`, `OAuthGrantType`, `ClientAuthMethod`, `DeviceCodeData`
+- `OAuthClient`, `OAuthGrantType`, `ClientAuthMethod`, `DeviceCodeData`, `DeviceCodeStatus`
 - `OAuthTokenResponse`, `IntrospectionResponse`, `OAuthErrorCode`
 
 ---
@@ -243,14 +260,14 @@ interface OAuthTokenConfig<TAccess extends SessionData = SessionClaims> {
     issuer?: string;
     /**
      * Header to read access tokens from.
-     * The resource protection middleware (requireOAuth/optionalOAuth) defaults
-     * this to "Authorization" to enable Bearer token support for API clients.
+     * The resource protection middleware defaults this to "Authorization".
      * The token endpoint itself ignores this (it reads from grant params).
      * @default false (token endpoint) / "Authorization" (middleware)
      */
     sessionHeader?: false | string;
   };
-  refreshToken: {
+  /** Optional. Required only if the refresh_token grant is enabled. */
+  refreshToken?: {
     key: SessionConfigJWE<SessionData, ExpiresIn>["key"];
     maxAge: ExpiresIn;
     /** @default "oauth_rt" */
@@ -285,8 +302,15 @@ interface DeviceCodeData {
   expiresAt: number;
   interval: number;
   userId?: string;
-  approved?: boolean;
 }
+
+/** Return type for onConsumeDeviceCode. */
+type DeviceCodeStatus =
+  | { status: "approved"; userId: string; scope: string }
+  | { status: "pending" }
+  | { status: "denied" }
+  | { status: "slow_down" }
+  | { status: "expired" };
 
 // --- Token response ---
 interface OAuthTokenResponse {
@@ -408,10 +432,11 @@ function defineOAuthAuthorize(
 - On approval: encrypts grant params into a JWE code via `encrypt()` from `unjwt/jwe` with `expiresIn: code.maxAge`, redirects with `?code=...&state=...`
 - Errors before `redirect_uri` validation: returns error response (not redirect)
 - Errors after `redirect_uri` validation: redirects with error params
+- Returns a `Response` object (redirect or error page — no cookies to preserve)
 
 **Runtime guards:** `code.key`, `code.maxAge`, `hooks.onFindClient`, `hooks.onAuthorize` are required.
 
-**Note on authorization code lifetime:** The code is created via `encrypt(payload, key, { expiresIn: code.maxAge })` which sets the `exp` claim. On the token endpoint, `decrypt(code, key, { validateJWT: true })` automatically validates `exp` and throws on expired codes. No manual `computeExpiresInSeconds` call is needed.
+**Note on authorization code lifetime:** `encrypt(payload, key, { expiresIn })` sets the `exp` claim. On the token endpoint, `decrypt(code, key, { validateJWT: true })` parses it as a JWT. Verify during implementation whether `validateJWT: true` alone enforces `exp`, or whether explicit `maxTokenAge` / `currentDate` options are needed — the unjwt docs are ambiguous on this.
 
 ### `defineOAuthToken`
 
@@ -423,12 +448,14 @@ interface OAuthTokenOptions extends OAuthTokenConfig {
   };
   hooks: OAuthTokenConfig["hooks"] & {
     onFindClient: ClientHooks["onFindClient"];
+    /** Required for confidential clients. Public clients must use auth method "none". */
     onVerifyClientSecret?: ClientHooks["onVerifyClientSecret"];
 
     // --- Authorization code grant (optional hook for strict single-use) ---
     /**
      * Optional: called after decrypting a JWE auth code to enforce
-     * strict single-use. Track the code's jti and reject replays.
+     * strict single-use. Return true if the code is valid (not yet consumed),
+     * false to reject as replayed. Track the code's jti and reject replays.
      * DB-less users omit this — PKCE prevents third-party replay.
      */
     onConsumeAuthorizationCode?(args: {
@@ -438,11 +465,12 @@ interface OAuthTokenOptions extends OAuthTokenConfig {
     }): Promise<boolean>;
 
     // --- Device code grant ---
+    /** Return the device code status. See DeviceCodeStatus for possible states. */
     onConsumeDeviceCode?(args: {
       deviceCode: string;
       clientId: string;
       event: HTTPEvent;
-    }): Promise<DeviceCodeData | undefined>;
+    }): Promise<DeviceCodeStatus>;
 
     // --- Claims customization ---
     onAccessTokenClaims?(args: {
@@ -460,63 +488,57 @@ interface OAuthTokenOptions extends OAuthTokenConfig {
       event: HTTPEvent;
     }): Promise<string | undefined>;
 
+    /**
+     * Side-effect hook for logging/monitoring. The endpoint still returns
+     * the proper OAuth error response regardless.
+     */
     onError?(args: { error: unknown; event: HTTPEvent }): void | Promise<void>;
   };
 }
 
-function defineOAuthToken(options: OAuthTokenOptions): (event: HTTPEvent) => Promise<Response>;
+function defineOAuthToken(options: OAuthTokenOptions): (event: HTTPEvent) => Promise<unknown>;
 ```
+
+**Return type:** Returns a plain object (not `Response`) so h3v2 auto-serializes to JSON and merges prepared headers (including `Set-Cookie` from unjwt session adapters). Sets `Cache-Control: no-store` and `Content-Type: application/json` on `event.res.headers`.
 
 **Behavior:**
 
 - Extracts client credentials (Basic auth or POST body)
 - Validates client via `onFindClient`
-- Authenticates confidential clients via `onVerifyClientSecret`
+- Authenticates confidential clients via `onVerifyClientSecret`; public clients must have `tokenEndpointAuthMethod: "none"`
 - Dispatches to grant handler based on `grant_type`:
-  - `authorization_code` — decrypts JWE code via `decrypt()` from `unjwt/jwe` with `validateJWT: true`, verifies PKCE, optionally calls `onConsumeAuthorizationCode`, issues AT+RT sessions
-  - `client_credentials` — validates confidential client, issues AT session (no RT)
+  - `authorization_code` — decrypts JWE code via `decrypt()` from `unjwt/jwe` with `validateJWT: true`, verifies PKCE (`code_verifier` against `code_challenge`), **validates `redirect_uri` matches the value in the code**, optionally calls `onConsumeAuthorizationCode`, issues AT+RT sessions
+  - `client_credentials` — validates confidential client, issues AT session only (no RT, no cookies needed — returns plain JSON)
   - `refresh_token` — dual-source RT reading (see below), validates, rotates, issues new AT+RT
-  - `urn:ietf:params:oauth:grant-type:device_code` — calls `onConsumeDeviceCode`
+  - `urn:ietf:params:oauth:grant-type:device_code` — calls `onConsumeDeviceCode`, maps status to OAuth error codes
 - AT issued via `updateJWSSession(event, atConfig, data)` → cookie set automatically, `session.token` for JSON body
 - RT issued via `updateJWESession(event, rtConfig, data)` → cookie set automatically, `session.token` for JSON body
-- Returns JSON: `{ access_token, token_type, expires_in, scope, refresh_token? }`
-- Headers: `Content-Type: application/json`, `Cache-Control: no-store`
+- Returns plain object: `{ access_token, token_type, expires_in, scope, refresh_token? }`
 
 **Dual-source refresh token reading (`refresh_token` grant):**
 
 1. Read `refresh_token` from POST body. If present:
-   - Decrypt via `decrypt()` from `unjwt/jwe` using `refreshToken.key` with `validateJWT: true` to validate claims (`exp`, `iat`)
+   - Decrypt via `decrypt()` from `unjwt/jwe` using `refreshToken.key` with `validateJWT: true`
    - Extract session data (`sub`, `scope`, `client_id`, `jti`) from decrypted payload
    - If `onCheckRevoked` is configured, call it with the decrypted session data and the raw token string
 2. If no POST body `refresh_token`: fall back to cookie via `useJWESession(event, rtConfig)` (same-origin clients). The session adapter handles reading, validation, and `onCheckRevoked` via its `onRead` hook.
 3. On valid RT (from either source): issue new AT via `updateJWSSession(event, atConfig, data)` and new RT via `updateJWESession(event, rtConfig, data)`. Both set cookies AND provide `session.token` on the returned `SessionManager` for the JSON response body.
+
+**Device code grant status mapping:**
+
+| `DeviceCodeStatus.status` | OAuth response                        |
+| ------------------------- | ------------------------------------- |
+| `"approved"`              | Issue tokens (AT + RT)                |
+| `"pending"`               | 400 `authorization_pending`           |
+| `"denied"`                | 400 `access_denied`                   |
+| `"slow_down"`             | 400 `slow_down`                       |
+| `"expired"`               | 400 `expired_token`                   |
 
 **Internal config construction:**
 
 The token endpoint constructs unjwt session configs from `OAuthTokenOptions`, following the same pattern as `defineTokenPair` (`token-pair.ts:194-295`):
 
 ```ts
-const rtConfig = {
-  key: options.refreshToken.key,
-  maxAge: options.refreshToken.maxAge,
-  name: options.refreshToken.name ?? "oauth_rt",
-  cookie: {
-    httpOnly: true, secure: true, sameSite: "lax", path: "/",
-    ...options.refreshToken.cookie,
-  },
-  jwe: options.refreshToken.jwe,
-  hooks: {
-    async onRead({ session, event }) {
-      if (session.id && options.hooks?.onCheckRevoked) {
-        await options.hooks.onCheckRevoked({
-          session, source: "refresh", event,
-          clear: () => clearJWESession(event, rtConfig),
-        });
-      }
-    },
-  },
-} satisfies SessionConfigJWE;
-
 const atConfig = {
   key: options.accessToken.key,
   maxAge: options.accessToken.maxAge,
@@ -537,6 +559,28 @@ const atConfig = {
     },
   },
 } satisfies SessionConfigJWS;
+
+// Only constructed when options.refreshToken is provided
+const rtConfig = options.refreshToken ? {
+  key: options.refreshToken.key,
+  maxAge: options.refreshToken.maxAge,
+  name: options.refreshToken.name ?? "oauth_rt",
+  cookie: {
+    httpOnly: true, secure: true, sameSite: "lax", path: "/",
+    ...options.refreshToken.cookie,
+  },
+  jwe: options.refreshToken.jwe,
+  hooks: {
+    async onRead({ session, event }) {
+      if (session.id && options.hooks?.onCheckRevoked) {
+        await options.hooks.onCheckRevoked({
+          session, source: "refresh", event,
+          clear: () => clearJWESession(event, rtConfig!),
+        });
+      }
+    },
+  },
+} satisfies SessionConfigJWE : undefined;
 ```
 
 These configs are reused by both the token endpoint grant handlers and the resource protection middleware.
@@ -544,9 +588,10 @@ These configs are reused by both the token endpoint grant handlers and the resou
 **Runtime guards:**
 
 - `accessToken.key` and `accessToken.maxAge` are required
-- `refreshToken.key` and `refreshToken.maxAge` are required
 - `hooks.onFindClient` is required
 - If `code` is provided, `code.key` is required
+- If `refreshToken` is provided, `refreshToken.key` and `refreshToken.maxAge` are required
+- If the `refresh_token` grant is requested without `refreshToken` config, the endpoint returns `unsupported_grant_type`
 
 ### `requireOAuth` / `optionalOAuth`
 
@@ -581,6 +626,8 @@ function optionalOAuth<TAccess extends SessionData = SessionClaims>(
 - `optionalOAuth`: silently skips if `!session.id`
 - Both accept optional `onAuthenticated` hook for authorization checks
 
+**Note:** Verify during implementation whether unjwt's `sessionHeader` supports header+cookie fallback. If it disables cookie reading, the middleware will attempt `useJWSSession` with `sessionHeader`, and if no session, retry with cookie-only config.
+
 **Usage:**
 
 ```ts
@@ -594,10 +641,13 @@ const oauthConfig: OAuthTokenConfig = {
   },
 };
 
-const token = defineOAuthToken({ ...oauthConfig, code: { key: codeKey }, hooks: { ...oauthConfig.hooks, onFindClient: ..., ... } });
+const token = defineOAuthToken({
+  ...oauthConfig,
+  code: { key: codeKey },
+  hooks: { ...oauthConfig.hooks, onFindClient: ..., ... },
+});
 
 app.get("/api/me", handler, { middleware: [requireOAuth(oauthConfig)] });
-app.get("/api/feed", handler, { middleware: [optionalOAuth(oauthConfig)] });
 ```
 
 ### `defineOAuthDeviceAuthorization`
@@ -685,6 +735,46 @@ function defineOAuthIntrospection(
 
 If `accessToken.key` is provided, attempts local JWS verification first. Falls back to `onIntrospectToken` hook. Returns `{ active: false }` for invalid tokens.
 
+### `defineOAuthMetadata`
+
+```ts
+interface OAuthMetadataOptions {
+  /** The authorization server's issuer identifier (URL). Required. */
+  issuer: string;
+  /** Override or extend the metadata document. */
+  metadata?: Record<string, unknown>;
+}
+
+function defineOAuthMetadata(
+  options: OAuthMetadataOptions,
+): (event: HTTPEvent) => Promise<Response>;
+```
+
+**Behavior:**
+
+Returns the Authorization Server Metadata document per RFC 8414. Auto-populates standard fields from `issuer` (`authorization_endpoint`, `token_endpoint`, `revocation_endpoint`, `introspection_endpoint`, `device_authorization_endpoint`, `jwks_uri`, `response_types_supported`, `grant_types_supported`, `token_endpoint_auth_methods_supported`, `code_challenge_methods_supported`). Developer can override any field via `metadata`.
+
+Endpoint paths are derived from `issuer` using RFC 8414 conventions. The developer mounts this at `/.well-known/oauth-authorization-server`.
+
+### `defineOAuthJwks`
+
+```ts
+interface OAuthJwksOptions {
+  /** JWK(s) to expose. Only public keys are included in the response. */
+  keys: JWK | JWK[];
+}
+
+function defineOAuthJwks(
+  options: OAuthJwksOptions,
+): (event: HTTPEvent) => Promise<Response>;
+```
+
+**Behavior:**
+
+Returns a JWK Set document (`{ keys: [...] }`). Strips private key material — only includes the public component. Third-party resource servers use this to verify JWS access tokens. Set `Cache-Control` headers for appropriate caching.
+
+The developer mounts this at `/.well-known/jwks.json` (or the path specified in their metadata document).
+
 ---
 
 ## 6. Internal Module Responsibilities
@@ -710,7 +800,7 @@ If `accessToken.key` is provided, attempts local JWS verification first. Falls b
 
 ### `_response.ts`
 
-- `formatTokenResponse(data: OAuthTokenResponse)` → `Response` with JSON body, `Cache-Control: no-store`, `Content-Type: application/json`
+- `formatTokenResponse(data: OAuthTokenResponse)` → sets `Cache-Control: no-store` and `Content-Type: application/json` on `event.res.headers`, returns plain object
 - `generateUserCode()` → `string` — `XXXX-XXXX` format (consonants only, no ambiguous chars)
 
 ### `_grant-refresh-token.ts`
@@ -729,6 +819,7 @@ If `accessToken.key` is provided, attempts local JWS verification first. Falls b
 | ------------------------------------ | ---------------------- | -------------------------------------------------------- |
 | `unjwt/adapters/h3v2`                | Static                 | Session adapters: `useJWSSession`, `useJWESession`, `updateJWSSession`, `updateJWESession`, `clearJWSSession`, `clearJWESession`, `verifyJWSSession` |
 | `unjwt/jwe`                          | Static                 | Auth code encrypt/decrypt: `encrypt`, `decrypt`          |
+| `unjwt/jwk`                          | Static                 | Key export for JWKS endpoint: `exportKey`                |
 | `unsecure`                           | Static                 | PKCE: `hash`, `secureCompare`. Tokens: `secureGenerate`  |
 | `h3v2` (types)                       | Static `import type`   | Erased at build                                          |
 | `h3v2` (runtime values)              | `await import("h3v2")` | Optional peer dep: `HTTPError`, `readBody`               |
@@ -744,6 +835,8 @@ The architecture accommodates future OIDC by:
 3. A future `defineOIDCProvider` can compose the existing endpoint factories
 4. The `scope` system already supports `openid` as a scope string
 5. JWE auth codes can carry additional OIDC state (`nonce`) in their encrypted payload
+6. `defineOAuthMetadata` can be extended with OIDC discovery fields (`userinfo_endpoint`, `id_token_signing_alg_values_supported`)
+7. `defineOAuthJwks` already serves the public keys needed for ID token verification
 
 ---
 
@@ -753,7 +846,7 @@ The architecture accommodates future OIDC by:
 
 Files: `_types.ts`, `_errors.ts`, `_pkce.ts`, `_client-auth.ts`, `_response.ts`
 
-1. Define all shared types including `OAuthTokenConfig`
+1. Define all shared types including `OAuthTokenConfig`, `DeviceCodeStatus`
 2. Implement OAuth error response helpers
 3. Implement PKCE verification (S256 only)
 4. Implement client credential extraction
@@ -765,9 +858,9 @@ Files: `_types.ts`, `_errors.ts`, `_pkce.ts`, `_client-auth.ts`, `_response.ts`
 Files: `authorize.ts`, `token.ts`, `_grant-authorization-code.ts`, `middleware.ts`
 
 1. Implement authorization endpoint (`defineOAuthAuthorize`) with JWE code generation
-2. Implement auth code grant handler with JWE code decryption + PKCE verification
+2. Implement auth code grant handler with JWE code decryption + PKCE verification + `redirect_uri` re-validation
 3. Implement token endpoint dispatcher (`defineOAuthToken`) with unjwt session adapters for AT/RT
-4. Implement `requireOAuth` and `optionalOAuth` middleware using shared `OAuthTokenConfig`
+4. Verify unjwt `sessionHeader` header-vs-cookie precedence; implement `requireOAuth` and `optionalOAuth` accordingly
 5. Write integration tests for the full auth code + PKCE flow (db-less)
 6. Write tests for middleware (cookie-based and Bearer header-based AT reading)
 
@@ -775,7 +868,7 @@ Files: `authorize.ts`, `token.ts`, `_grant-authorization-code.ts`, `middleware.t
 
 Files: `_grant-client-credentials.ts`, `_grant-refresh-token.ts`
 
-1. Implement client credentials grant (AT only, no RT)
+1. Implement client credentials grant (AT only, no RT, no cookies)
 2. Implement refresh token grant with dual-source RT reading (POST body + cookie fallback)
 3. Write tests for both, including third-party refresh (POST body) and same-origin refresh (cookie)
 
@@ -784,8 +877,8 @@ Files: `_grant-client-credentials.ts`, `_grant-refresh-token.ts`
 Files: `device-authorization.ts`, `_grant-device-code.ts`
 
 1. Implement device authorization endpoint (`defineOAuthDeviceAuthorization`)
-2. Implement device code grant handler in token endpoint
-3. Write tests
+2. Implement device code grant handler with `DeviceCodeStatus` mapping
+3. Write tests (polling lifecycle: pending → approved, pending → denied, slow_down, expired)
 
 ### Phase 5: Revocation + Introspection
 
@@ -795,7 +888,15 @@ Files: `revocation.ts`, `introspection.ts`
 2. Implement introspection endpoint (`defineOAuthIntrospection`)
 3. Write tests
 
-### Phase 6: Integration
+### Phase 6: Discovery
+
+Files: `metadata.ts`, `jwks.ts`
+
+1. Implement metadata endpoint (`defineOAuthMetadata`) per RFC 8414
+2. Implement JWKS endpoint (`defineOAuthJwks`) with private key stripping
+3. Write tests
+
+### Phase 7: Integration
 
 Files: `h3v2-oauth.ts`, `package.json`, `build.config.ts`, `src/index.ts`
 
@@ -808,13 +909,17 @@ Files: `h3v2-oauth.ts`, `package.json`, `build.config.ts`, `src/index.ts`
 
 ## 10. Potential Challenges
 
+- **Token endpoint must not return `Response`:** unjwt session adapters set cookies via `setCookie(event, ...)`. Returning a raw `new Response(...)` from the handler overrides prepared headers, losing the `Set-Cookie`. Return a plain object and set `Cache-Control`/`Content-Type` on `event.res.headers` instead.
 - **Request body parsing:** Token endpoint reads `application/x-www-form-urlencoded`. Use h3v2's `readFormData` or `readBody` via dynamic import.
-- **Redirect responses:** Use `new Response(null, { status: 302, headers: { Location: url } })` for platform neutrality.
+- **Redirect responses:** Use `new Response(null, { status: 302, headers: { Location: url } })` for platform neutrality. Safe because the authorize endpoint doesn't set cookies.
 - **Error handling split:** Authorization endpoint errors before `redirect_uri` validation must NOT redirect. Errors after validation redirect with error params. Token endpoint errors always return JSON.
-- **Session adapter cookie names:** OAuth defaults to `oauth_at` / `oauth_rt`. `defineTokenPair` uses `auth_at` / `auth_rt`. Neither uses unjwt's raw defaults (`h3-jws` / `h3-jwe`). Avoid `access_token` / `refresh_token` as cookie names — they conflict with POST body parameter names in the token endpoint's `application/x-www-form-urlencoded` requests.
+- **Session adapter cookie names:** OAuth defaults to `oauth_at` / `oauth_rt`. `defineTokenPair` uses `auth_at` / `auth_rt`. Neither uses unjwt's raw defaults (`h3-jws` / `h3-jwe`). Avoid `access_token` / `refresh_token` as cookie names — they conflict with POST body parameter names.
 - **Device code user code:** Must be short, unambiguous, easy to type. Use consonants only (`BCDFGHJKLMNPQRSTVWXZ`, no vowels to avoid offensive words) in `XXXX-XXXX` format.
 - **JWE auth code size:** A JWE containing grant params will be longer than an opaque code (~200-400 chars). This is fine for redirect URLs but worth noting.
-- **Session adapter caching with dual-source RT:** unjwt caches sessions in `event.context` per cookie name. When the refresh token arrives via POST body (not cookie), decrypt it directly with `decrypt()` from `unjwt/jwe` — do NOT pass it through `useJWESession` (would prime the cache incorrectly). Use `updateJWESession(event, rtConfig, newData)` to issue the new RT (which sets the cookie and creates the cache entry). For the new AT, use `updateJWSSession(event, atConfig, accessData)`. Both return the updated `SessionManager` with `.token` for the JSON response.
+- **Session adapter caching with dual-source RT:** unjwt caches sessions in `event.context` per cookie name. When the refresh token arrives via POST body (not cookie), decrypt it directly with `decrypt()` from `unjwt/jwe` — do NOT pass it through `useJWESession` (would prime the cache incorrectly). Use `updateJWESession(event, rtConfig, newData)` to issue the new RT (which sets the cookie and creates the cache entry).
+- **`sessionHeader` fallback behavior:** Verify during implementation whether `sessionHeader: "Authorization"` in unjwt supports both header and cookie reading, or if it disables cookies. The middleware design assumes fallback; adjust if needed.
+- **`validateJWT` claim enforcement:** Verify during implementation whether `decrypt(code, key, { validateJWT: true })` automatically enforces `exp`, or whether explicit options like `maxTokenAge` are needed for expired-code rejection.
+- **Client credentials + cookies:** M2M / third-party `client_credentials` grants don't need cookies. The `client_credentials` grant handler should skip session adapter calls and return tokens via JSON only (using low-level `sign()` from `unjwt/jws`).
 
 ---
 
