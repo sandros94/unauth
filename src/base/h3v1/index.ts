@@ -24,8 +24,12 @@ export {
 export { type CsrfConfig, type H3CsrfOptions, defineCsrf } from "./csrf.ts";
 
 export {
+  type CompatEvent,
+  type SessionEvent,
+  type DefineSessionReturn,
   type H3SessionHooks,
   type H3SessionOptions,
+  type SessionManager,
   type SessionMiddlewareConfig,
   defineSession,
   requireSession,

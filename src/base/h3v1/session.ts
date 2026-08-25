@@ -1,4 +1,4 @@
-import { type H3Event, createError } from "h3v1";
+import { type H3Event, createError, isEvent } from "h3v1";
 import type {
   SessionConfigJWE,
   SessionHooksJWE,
@@ -17,6 +17,31 @@ import {
   DEFAULT_REFRESH_AFTER,
   DEFAULT_SECURE_COOKIE,
 } from "../_internal/defaults.ts";
+
+/**
+ * A request-like object unjwt's adapter accepts in place of a full `H3Event`.
+ *
+ * This is what makes a session resolvable outside a normal request — most usefully in a
+ * WebSocket `upgrade` hook, where crossws hands over `{ url, headers, context }` (or a web
+ * `Request`) rather than an `H3Event`. Such an event is **read-only**: unjwt refuses to write
+ * cookies through it, so the session can be verified and decoded but never re-issued or cleared.
+ */
+export type CompatEvent =
+  | { request: { headers: Headers }; context: any }
+  | { headers: Headers; context: any };
+
+/** Any event this adapter can resolve a session from. */
+export type SessionEvent = H3Event | CompatEvent;
+
+/**
+ * Whether cookies can be written through this event.
+ *
+ * Only a real `H3Event` carries the response to set them on; a {@link CompatEvent} does not, and
+ * unjwt throws rather than pretending otherwise.
+ */
+function canWriteCookies(event: SessionEvent): event is H3Event {
+  return isEvent(event);
+}
 
 /**
  * Extended session hooks for h3v1.
@@ -38,9 +63,18 @@ export interface H3SessionHooks<
    */
   onRead?(args: {
     session: SessionJWE<T, MaxAge> & { id: string; token: string };
-    event: H3Event;
+    /**
+     * May be a {@link CompatEvent} — narrow with `readOnly` before doing anything that needs a
+     * real `H3Event` (writing cookies, `event.waitUntil`, h3 request helpers).
+     */
+    event: SessionEvent;
     config: SessionConfigJWE<T, MaxAge>;
-    /** Destroy the session (delete cookie, reset state). */
+    /**
+     * `true` when the session was read through a {@link CompatEvent} (e.g. a WebSocket upgrade).
+     * `clear()` cannot work in that case — check this before attempting one.
+     */
+    readOnly: boolean;
+    /** Destroy the session (delete cookie, reset state). Throws when {@link readOnly}. */
     clear(): Promise<void>;
   }): void | Promise<void>;
 
@@ -57,6 +91,11 @@ export interface H3SessionHooks<
    *
    * If no `onRefresh` hook is registered, the default behavior
    * is automatic sliding window.
+   *
+   * **Never fires on a read-only {@link CompatEvent}** — a session that cannot be re-issued is
+   * treated as a plain read and dispatched to `onRead` instead. So `event` here is always a real
+   * `H3Event`, and any work this hook does (a user lookup, an audit write) is never wasted on a
+   * refresh that cannot land.
    */
   onRefresh?(args: {
     session: SessionJWE<T, MaxAge> & { id: string; token: string };
@@ -95,9 +134,14 @@ export interface H3SessionOptions<T extends SessionData> extends Omit<
 /** Session manager type alias. Always has a defined `expiresAt`. */
 export type SessionManager<T extends SessionData> = BaseSessionManager<T, ExpiresIn>;
 
-/** Return type of {@link defineSession}. */
+/**
+ * Return type of {@link defineSession}.
+ *
+ * Accepts a {@link CompatEvent} as well as an `H3Event`, so a session can also be resolved from a
+ * WebSocket upgrade — read-only, see {@link CompatEvent}.
+ */
 export type DefineSessionReturn<T extends SessionData> = (
-  event: H3Event,
+  event: SessionEvent,
 ) => Promise<SessionManager<T>>;
 
 /**
@@ -106,6 +150,10 @@ export type DefineSessionReturn<T extends SessionData> = (
  * Returns a function that resolves the session for the current request.
  * The session is cached per-request by unjwt — calling the composable
  * multiple times in the same request is free.
+ *
+ * It also accepts a {@link CompatEvent}, so the same composable resolves a session inside a
+ * WebSocket `upgrade` hook. That path is read-only: the session is verified and decoded, auto-
+ * refresh is skipped (see {@link H3SessionHooks.onRefresh}), and `update()` / `clear()` throw.
  *
  * @example
  * ```ts
@@ -143,8 +191,14 @@ export function defineSession<T extends SessionData>(
     hooks: {
       async onRead({ session, config, event, ...ctxRest }) {
         const clear = (): Promise<void> => clearJWESession(event, config);
+        const writable = canWriteCookies(event);
 
-        if (refreshAfter !== false && session.id) {
+        // A read-only event (WebSocket upgrade) cannot carry a Set-Cookie, so refreshing is
+        // impossible by construction — not a failure. Attempting it anyway would throw out of
+        // unjwt, land in `onError`, and report a routine socket connection as a session error.
+        // Fall through to `onRead` instead: the session still resolves, and the next ordinary
+        // request slides it.
+        if (refreshAfter !== false && session.id && writable) {
           const maxAgeSec = computeDurationInSeconds(config.maxAge!);
           const maxAgeMs = maxAgeSec * 1000;
           const elapsed = Date.now() - session.createdAt;
@@ -190,8 +244,9 @@ export function defineSession<T extends SessionData>(
         await options.hooks?.onRead?.({
           ...ctxRest,
           session,
-          event: event as H3Event,
+          event,
           config,
+          readOnly: !writable,
           clear,
         });
       },
@@ -210,7 +265,7 @@ export function defineSession<T extends SessionData>(
     },
   } satisfies SessionConfigJWE<T, ExpiresIn>;
 
-  return async (event: H3Event): Promise<SessionManager<T>> => {
+  return async (event: SessionEvent): Promise<SessionManager<T>> => {
     return useJWESession<T, typeof jweConfig.maxAge>(event, jweConfig);
   };
 }

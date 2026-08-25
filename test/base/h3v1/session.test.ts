@@ -875,3 +875,153 @@ describe("optionalSession (h3v1)", () => {
     expect(onAuthenticated).not.toHaveBeenCalled();
   });
 });
+
+describe("defineSession — read-only compat events (h3v1)", () => {
+  let h: H3v1Harness;
+
+  beforeEach(() => {
+    h = createH3v1Harness();
+  });
+
+  /** The shape crossws hands a WebSocket `upgrade` hook. */
+  const upgradeEvent = (cookie: string) => ({
+    url: "http://localhost/_ws",
+    headers: new Headers({ cookie }),
+    context: {},
+  });
+
+  async function login(useSession: ReturnType<typeof defineSession>) {
+    h.router.post(
+      "/login",
+      eventHandler(async (event) => {
+        const session = await useSession(event);
+        await session.update({ userId: "u1", role: "user" });
+        return { ok: true };
+      }),
+    );
+    const jar = cookieJar();
+    jar.update((await h.request("/login", { method: "POST" })).headers);
+    return jar;
+  }
+
+  it("resolves a session from an upgrade-shaped event", async () => {
+    const useSession = defineSession({ key, maxAge: "1h", cookie: { secure: false } });
+    const jar = await login(useSession);
+
+    const session = await useSession(upgradeEvent(jar.toString()));
+
+    expect(session.id).toBeTruthy();
+    expect(session.data).toMatchObject({ userId: "u1", role: "user" });
+  });
+
+  it("also accepts the { request: { headers } } shape", async () => {
+    const useSession = defineSession({ key, maxAge: "1h", cookie: { secure: false } });
+    const jar = await login(useSession);
+
+    const session = await useSession({
+      request: { headers: new Headers({ cookie: jar.toString() }) },
+      context: {},
+    });
+
+    expect(session.data).toMatchObject({ userId: "u1" });
+  });
+
+  it("resolves nothing when the upgrade carries no cookie", async () => {
+    const useSession = defineSession({ key, maxAge: "1h", cookie: { secure: false } });
+
+    const session = await useSession(upgradeEvent(""));
+
+    expect(session.id).toBeUndefined();
+    expect(session.data).toEqual({});
+  });
+
+  it("does not attempt a refresh past the threshold, and reports it as a read", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+    const onRefresh = vi.fn();
+    const onRead = vi.fn();
+    const onError = vi.fn();
+    const useSession = defineSession({
+      key,
+      maxAge: "1h",
+      refreshAfter: 0.5,
+      cookie: { secure: false },
+      hooks: { onRefresh, onRead, onError },
+    });
+    const jar = await login(useSession);
+
+    // Well past `refreshAfter` — an H3Event here would slide the session.
+    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
+    const session = await useSession(upgradeEvent(jar.toString()));
+
+    expect(session.data).toMatchObject({ userId: "u1" });
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(onRead).toHaveBeenCalledTimes(1);
+    expect(onRead.mock.calls[0]![0].readOnly).toBe(true);
+  });
+
+  it("still refreshes normally on a real H3Event", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+    const onRefresh = vi.fn(async ({ refresh }: any) => {
+      await refresh({ role: "superadmin" });
+    });
+    const useSession = defineSession({
+      key,
+      maxAge: "1h",
+      refreshAfter: 0.5,
+      cookie: { secure: false },
+      hooks: { onRefresh },
+    });
+    const jar = await login(useSession);
+
+    h.router.get(
+      "/me",
+      eventHandler(async (event) => {
+        const session = await useSession(event);
+        return { data: session.data };
+      }),
+    );
+
+    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
+    jar.update((await h.request("/me", { headers: { Cookie: jar.toString() } })).headers);
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a real H3Event read as not read-only", async () => {
+    const onRead = vi.fn();
+    const useSession = defineSession({
+      key,
+      maxAge: "1h",
+      cookie: { secure: false },
+      hooks: { onRead },
+    });
+    const jar = await login(useSession);
+
+    h.router.get(
+      "/me",
+      eventHandler(async (event) => {
+        await useSession(event);
+        return { ok: true };
+      }),
+    );
+    await h.request("/me", { headers: { Cookie: jar.toString() } });
+
+    expect(onRead).toHaveBeenCalledTimes(1);
+    expect(onRead.mock.calls[0]![0].readOnly).toBe(false);
+  });
+
+  it("refuses to write through a compat event", async () => {
+    const useSession = defineSession({ key, maxAge: "1h", cookie: { secure: false } });
+    const jar = await login(useSession);
+
+    const session = await useSession(upgradeEvent(jar.toString()));
+
+    await expect(session.update({ role: "superadmin" })).rejects.toThrow(/read-only/i);
+    await expect(session.clear()).rejects.toThrow(/read-only/i);
+  });
+});
