@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 function createUseAuth(
-  hooks?: Partial<Parameters<typeof defineTokenPair<AccessData, RefreshData>>[0]["hooks"]>,
+  hooks?: Partial<Parameters<typeof defineTokenPair<AccessData, RefreshData>>[0]["hooks"]>
 ) {
   return defineTokenPair<AccessData, RefreshData>({
     access: {
@@ -63,7 +63,7 @@ describe("defineTokenPair", () => {
         access: { key: atKey, maxAge: undefined as any, cookie: { secure: false } },
         refresh: { key: rtKey, maxAge: "30D", cookie: { secure: false } },
         hooks: { onRefresh: vi.fn() },
-      }),
+      })
     ).toThrow("[unauth] access.maxAge is required");
   });
 
@@ -73,7 +73,7 @@ describe("defineTokenPair", () => {
         access: { key: atKey, maxAge: "15m", cookie: { secure: false } },
         refresh: { key: rtKey, maxAge: undefined as any, cookie: { secure: false } },
         hooks: { onRefresh: vi.fn() },
-      }),
+      })
     ).toThrow("[unauth] refresh.maxAge is required");
   });
 
@@ -691,7 +691,7 @@ describe("requireAuth", () => {
         const { access } = await useAuth(event);
         return { sub: access.data.sub };
       },
-      { middleware: [requireAuth(useAuth)] },
+      { middleware: [requireAuth(useAuth)] }
     );
 
     const jar = cookieJar();
@@ -803,7 +803,7 @@ describe("optionalAuth", () => {
         const { access } = await useAuth(event);
         return { authenticated: !!access.id, sub: access.data.sub ?? null };
       },
-      { middleware: [optionalAuth(useAuth)] },
+      { middleware: [optionalAuth(useAuth)] }
     );
 
     const jar = cookieJar();
@@ -828,7 +828,7 @@ describe("optionalAuth", () => {
         const { access } = await useAuth(event);
         return { authenticated: !!access.id };
       },
-      { middleware: [optionalAuth(useAuth)] },
+      { middleware: [optionalAuth(useAuth)] }
     );
 
     const res = await app.request("/feed");

@@ -147,7 +147,7 @@ export interface H3TokenPairOptions<TAccess extends SessionData, TRefresh extend
 
 /** Return type of {@link defineTokenPair}. */
 export type DefineTokenPairReturn<TAccess extends SessionData, TRefresh extends SessionData> = (
-  event: HTTPEvent,
+  event: HTTPEvent
 ) => Promise<TokenPair<TAccess, TRefresh>>;
 
 /**
@@ -179,7 +179,7 @@ export type DefineTokenPairReturn<TAccess extends SessionData, TRefresh extends 
  * @throws {Error} If `access.maxAge` or `refresh.maxAge` is missing.
  */
 export function defineTokenPair<TAccess extends SessionData, TRefresh extends SessionData>(
-  options: H3TokenPairOptions<TAccess, TRefresh>,
+  options: H3TokenPairOptions<TAccess, TRefresh>
 ): DefineTokenPairReturn<TAccess, TRefresh> {
   if (!options.access.maxAge) {
     throw new Error("[unauth] access.maxAge is required for defineTokenPair");
@@ -325,7 +325,7 @@ export interface TokenPairMiddlewareConfig<TAccess extends SessionData> {
  */
 export function requireAuth<TAccess extends SessionData, TRefresh extends SessionData>(
   useAuth: DefineTokenPairReturn<TAccess, TRefresh>,
-  config?: TokenPairMiddlewareConfig<TAccess>,
+  config?: TokenPairMiddlewareConfig<TAccess>
 ): (event: HTTPEvent) => Promise<void> {
   return async (event: HTTPEvent): Promise<void> => {
     const { access } = await useAuth(event);
@@ -348,7 +348,7 @@ export function requireAuth<TAccess extends SessionData, TRefresh extends Sessio
  */
 export function optionalAuth<TAccess extends SessionData, TRefresh extends SessionData>(
   useAuth: DefineTokenPairReturn<TAccess, TRefresh>,
-  config?: TokenPairMiddlewareConfig<TAccess>,
+  config?: TokenPairMiddlewareConfig<TAccess>
 ): (event: HTTPEvent) => Promise<void> {
   return async (event: HTTPEvent): Promise<void> => {
     const { access } = await useAuth(event);

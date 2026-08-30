@@ -578,7 +578,7 @@ describe("requireSession", () => {
         const session = await useSession(event);
         return { userId: session.data.userId };
       },
-      { middleware: [requireSession(useSession)] },
+      { middleware: [requireSession(useSession)] }
     );
 
     const jar = cookieJar();
@@ -625,7 +625,7 @@ describe("requireSession", () => {
         const session = await useSession(event);
         return { userId: session.data.userId };
       },
-      { middleware: [requireSession(useSession, { onAuthenticated })] },
+      { middleware: [requireSession(useSession, { onAuthenticated })] }
     );
 
     const jar = cookieJar();
@@ -705,7 +705,7 @@ describe("optionalSession", () => {
           userId: session.data.userId ?? null,
         };
       },
-      { middleware: [optionalSession(useSession)] },
+      { middleware: [optionalSession(useSession)] }
     );
 
     const jar = cookieJar();
@@ -738,7 +738,7 @@ describe("optionalSession", () => {
           userId: session.data.userId ?? null,
         };
       },
-      { middleware: [optionalSession(useSession)] },
+      { middleware: [optionalSession(useSession)] }
     );
 
     const res = await app.request("/feed");

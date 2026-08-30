@@ -41,7 +41,7 @@ describe("defineSession (h3v1)", () => {
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null, data: session.data };
-      }),
+      })
     );
 
     const res = await h.request("/");
@@ -63,14 +63,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1", role: "admin" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null, data: session.data };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -101,7 +101,7 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.post(
       "/logout",
@@ -109,14 +109,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.clear();
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -158,14 +158,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null, data: session.data };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -224,14 +224,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1", role: "user" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null, data: session.data };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -278,14 +278,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null, data: session.data };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -328,14 +328,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -378,14 +378,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1", banned: true });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -430,14 +430,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null, data: session.data };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -478,14 +478,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { data: session.data };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -518,14 +518,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { id: session.id ?? null };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -558,14 +558,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { data: session.data };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -602,14 +602,14 @@ describe("defineSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { data: session.data };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -651,7 +651,7 @@ describe("requireSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -661,7 +661,7 @@ describe("requireSession (h3v1)", () => {
           const session = await useSession(event);
           return { userId: session.data.userId };
         },
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -688,7 +688,7 @@ describe("requireSession (h3v1)", () => {
       eventHandler({
         onRequest: requireSession(useSession),
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const res = await h.request("/me");
@@ -709,7 +709,7 @@ describe("requireSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -719,7 +719,7 @@ describe("requireSession (h3v1)", () => {
           const session = await useSession(event);
           return { userId: session.data.userId };
         },
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -748,7 +748,7 @@ describe("requireSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1", role: "user" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/admin",
@@ -761,7 +761,7 @@ describe("requireSession (h3v1)", () => {
           },
         }),
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -796,7 +796,7 @@ describe("optionalSession (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1" });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/feed",
@@ -809,7 +809,7 @@ describe("optionalSession (h3v1)", () => {
             userId: session.data.userId ?? null,
           };
         },
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -844,7 +844,7 @@ describe("optionalSession (h3v1)", () => {
             userId: session.data.userId ?? null,
           };
         },
-      }),
+      })
     );
 
     const res = await h.request("/feed");
@@ -867,7 +867,7 @@ describe("optionalSession (h3v1)", () => {
       eventHandler({
         onRequest: optionalSession(useSession, { onAuthenticated }),
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     // Unauthenticated request
@@ -897,7 +897,7 @@ describe("defineSession — read-only compat events (h3v1)", () => {
         const session = await useSession(event);
         await session.update({ userId: "u1", role: "user" });
         return { ok: true };
-      }),
+      })
     );
     const jar = cookieJar();
     jar.update((await h.request("/login", { method: "POST" })).headers);
@@ -983,7 +983,7 @@ describe("defineSession — read-only compat events (h3v1)", () => {
       eventHandler(async (event) => {
         const session = await useSession(event);
         return { data: session.data };
-      }),
+      })
     );
 
     vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
@@ -1007,7 +1007,7 @@ describe("defineSession — read-only compat events (h3v1)", () => {
       eventHandler(async (event) => {
         await useSession(event);
         return { ok: true };
-      }),
+      })
     );
     await h.request("/me", { headers: { Cookie: jar.toString() } });
 

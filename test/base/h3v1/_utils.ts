@@ -77,7 +77,7 @@ export function createH3v1Harness(): H3v1Harness {
 
               resolve(new Response(text || null, { status: res.status, headers }));
             });
-          }),
+          })
       );
     },
   };

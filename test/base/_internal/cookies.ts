@@ -24,7 +24,7 @@ export function cookieJar() {
         const value = nameValue.slice(eqIdx + 1);
 
         const isExpired = parts.some(
-          (p) => p.toLowerCase().startsWith("max-age=0") || p.toLowerCase().startsWith("max-age=-"),
+          (p) => p.toLowerCase().startsWith("max-age=0") || p.toLowerCase().startsWith("max-age=-")
         );
 
         if (isExpired) {

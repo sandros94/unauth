@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 function createUseAuth(
-  hooks?: Partial<Parameters<typeof defineTokenPair<AccessData, RefreshData>>[0]["hooks"]>,
+  hooks?: Partial<Parameters<typeof defineTokenPair<AccessData, RefreshData>>[0]["hooks"]>
 ) {
   return defineTokenPair<AccessData, RefreshData>({
     access: {
@@ -64,7 +64,7 @@ describe("defineTokenPair (h3v1)", () => {
         access: { key: atKey, maxAge: undefined as any, cookie: { secure: false } },
         refresh: { key: rtKey, maxAge: "30D", cookie: { secure: false } },
         hooks: { onRefresh: vi.fn() },
-      }),
+      })
     ).toThrow("[unauth] access.maxAge is required");
   });
 
@@ -74,7 +74,7 @@ describe("defineTokenPair (h3v1)", () => {
         access: { key: atKey, maxAge: "15m", cookie: { secure: false } },
         refresh: { key: rtKey, maxAge: undefined as any, cookie: { secure: false } },
         hooks: { onRefresh: vi.fn() },
-      }),
+      })
     ).toThrow("[unauth] refresh.maxAge is required");
   });
 
@@ -89,7 +89,7 @@ describe("defineTokenPair (h3v1)", () => {
           accessId: access.id ?? null,
           refreshId: refresh.id ?? null,
         };
-      }),
+      })
     );
 
     const res = await h.request("/");
@@ -110,7 +110,7 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -122,7 +122,7 @@ describe("defineTokenPair (h3v1)", () => {
           refreshId: refresh.id ?? null,
           refreshData: refresh.data,
         };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -156,7 +156,7 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -166,7 +166,7 @@ describe("defineTokenPair (h3v1)", () => {
           accessId: access.id ?? null,
           refreshId: refresh.id ?? null,
         };
-      }),
+      })
     );
     h.router.post(
       "/logout",
@@ -174,7 +174,7 @@ describe("defineTokenPair (h3v1)", () => {
         const auth = await useAuth(event);
         await auth.revoke();
         return { ok: true };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -222,7 +222,7 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -232,7 +232,7 @@ describe("defineTokenPair (h3v1)", () => {
           accessId: access.id ?? null,
           accessData: access.data,
         };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -283,7 +283,7 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -293,7 +293,7 @@ describe("defineTokenPair (h3v1)", () => {
           accessId: access.id ?? null,
           accessData: access.data,
         };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -338,14 +338,14 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const { access } = await useAuth(event);
         return { accessId: access.id ?? null };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -391,7 +391,7 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -401,7 +401,7 @@ describe("defineTokenPair (h3v1)", () => {
           accessId: access.id ?? null,
           refreshId: refresh.id ?? null,
         };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -446,14 +446,14 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         await useAuth(event);
         return { ok: true };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -497,14 +497,14 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         await useAuth(event);
         return { ok: true };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -539,14 +539,14 @@ describe("defineTokenPair (h3v1)", () => {
         const { access } = await useAuth(event);
         await access.update({ sub: "u1", permissions: ["read"] });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const { access } = await useAuth(event);
         return { accessId: access.id ?? null };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -577,14 +577,14 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         await useAuth(event);
         return { ok: true };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -613,14 +613,14 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         await useAuth(event);
         return { ok: true };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -645,7 +645,7 @@ describe("defineTokenPair (h3v1)", () => {
       eventHandler(async (event) => {
         await useAuth(event);
         return { ok: true };
-      }),
+      })
     );
 
     await h.request("/");
@@ -671,7 +671,7 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -681,7 +681,7 @@ describe("defineTokenPair (h3v1)", () => {
           accessId: access.id ?? null,
           refreshId: refresh.id ?? null,
         };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -720,7 +720,7 @@ describe("defineTokenPair (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.post(
       "/force-update",
@@ -728,14 +728,14 @@ describe("defineTokenPair (h3v1)", () => {
         const { access } = await useAuth(event);
         await access.update({ sub: "u1", permissions: ["admin"] });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler(async (event) => {
         const { access } = await useAuth(event);
         return { permissions: access.data.permissions };
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -776,7 +776,7 @@ describe("requireAuth (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
@@ -786,7 +786,7 @@ describe("requireAuth (h3v1)", () => {
           const { access } = await useAuth(event);
           return { sub: access.data.sub };
         },
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -809,7 +809,7 @@ describe("requireAuth (h3v1)", () => {
       eventHandler({
         onRequest: requireAuth(useAuth),
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const res = await h.request("/me");
@@ -829,14 +829,14 @@ describe("requireAuth (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/me",
       eventHandler({
         onRequest: requireAuth(useAuth, { onAuthenticated }),
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -864,7 +864,7 @@ describe("requireAuth (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/admin",
@@ -877,7 +877,7 @@ describe("requireAuth (h3v1)", () => {
           },
         }),
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -911,7 +911,7 @@ describe("optionalAuth (h3v1)", () => {
           refreshData: { sub: "u1", family: "fam1" },
         });
         return { ok: true };
-      }),
+      })
     );
     h.router.get(
       "/feed",
@@ -921,7 +921,7 @@ describe("optionalAuth (h3v1)", () => {
           const { access } = await useAuth(event);
           return { authenticated: !!access.id, sub: access.data.sub ?? null };
         },
-      }),
+      })
     );
 
     const jar = cookieJar();
@@ -948,7 +948,7 @@ describe("optionalAuth (h3v1)", () => {
           const { access } = await useAuth(event);
           return { authenticated: !!access.id };
         },
-      }),
+      })
     );
 
     const res = await h.request("/feed");
@@ -965,7 +965,7 @@ describe("optionalAuth (h3v1)", () => {
       eventHandler({
         onRequest: optionalAuth(useAuth, { onAuthenticated }),
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     await h.request("/feed");

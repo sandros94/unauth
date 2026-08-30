@@ -141,7 +141,7 @@ export type SessionManager<T extends SessionData> = BaseSessionManager<T, Expire
  * WebSocket upgrade — read-only, see {@link CompatEvent}.
  */
 export type DefineSessionReturn<T extends SessionData> = (
-  event: SessionEvent,
+  event: SessionEvent
 ) => Promise<SessionManager<T>>;
 
 /**
@@ -175,7 +175,7 @@ export type DefineSessionReturn<T extends SessionData> = (
  * @default cookie `{ httpOnly: true, secure: true, sameSite: "lax", path: "/" }`
  */
 export function defineSession<T extends SessionData>(
-  options: H3SessionOptions<T>,
+  options: H3SessionOptions<T>
 ): DefineSessionReturn<T> {
   const refreshAfter = options.refreshAfter ?? DEFAULT_REFRESH_AFTER;
 
@@ -291,7 +291,7 @@ export interface SessionMiddlewareConfig<T extends SessionData> {
  */
 export function requireSession<T extends SessionData>(
   useSession: DefineSessionReturn<T>,
-  config?: SessionMiddlewareConfig<T>,
+  config?: SessionMiddlewareConfig<T>
 ): (event: H3Event) => Promise<void> {
   return async (event: H3Event): Promise<void> => {
     const session = await useSession(event);
@@ -314,7 +314,7 @@ export function requireSession<T extends SessionData>(
  */
 export function optionalSession<T extends SessionData>(
   useSession: DefineSessionReturn<T>,
-  config?: SessionMiddlewareConfig<T>,
+  config?: SessionMiddlewareConfig<T>
 ): (event: H3Event) => Promise<void> {
   return async (event: H3Event): Promise<void> => {
     const session = await useSession(event);

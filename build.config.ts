@@ -17,7 +17,7 @@ export default defineBuildConfig({
             },
             {
               delimiters: ["", ""],
-            },
+            }
           ),
         ],
       },
@@ -36,7 +36,7 @@ export default defineBuildConfig({
             },
             {
               delimiters: ["", ""],
-            },
+            }
           ),
         ],
       },

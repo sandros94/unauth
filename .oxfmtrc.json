@@ -1,12 +1,6 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "trailingComma": "es5",
-  "ignorePatterns": [
-    "*.md",
-    "pnpm*.yaml",
-    "**/*.gen.ts",
-    "**/.docs",
-    "**/dist/**"
-  ],
+  "ignorePatterns": ["*.md", "pnpm*.yaml", "**/*.gen.ts", "**/.docs", "**/dist/**"],
   "proseWrap": "never"
 }

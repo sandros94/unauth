@@ -23,7 +23,7 @@ describe("defineCsrf (h3v1)", () => {
       eventHandler({
         onRequest: csrf,
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const res = await h.request("/");
@@ -38,7 +38,7 @@ describe("defineCsrf (h3v1)", () => {
       eventHandler({
         onRequest: csrf,
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const res1 = await h.request("/");
@@ -61,7 +61,7 @@ describe("defineCsrf (h3v1)", () => {
       eventHandler({
         onRequest: csrf,
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const res = await h.request("/", { method: "POST" });
@@ -74,7 +74,7 @@ describe("defineCsrf (h3v1)", () => {
       eventHandler({
         onRequest: csrf,
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const res = await h.request("/", {
@@ -92,14 +92,14 @@ describe("defineCsrf (h3v1)", () => {
       eventHandler({
         onRequest: csrf,
         handler: () => ({ ok: true }),
-      }),
+      })
     );
     h.router.post(
       "/",
       eventHandler({
         onRequest: csrf,
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     // GET to obtain CSRF cookie
@@ -133,14 +133,14 @@ describe("defineCsrf (h3v1)", () => {
       eventHandler({
         onRequest: custom,
         handler: () => ({ ok: true }),
-      }),
+      })
     );
     h.router.post(
       "/",
       eventHandler({
         onRequest: custom,
         handler: () => ({ ok: true }),
-      }),
+      })
     );
 
     const getRes = await h.request("/");

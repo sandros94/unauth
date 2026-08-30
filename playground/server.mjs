@@ -113,7 +113,7 @@ app.get(
     const { access } = await useAuth(event);
     return { sub: access.data.sub, permissions: access.data.permissions };
   },
-  { middleware: [requireAuth(useAuth)] },
+  { middleware: [requireAuth(useAuth)] }
 );
 
 app.get(
@@ -125,7 +125,7 @@ app.get(
       sub: access.data.sub ?? null,
     };
   },
-  { middleware: [optionalAuth(useAuth)] },
+  { middleware: [optionalAuth(useAuth)] }
 );
 
 app.post("/auth/logout", async (event) => {
@@ -141,7 +141,7 @@ app.get(
   () => ({ ok: true, hint: "Read the 'csrf' cookie and echo it as x-csrf-token" }),
   {
     middleware: [csrf],
-  },
+  }
 );
 
 app.post("/csrf/submit", async (event) => ({ ok: true, body: await event.req.json() }), {
