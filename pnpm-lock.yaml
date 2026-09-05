@@ -4,13 +4,8 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  unauth: link:.
-
 patchedDependencies:
-  unjwt@0.7.1:
-    hash: 80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c
-    path: patches/unjwt@0.7.1.patch
+  unjwt@0.7.1: 80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c
 
 importers:
 
@@ -70,7 +65,7 @@ importers:
         version: 1.0.0
       supertest:
         specifier: ^7.2.2
-        version: 7.2.2
+        version: 7.2.2(supports-color@7.2.0)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -87,8 +82,8 @@ importers:
         specifier: ^2.0.1-rc.22
         version: 2.0.1-rc.22
       unauth:
-        specifier: link:..
-        version: link:..
+        specifier: ^0.0.8
+        version: 0.0.8(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1)
       unjwt:
         specifier: ^0.7.1
         version: 0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1)
@@ -1725,11 +1720,36 @@ packages:
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
 
+  unauth@0.0.8:
+    resolution: {integrity: sha512-Y3aDtkljxQBXg0TjVc4YmjH9p4cWI52W4Va6TFYBJp4e9MdGzDjq8JNPywTzI/hfMH9Gfws0iPxHztUfdHDx/w==}
+    engines: {node: ^22.12 || >=24}
+    peerDependencies:
+      cookie-es: ^1.2.2 || ^2.0.0
+      h3: ^1.15.4 || >=2.0.1-rc.18 || ^2.0.1
+    peerDependenciesMeta:
+      h3:
+        optional: true
+
   uncrypto@0.1.3:
     resolution: {integrity: sha512-Ql87qFHB3s/De2ClA9e0gsnS6zXG27SkTiSJwjCc9MebbfapQfuPzumMIUMi38ezPZVNFcHI9sUIepeQfw8J8Q==}
 
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
+
+  unjwt@0.5.40:
+    resolution: {integrity: sha512-a5xkl6e0IJKJOgRXju/l7TtK6pbmfFbp963y6iUTaNmPJBICPLbm+OBkwLUHjTzV/k8NVej6iW6Xu5bJnRWVHg==}
+    engines: {node: ^22.12 || >=24}
+    peerDependencies:
+      cookie-es: ^1.2.2 || ^2.0.0
+      h3: ^1.15.4 || >=2.0.1-rc.5 || ^2.0.1
+      rou3: ^0.7.10
+    peerDependenciesMeta:
+      cookie-es:
+        optional: true
+      h3:
+        optional: true
+      rou3:
+        optional: true
 
   unjwt@0.7.1:
     resolution: {integrity: sha512-hphCRz6Y4KtYy4ZvTfNDBfMuZE+TlY7bF+SNaDs31EvAalzDgafWro6FonFphnewmRtvedEEf5h0+GBAFP++GQ==}
@@ -1744,6 +1764,10 @@ packages:
         optional: true
       rou3:
         optional: true
+
+  unsecure@0.1.0:
+    resolution: {integrity: sha512-decWdPgIydt97WtCI8WS6Npp+ZTepMYiE6TZh9PHPdin18mMkGyg1+iaWRHFfoLXJl3a9eOzQcmngQAxPq2CCw==}
+    engines: {node: ^22.12 || >=24}
 
   unsecure@0.2.2:
     resolution: {integrity: sha512-nq6x3BVy291cz88rkWCE4EkS9HmTM+wV7PE85s2A61ZB3R1BeF+Rl58T03l7T0LrL862L2CoWEn3hOuj6fGwkQ==}
@@ -2586,9 +2610,11 @@ snapshots:
     dependencies:
       uncrypto: 0.1.3
 
-  debug@4.4.3:
+  debug@4.4.3(supports-color@7.2.0):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 7.2.0
 
   default-browser-id@5.0.0: {}
 
@@ -2749,8 +2775,8 @@ snapshots:
     dependencies:
       citty: 0.1.6
       consola: 3.4.2
-      defu: 6.1.4
-      node-fetch-native: 1.6.6
+      defu: 6.1.7
+      node-fetch-native: 1.6.7
       nypm: 0.6.0
       pathe: 2.0.3
 
@@ -2901,7 +2927,7 @@ snapshots:
       citty: 0.1.6
       consola: 3.4.2
       pathe: 2.0.3
-      pkg-types: 2.1.0
+      pkg-types: 2.3.0
       tinyexec: 0.3.2
 
   object-inspect@1.13.4: {}
@@ -3220,11 +3246,11 @@ snapshots:
 
   std-env@4.0.0: {}
 
-  superagent@10.3.0:
+  superagent@10.3.0(supports-color@7.2.0):
     dependencies:
       component-emitter: 1.3.1
       cookiejar: 2.1.4
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       fast-safe-stringify: 2.1.1
       form-data: 4.0.5
       formidable: 3.5.4
@@ -3234,11 +3260,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  supertest@7.2.2:
+  supertest@7.2.2(supports-color@7.2.0):
     dependencies:
       cookie-signature: 1.2.2
       methods: 1.1.2
-      superagent: 10.3.0
+      superagent: 10.3.0(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -3270,9 +3296,25 @@ snapshots:
 
   ufo@1.6.4: {}
 
+  unauth@0.0.8(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1):
+    dependencies:
+      cookie-es: 3.1.1
+      unjwt: 0.5.40(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1)
+      unsecure: 0.1.0
+    optionalDependencies:
+      h3: 2.0.1-rc.22
+    transitivePeerDependencies:
+      - rou3
+
   uncrypto@0.1.3: {}
 
   undici-types@7.16.0: {}
+
+  unjwt@0.5.40(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1):
+    optionalDependencies:
+      cookie-es: 3.1.1
+      h3: 2.0.1-rc.22
+      rou3: 0.8.1
 
   unjwt@0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@1.15.11)(rou3@0.8.1):
     optionalDependencies:
@@ -3285,6 +3327,8 @@ snapshots:
       cookie-es: 3.1.1
       h3: 2.0.1-rc.22
       rou3: 0.8.1
+
+  unsecure@0.1.0: {}
 
   unsecure@0.2.2: {}
 
