@@ -45,8 +45,8 @@ importers:
         specifier: ^0.6.2
         version: 0.6.2(magicast@0.3.5)
       cookie-esv1:
-        specifier: npm:cookie-es@^1.2.3
-        version: cookie-es@1.2.3
+        specifier: npm:cookie-es@^3.1.1
+        version: cookie-es@3.1.1
       cookie-esv3:
         specifier: npm:cookie-es@^3.1.1
         version: cookie-es@3.1.1

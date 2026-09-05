@@ -54,7 +54,7 @@
     "@vitest/coverage-v8": "^4.1.4",
     "automd": "^0.4.3",
     "changelogen": "^0.6.2",
-    "cookie-esv1": "npm:cookie-es@^1.2.3",
+    "cookie-esv1": "npm:cookie-es@^3.1.1",
     "cookie-esv3": "npm:cookie-es@^3.1.1",
     "h3v1": "npm:h3@^1.15.11",
     "h3v2": "npm:h3@^2.0.1-rc.22",
