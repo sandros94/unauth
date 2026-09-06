@@ -1,16 +1,112 @@
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.3.1
+        version: 12.3.1
+
+packages:
+
+  '@pnpm/exe.darwin-arm64@12.3.1':
+    resolution: {integrity: sha512-Yer+aZnQtgE+OOLKwbRHaAEt74WBJdH8eXpLrSWf+5vj7DkkDvhSR45HVxN3a5d430fMUyF0lmQai02T650r4g==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@pnpm/exe.darwin-x64@12.3.1':
+    resolution: {integrity: sha512-XPZYf+XpxufwZS8tpQQdftsv6eUtPDA0uU5NlfXA1uMVPvXJesw5PLGWmmJZHcI4rIscn2H6FngkIcvkuZaaKQ==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@pnpm/exe.linux-arm64-musl@12.3.1':
+    resolution: {integrity: sha512-WjKcLeuierWGSQHjb0QeDl8avQTel8rN5jDMCI55tBJTrTBXNQsdlpgzP9uCD0GSzjPH+hjWKb+GjeMNvv5Ruw==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@pnpm/exe.linux-arm64@12.3.1':
+    resolution: {integrity: sha512-X0HxHlEYubFRuMPBOy+ytKsv6c11v4em/ovVVCy5KCdJVBtVGF7vF5ywlGqw7EjpGdqM39pdLTWFwH9Q77lUzQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-x64-musl@12.3.1':
+    resolution: {integrity: sha512-ZvzQI2+Ek0v+V6m30XV3ShIx5sm+ZIZoM669Z0F/RvMSpHgklqv3CBdEwAsQCZ7XBNZLMQIE7RPR2yIwxt3mnw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@pnpm/exe.linux-x64@12.3.1':
+    resolution: {integrity: sha512-ubvbQ2OSt7fR3kSnhtknx5xnm2H7uRi0kC32ADmzKJ1vZz337kmL30rTHoUzTG7ZcIyEhODg7R+zI1cW1ZdVDw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.win32-arm64@12.3.1':
+    resolution: {integrity: sha512-e+5CjFBGWP7U7RfFlH/EQnlFaP9Uyo/Y0BDCEbitsC4if28WBur3ajAkc25rRwiEwmmEpipTSzqNsKIs9Mq72Q==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@pnpm/exe.win32-x64@12.3.1':
+    resolution: {integrity: sha512-5pW8NQuVF3dkNdaUCm03PeoDiC5I9h4y9Fz717KLWi5jxDKmgARmD1zDdm60F5ohRZHPrRv/jAg94a/5+VXxow==}
+    cpu: [x64]
+    os: [win32]
+
+  pnpm@12.3.1:
+    resolution: {integrity: sha512-PBTBVAjRSJ01D47X+TNh0mzHBwVPaEmk7qO7dAf/T+RWS0E6HEIadzoXarEWio3xx9VI8s0Nx9NE9YxOaApbGA==}
+    engines: {node: '>=18.*'}
+    hasBin: true
+
+snapshots:
+
+  '@pnpm/exe.darwin-arm64@12.3.1':
+    optional: true
+
+  '@pnpm/exe.darwin-x64@12.3.1':
+    optional: true
+
+  '@pnpm/exe.linux-arm64-musl@12.3.1':
+    optional: true
+
+  '@pnpm/exe.linux-arm64@12.3.1':
+    optional: true
+
+  '@pnpm/exe.linux-x64-musl@12.3.1':
+    optional: true
+
+  '@pnpm/exe.linux-x64@12.3.1':
+    optional: true
+
+  '@pnpm/exe.win32-arm64@12.3.1':
+    optional: true
+
+  '@pnpm/exe.win32-x64@12.3.1':
+    optional: true
+
+  pnpm@12.3.1:
+    optionalDependencies:
+      '@pnpm/exe.darwin-arm64': 12.3.1
+      '@pnpm/exe.darwin-x64': 12.3.1
+      '@pnpm/exe.linux-arm64': 12.3.1
+      '@pnpm/exe.linux-arm64-musl': 12.3.1
+      '@pnpm/exe.linux-x64': 12.3.1
+      '@pnpm/exe.linux-x64-musl': 12.3.1
+      '@pnpm/exe.win32-arm64': 12.3.1
+      '@pnpm/exe.win32-x64': 12.3.1
+
+---
 lockfileVersion: '9.0'
 
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  unauth: link:.
-
 patchedDependencies:
-  unjwt@0.7.1:
-    hash: 80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c
-    path: patches/unjwt@0.7.1.patch
+  unjwt@0.7.1: 80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c
 
 importers:
 
@@ -21,7 +117,7 @@ importers:
         version: 3.1.1
       h3:
         specifier: ^1.15.4 || >=2.0.1-rc.22 || ^2.0.1
-        version: 1.15.11
+        version: 2.0.1-rc.22
       unsecure:
         specifier: ^0.2.2
         version: 0.2.2
@@ -70,13 +166,13 @@ importers:
         version: 1.0.0
       supertest:
         specifier: ^7.2.2
-        version: 7.2.2
+        version: 7.2.2(supports-color@7.2.0)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
       unjwt:
         specifier: ^0.7.1
-        version: 0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@1.15.11)(rou3@0.8.1)
+        version: 0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1)
       vitest:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@24.12.0)(@vitest/coverage-v8@4.1.4)(vite@6.3.5(@types/node@24.12.0)(jiti@2.6.1))
@@ -87,8 +183,8 @@ importers:
         specifier: ^2.0.1-rc.22
         version: 2.0.1-rc.22
       unauth:
-        specifier: link:..
-        version: link:..
+        specifier: ^0.0.8
+        version: 0.0.8(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1)
       unjwt:
         specifier: ^0.7.1
         version: 0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1)
@@ -1725,11 +1821,36 @@ packages:
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
 
+  unauth@0.0.8:
+    resolution: {integrity: sha512-Y3aDtkljxQBXg0TjVc4YmjH9p4cWI52W4Va6TFYBJp4e9MdGzDjq8JNPywTzI/hfMH9Gfws0iPxHztUfdHDx/w==}
+    engines: {node: ^22.12 || >=24}
+    peerDependencies:
+      cookie-es: ^1.2.2 || ^2.0.0
+      h3: ^1.15.4 || >=2.0.1-rc.18 || ^2.0.1
+    peerDependenciesMeta:
+      h3:
+        optional: true
+
   uncrypto@0.1.3:
     resolution: {integrity: sha512-Ql87qFHB3s/De2ClA9e0gsnS6zXG27SkTiSJwjCc9MebbfapQfuPzumMIUMi38ezPZVNFcHI9sUIepeQfw8J8Q==}
 
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
+
+  unjwt@0.5.40:
+    resolution: {integrity: sha512-a5xkl6e0IJKJOgRXju/l7TtK6pbmfFbp963y6iUTaNmPJBICPLbm+OBkwLUHjTzV/k8NVej6iW6Xu5bJnRWVHg==}
+    engines: {node: ^22.12 || >=24}
+    peerDependencies:
+      cookie-es: ^1.2.2 || ^2.0.0
+      h3: ^1.15.4 || >=2.0.1-rc.5 || ^2.0.1
+      rou3: ^0.7.10
+    peerDependenciesMeta:
+      cookie-es:
+        optional: true
+      h3:
+        optional: true
+      rou3:
+        optional: true
 
   unjwt@0.7.1:
     resolution: {integrity: sha512-hphCRz6Y4KtYy4ZvTfNDBfMuZE+TlY7bF+SNaDs31EvAalzDgafWro6FonFphnewmRtvedEEf5h0+GBAFP++GQ==}
@@ -1744,6 +1865,10 @@ packages:
         optional: true
       rou3:
         optional: true
+
+  unsecure@0.1.0:
+    resolution: {integrity: sha512-decWdPgIydt97WtCI8WS6Npp+ZTepMYiE6TZh9PHPdin18mMkGyg1+iaWRHFfoLXJl3a9eOzQcmngQAxPq2CCw==}
+    engines: {node: ^22.12 || >=24}
 
   unsecure@0.2.2:
     resolution: {integrity: sha512-nq6x3BVy291cz88rkWCE4EkS9HmTM+wV7PE85s2A61ZB3R1BeF+Rl58T03l7T0LrL862L2CoWEn3hOuj6fGwkQ==}
@@ -2586,9 +2711,11 @@ snapshots:
     dependencies:
       uncrypto: 0.1.3
 
-  debug@4.4.3:
+  debug@4.4.3(supports-color@7.2.0):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 7.2.0
 
   default-browser-id@5.0.0: {}
 
@@ -3220,11 +3347,11 @@ snapshots:
 
   std-env@4.0.0: {}
 
-  superagent@10.3.0:
+  superagent@10.3.0(supports-color@7.2.0):
     dependencies:
       component-emitter: 1.3.1
       cookiejar: 2.1.4
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@7.2.0)
       fast-safe-stringify: 2.1.1
       form-data: 4.0.5
       formidable: 3.5.4
@@ -3234,11 +3361,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  supertest@7.2.2:
+  supertest@7.2.2(supports-color@7.2.0):
     dependencies:
       cookie-signature: 1.2.2
       methods: 1.1.2
-      superagent: 10.3.0
+      superagent: 10.3.0(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -3270,14 +3397,24 @@ snapshots:
 
   ufo@1.6.4: {}
 
+  unauth@0.0.8(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1):
+    dependencies:
+      cookie-es: 3.1.1
+      unjwt: 0.5.40(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1)
+      unsecure: 0.1.0
+    optionalDependencies:
+      h3: 2.0.1-rc.22
+    transitivePeerDependencies:
+      - rou3
+
   uncrypto@0.1.3: {}
 
   undici-types@7.16.0: {}
 
-  unjwt@0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@1.15.11)(rou3@0.8.1):
+  unjwt@0.5.40(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1):
     optionalDependencies:
       cookie-es: 3.1.1
-      h3: 1.15.11
+      h3: 2.0.1-rc.22
       rou3: 0.8.1
 
   unjwt@0.7.1(patch_hash=80a65367957f182ca5943f8954a34284444c102f4d5c0dd5f75d4b32f553608c)(cookie-es@3.1.1)(h3@2.0.1-rc.22)(rou3@0.8.1):
@@ -3285,6 +3422,8 @@ snapshots:
       cookie-es: 3.1.1
       h3: 2.0.1-rc.22
       rou3: 0.8.1
+
+  unsecure@0.1.0: {}
 
   unsecure@0.2.2: {}
 
