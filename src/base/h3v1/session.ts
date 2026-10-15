@@ -27,8 +27,8 @@ import {
  * cookies through it, so the session can be verified and decoded but never re-issued or cleared.
  */
 export type CompatEvent =
-  | { request: { headers: Headers }; context: any }
-  | { headers: Headers; context: any };
+  | { request: { headers: Headers }; context: Record<string, unknown> }
+  | { headers: Headers; context: Record<string, unknown> };
 
 /** Any event this adapter can resolve a session from. */
 export type SessionEvent = H3Event | CompatEvent;
@@ -51,7 +51,7 @@ function canWriteCookies(event: SessionEvent): event is H3Event {
  * - `onRefresh` for auto-refresh with `refresh()` and `clear()` functions
  */
 export interface H3SessionHooks<
-  T extends Record<string, any> = SessionClaims,
+  T extends SessionData = SessionClaims,
   MaxAge extends ExpiresIn | undefined = ExpiresIn | undefined,
 > extends Omit<SessionHooksJWE<T, MaxAge>, "onRead"> {
   /**
@@ -75,7 +75,7 @@ export interface H3SessionHooks<
      */
     readOnly: boolean;
     /** Destroy the session (delete cookie, reset state). Throws when {@link readOnly}. */
-    clear(): Promise<void>;
+    clear: () => Promise<void>;
   }): void | Promise<void>;
 
   /**
@@ -102,9 +102,9 @@ export interface H3SessionHooks<
     event: H3Event;
     config: SessionConfigJWE<T, MaxAge>;
     /** Re-issue the session. Accepts the same update format as `session.update()`. */
-    refresh(update?: SessionUpdate<T>): Promise<void>;
+    refresh: (update?: SessionUpdate<T>) => Promise<void>;
     /** Destroy the session (delete cookie, reset state). */
-    clear(): Promise<void>;
+    clear: () => Promise<void>;
   }): void | Promise<void>;
 }
 
@@ -141,7 +141,7 @@ export type SessionManager<T extends SessionData> = BaseSessionManager<T, Expire
  * WebSocket upgrade — read-only, see {@link CompatEvent}.
  */
 export type DefineSessionReturn<T extends SessionData> = (
-  event: SessionEvent
+  event: SessionEvent,
 ) => Promise<SessionManager<T>>;
 
 /**
@@ -175,13 +175,14 @@ export type DefineSessionReturn<T extends SessionData> = (
  * @default cookie `{ httpOnly: true, secure: true, sameSite: "lax", path: "/" }`
  */
 export function defineSession<T extends SessionData>(
-  options: H3SessionOptions<T>
+  options: H3SessionOptions<T>,
 ): DefineSessionReturn<T> {
   const refreshAfter = options.refreshAfter ?? DEFAULT_REFRESH_AFTER;
+  const maxAge = options.maxAge ?? DEFAULT_SESSION_MAX_AGE;
 
   const jweConfig = {
     name: options.name ?? DEFAULT_SESSION_NAME,
-    maxAge: options.maxAge ?? DEFAULT_SESSION_MAX_AGE,
+    maxAge,
     key: options.key,
     cookie: {
       ...DEFAULT_SECURE_COOKIE,
@@ -199,7 +200,7 @@ export function defineSession<T extends SessionData>(
         // Fall through to `onRead` instead: the session still resolves, and the next ordinary
         // request slides it.
         if (refreshAfter !== false && session.id && writable) {
-          const maxAgeSec = computeDurationInSeconds(config.maxAge!);
+          const maxAgeSec = computeDurationInSeconds(maxAge);
           const maxAgeMs = maxAgeSec * 1000;
           const elapsed = Date.now() - session.createdAt;
           const threshold = maxAgeMs * refreshAfter;
@@ -213,7 +214,7 @@ export function defineSession<T extends SessionData>(
               try {
                 await options.hooks.onRefresh({
                   session,
-                  event: event as H3Event,
+                  event,
                   config,
                   refresh,
                   clear,
@@ -291,7 +292,7 @@ export interface SessionMiddlewareConfig<T extends SessionData> {
  */
 export function requireSession<T extends SessionData>(
   useSession: DefineSessionReturn<T>,
-  config?: SessionMiddlewareConfig<T>
+  config?: SessionMiddlewareConfig<T>,
 ): (event: H3Event) => Promise<void> {
   return async (event: H3Event): Promise<void> => {
     const session = await useSession(event);
@@ -314,7 +315,7 @@ export function requireSession<T extends SessionData>(
  */
 export function optionalSession<T extends SessionData>(
   useSession: DefineSessionReturn<T>,
-  config?: SessionMiddlewareConfig<T>
+  config?: SessionMiddlewareConfig<T>,
 ): (event: H3Event) => Promise<void> {
   return async (event: H3Event): Promise<void> => {
     const session = await useSession(event);

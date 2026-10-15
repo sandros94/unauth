@@ -1,23 +1,27 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "moduleDetection": "force",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "allowJs": true,
     "resolveJsonModule": true,
     "strict": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": false,
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
-    "allowImportingTsExtensions": true,
+    "noImplicitAny": true,
     "noImplicitOverride": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "composite": true,
+    "isolatedDeclarations": true,
+    "allowImportingTsExtensions": true,
+    "lib": ["ESNext", "DOM"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist", "skills"]
+  "exclude": ["node_modules", "dist", "coverage"]
 }

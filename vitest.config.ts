@@ -2,8 +2,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    slowTestThreshold: 1000,
     coverage: {
-      exclude: ["src/h3v2.ts", "dist/**", "test/**"],
+      exclude: ["dist/**", "test/**", "playground/**", "*.config.ts"],
     },
   },
 });

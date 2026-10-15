@@ -1,0 +1,56 @@
+diff --git a/dist/adapters/h3v1/index.d.mts b/dist/adapters/h3v1/index.d.mts
+index 38e723b2882027d85913fade486b1f21c090e434..7ce7fea8f44ea6d3165d0b75c49a61a9cbdb6296 100644
+--- a/dist/adapters/h3v1/index.d.mts
++++ b/dist/adapters/h3v1/index.d.mts
+@@ -1,7 +1,7 @@
+ import { CompositeKey, ContentEncryptionAlgorithm, DeriveKeyOptions, DeriveKeyReturn, Duration, ExpiresIn, GenerateJWKOptions, GenerateJWKReturn, GenerateKeyAlgorithm, GenerateKeyOptions, GenerateKeyReturn, JOSEPayload, JWEAsymmetricPrivateJWK, JWEAsymmetricPublicJWK, JWEDecryptJWK, JWEDecryptOptions, JWEDecryptResult, JWEEncryptJWK, JWEEncryptOptions, JWEFlattenedSerialization, JWEGeneralRecipient, JWEGeneralSerialization, JWEHeaderParameters, JWEKeyManagementHeaderParameters, JWEMultiDecryptOptions, JWEMultiDecryptResult, JWEMultiEncryptOptions, JWEMultiRecipient, JWEProtectedHeader, JWK, JWKAlgorithm, JWKCacheAdapter, JWKLookupFunction, JWKLookupFunctionHeader, JWKPEMAlgorithm, JWKParameters, JWKSet, JWK_AES_CBC_HMAC, JWK_AES_GCM, JWK_AES_GCM_KW, JWK_AES_KW, JWK_Asymmetric, JWK_Asymmetric_Algorithm, JWK_EC, JWK_ECDH_ES, JWK_ECDSA, JWK_EC_Private, JWK_EC_Public, JWK_HMAC, JWK_OKP, JWK_OKP_Private, JWK_OKP_Public, JWK_OKP_SIGN, JWK_PBES2, JWK_Pair, JWK_Private, JWK_Public, JWK_RSA, JWK_RSA_ENC, JWK_RSA_PSS, JWK_RSA_Private, JWK_RSA_Public, JWK_RSA_SIGN, JWK_Symmetric, JWK_Symmetric_Algorithm, JWK_oct, JWSAlgorithm, JWSAsymmetricPrivateJWK, JWSAsymmetricPublicJWK, JWSFlattenedSerialization, JWSGeneralSerialization, JWSGeneralSignature, JWSHeaderParameters, JWSMultiSignOptions, JWSMultiSigner, JWSMultiVerifyAllOptions, JWSMultiVerifyOptions, JWSMultiVerifyOutcome, JWSMultiVerifyResult, JWSProtectedHeader, JWSSignJWK, JWSSignOptions, JWSVerifyJWK, JWSVerifyOptions, JWSVerifyResult, JWT, JWTClaimValidationOptions, JWTClaims, JoseHeaderParameters, KeyManagementAlgorithm, MaxTokenAge, NotBeforeIn, StrictOmit, UnwrapKeyOptions, UnwrappingKeyFor, WrapKeyOptions, WrapKeyResult, WrappingKeyFor } from "../../_chunks/index.mjs";
+ import { deriveJWKFromPassword, exportPEM, exportToPEM, generateJWK, importFromPEM, importPEM } from "../../core/jwk.mjs";
+-import { H3Event } from "h3";
+-import { CookieSerializeOptions } from "cookie-es";
++import { H3Event } from "h3v1";
++import { CookieSerializeOptions } from "cookie-esv1";
+ interface SessionClaims extends Required<Pick<JWTClaims, "jti" | "iat">>, StrictOmit<JWTClaims, "jti" | "iat"> {}
+ type SessionData<T extends Record<string, any> = SessionClaims> = StrictOmit<T, "jti" | "iat" | "exp">;
+ type SessionUpdate<T extends Record<string, any> = SessionClaims> = Partial<SessionData<T>> | ((oldData: SessionData<T>) => Partial<SessionData<T>> | undefined);
+diff --git a/dist/adapters/h3v1/index.mjs b/dist/adapters/h3v1/index.mjs
+index 2d373f97202114a31640a269aff0665a7efeb018..2e048d791dd2be600a7854e47f743727ab094a42 100644
+--- a/dist/adapters/h3v1/index.mjs
++++ b/dist/adapters/h3v1/index.mjs
+@@ -3,8 +3,8 @@ import { sanitizeObjectCopy } from "../../_chunks/libs/unsecure.mjs";
+ import { deriveJWKFromPassword, exportPEM, exportToPEM, generateJWK, importFromPEM, importPEM } from "../../_chunks/jwk.mjs";
+ import { sign, verify } from "../../_chunks/jws.mjs";
+ import { decrypt, encrypt } from "../../_chunks/jwe.mjs";
+-import { isEvent, setCookie } from "h3";
+-import { parse } from "cookie-es";
++import { isEvent, setCookie } from "h3v1";
++import { parse } from "cookie-esv1";
+ const kGetSessionPromise$1 = Symbol("h3_jwe_getSession");
+ const DEFAULT_NAME$1 = "h3-jwe";
+ const DEFAULT_COOKIE$1 = {
+diff --git a/dist/adapters/h3v2/index.d.mts b/dist/adapters/h3v2/index.d.mts
+index e0b498e869cd90fb1854253863663d5a12aac987..4a17489cd7099ca0183df095208932f41f582f5d 100644
+--- a/dist/adapters/h3v2/index.d.mts
++++ b/dist/adapters/h3v2/index.d.mts
+@@ -1,7 +1,7 @@
+ import { CompositeKey, ContentEncryptionAlgorithm, DeriveKeyOptions, DeriveKeyReturn, Duration, ExpiresIn, GenerateJWKOptions, GenerateJWKReturn, GenerateKeyAlgorithm, GenerateKeyOptions, GenerateKeyReturn, JOSEPayload, JWEAsymmetricPrivateJWK, JWEAsymmetricPublicJWK, JWEDecryptJWK, JWEDecryptOptions, JWEDecryptResult, JWEEncryptJWK, JWEEncryptOptions, JWEFlattenedSerialization, JWEGeneralRecipient, JWEGeneralSerialization, JWEHeaderParameters, JWEKeyManagementHeaderParameters, JWEMultiDecryptOptions, JWEMultiDecryptResult, JWEMultiEncryptOptions, JWEMultiRecipient, JWEProtectedHeader, JWK, JWKAlgorithm, JWKCacheAdapter, JWKLookupFunction, JWKLookupFunctionHeader, JWKPEMAlgorithm, JWKParameters, JWKSet, JWK_AES_CBC_HMAC, JWK_AES_GCM, JWK_AES_GCM_KW, JWK_AES_KW, JWK_Asymmetric, JWK_Asymmetric_Algorithm, JWK_EC, JWK_ECDH_ES, JWK_ECDSA, JWK_EC_Private, JWK_EC_Public, JWK_HMAC, JWK_OKP, JWK_OKP_Private, JWK_OKP_Public, JWK_OKP_SIGN, JWK_PBES2, JWK_Pair, JWK_Private, JWK_Public, JWK_RSA, JWK_RSA_ENC, JWK_RSA_PSS, JWK_RSA_Private, JWK_RSA_Public, JWK_RSA_SIGN, JWK_Symmetric, JWK_Symmetric_Algorithm, JWK_oct, JWSAlgorithm, JWSAsymmetricPrivateJWK, JWSAsymmetricPublicJWK, JWSFlattenedSerialization, JWSGeneralSerialization, JWSGeneralSignature, JWSHeaderParameters, JWSMultiSignOptions, JWSMultiSigner, JWSMultiVerifyAllOptions, JWSMultiVerifyOptions, JWSMultiVerifyOutcome, JWSMultiVerifyResult, JWSProtectedHeader, JWSSignJWK, JWSSignOptions, JWSVerifyJWK, JWSVerifyOptions, JWSVerifyResult, JWT, JWTClaimValidationOptions, JWTClaims, JoseHeaderParameters, KeyManagementAlgorithm, MaxTokenAge, NotBeforeIn, StrictOmit, UnwrapKeyOptions, UnwrappingKeyFor, WrapKeyOptions, WrapKeyResult, WrappingKeyFor } from "../../_chunks/index.mjs";
+ import { deriveJWKFromPassword, exportPEM, exportToPEM, generateJWK, importFromPEM, importPEM } from "../../core/jwk.mjs";
+-import { H3Event, HTTPEvent } from "h3";
+-import { CookieSerializeOptions } from "cookie-es";
++import { H3Event, HTTPEvent } from "h3v2";
++import { CookieSerializeOptions } from "cookie-esv3";
+ interface SessionClaims extends Required<Pick<JWTClaims, "jti" | "iat">>, StrictOmit<JWTClaims, "jti" | "iat"> {}
+ type SessionData<T extends Record<string, any> = SessionClaims> = StrictOmit<T, "jti" | "iat" | "exp">;
+ type SessionUpdate<T extends Record<string, any> = SessionClaims> = Partial<SessionData<T>> | ((oldData: SessionData<T>) => Partial<SessionData<T>> | undefined);
+diff --git a/dist/adapters/h3v2/index.mjs b/dist/adapters/h3v2/index.mjs
+index eaa477d934fd9e6a76e20df3bd138a6c731180f7..9eae85cd360cb1c6b4595a0cad43062b25c4a6bb 100644
+--- a/dist/adapters/h3v2/index.mjs
++++ b/dist/adapters/h3v2/index.mjs
+@@ -3,7 +3,7 @@ import { sanitizeObjectCopy } from "../../_chunks/libs/unsecure.mjs";
+ import { deriveJWKFromPassword, exportPEM, exportToPEM, generateJWK, importFromPEM, importPEM } from "../../_chunks/jwk.mjs";
+ import { sign, verify } from "../../_chunks/jws.mjs";
+ import { decrypt, encrypt } from "../../_chunks/jwe.mjs";
+-import { getChunkedCookie, getEventContext, setChunkedCookie } from "h3";
++import { getChunkedCookie, getEventContext, setChunkedCookie } from "h3v2";
+ import { NullProtoObj } from "rou3";
+ const kGetSessionPromise$1 = Symbol("h3_jwe_getSession");
+ const DEFAULT_NAME$1 = "h3-jwe";

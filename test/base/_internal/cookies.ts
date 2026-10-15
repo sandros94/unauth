@@ -11,11 +11,16 @@
  * Cookies with `Max-Age=0` (or negative) are treated as a delete instruction
  * and removed from the jar.
  */
-export function cookieJar() {
+export interface CookieJar {
+  update: (headers: Headers) => void;
+  toString: () => string;
+}
+
+export function cookieJar(): CookieJar {
   const jar: Record<string, string> = {};
 
   return {
-    update(headers: Headers) {
+    update(headers: Headers): void {
       for (const sc of headers.getSetCookie()) {
         const parts = sc.split(";").map((p) => p.trim());
         const nameValue = parts[0]!;
@@ -24,7 +29,7 @@ export function cookieJar() {
         const value = nameValue.slice(eqIdx + 1);
 
         const isExpired = parts.some(
-          (p) => p.toLowerCase().startsWith("max-age=0") || p.toLowerCase().startsWith("max-age=-")
+          (p) => p.toLowerCase().startsWith("max-age=0") || p.toLowerCase().startsWith("max-age=-"),
         );
 
         if (isExpired) {

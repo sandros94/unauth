@@ -74,7 +74,7 @@ describe("defineCsrf", () => {
     const postRes = await app.request("/", {
       method: "POST",
       headers: {
-        Cookie: `csrf=${csrfToken}`,
+        "Cookie": `csrf=${csrfToken}`,
         "x-csrf-token": csrfToken,
       },
     });
@@ -84,15 +84,15 @@ describe("defineCsrf", () => {
   });
 
   it("uses custom cookie and header names", async () => {
-    const csrf = defineCsrf({
+    const customCsrf = defineCsrf({
       secret: "test-secret",
       name: "my-csrf",
       headerName: "x-my-csrf",
       cookie: { secure: false },
     });
 
-    app.get("/", () => ({ ok: true }), { middleware: [csrf] });
-    app.post("/", () => ({ ok: true }), { middleware: [csrf] });
+    app.get("/", () => ({ ok: true }), { middleware: [customCsrf] });
+    app.post("/", () => ({ ok: true }), { middleware: [customCsrf] });
 
     const getRes = await app.request("/");
     const token = parseCookie(getRes.headers, "my-csrf")!;
@@ -102,7 +102,7 @@ describe("defineCsrf", () => {
     const postRes = await app.request("/", {
       method: "POST",
       headers: {
-        Cookie: `my-csrf=${token}`,
+        "Cookie": `my-csrf=${token}`,
         "x-my-csrf": token,
       },
     });
@@ -114,7 +114,7 @@ describe("defineCsrf", () => {
     const failRes = await app.request("/", {
       method: "POST",
       headers: {
-        Cookie: `my-csrf=${token}`,
+        "Cookie": `my-csrf=${token}`,
         "x-csrf-token": token,
       },
     });

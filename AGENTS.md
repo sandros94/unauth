@@ -17,8 +17,8 @@ The `.agents/` directory is the **memory** of this project for AI agents. It is 
 
 Standard approaches, patterns, and implementation guides developed for this project. These documents describe _how_ we build things here.
 
-| File                                                                        | Description                                       |
-| --------------------------------------------------------------------------- | ------------------------------------------------- |
+| File | Description |
+| --- | --- |
 | [`contribution/testing.md`](.agents/contribution/testing.md) (if available) | Testing strategy, test types, and known patterns. |
 
 ### `vision/`
@@ -38,7 +38,7 @@ Tracks current and next steps for project-specific implementations. Completed it
 
 ## Key Scripts
 
-- `pnpm dev:prepare` — stubs the library build and prepares the playground and docs for development.
+- `pnpm dev:prepare` — stubs the library build and installs the `simple-git-hooks` pre-commit hook (stub + lint + typecheck).
 - `pnpm dev` — starts the playground with a dev server.
 - `pnpm prepack` — builds the library for publishing.
 - `pnpm lint` — lint the codebase.
@@ -47,8 +47,7 @@ Tracks current and next steps for project-specific implementations. Completed it
 - `pnpm test:coverage` — run tests with coverage reporting.
 - `pnpm typecheck` — type-check the library, playground, and docs.
 
-Each script is independent — `test` does **not** run lint or type-check.
-**Always run** `pnpm fmt` and `pnpm typecheck` after making changes.
+Each script is independent — `test` does **not** run lint or type-check. **Always run** `pnpm fmt` and `pnpm typecheck` after making changes.
 
 ## Repository Structure
 

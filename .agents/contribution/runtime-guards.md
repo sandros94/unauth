@@ -1,8 +1,6 @@
 # Runtime Guards for Security-Critical Options
 
-TypeScript types enforce required fields at compile time, but JavaScript consumers
-don't benefit from this. For any option that is **security-critical**, add an
-eager runtime check at factory call time (not at first request).
+TypeScript types enforce required fields at compile time, but JavaScript consumers don't benefit from this. For any option that is **security-critical**, add an eager runtime check at factory call time (not at first request).
 
 ## Pattern
 

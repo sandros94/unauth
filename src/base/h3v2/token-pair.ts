@@ -38,9 +38,9 @@ export interface TokenPair<TAccess extends SessionData, TRefresh extends Session
   /** The refresh token session manager (JWE, long-lived, encrypted). */
   readonly refresh: TokenPairSessionManager<TRefresh>;
   /** Coordinated issue: creates RT first, then AT. */
-  issue(arg: { accessData: TAccess; refreshData: TRefresh }): Promise<void>;
+  issue: (arg: { accessData: TAccess; refreshData: TRefresh }) => Promise<void>;
   /** Coordinated revoke: fires `onRevoke`, then clears both tokens. */
-  revoke(): Promise<void>;
+  revoke: () => Promise<void>;
 }
 
 export interface H3TokenPairHooks<
@@ -79,12 +79,12 @@ export interface H3TokenPairHooks<
     refresh: TokenPairSessionManager<TRefresh>;
     event: HTTPEvent;
     /** Re-issue the access token with the given data and rotate the refresh token. */
-    issue(arg: {
+    issue: (arg: {
       accessData: SessionUpdate<TAccess>;
       refreshData?: SessionUpdate<TRefresh>;
-    }): Promise<void>;
+    }) => Promise<void>;
     /** Clear both tokens (e.g., user banned, family revoked). */
-    revoke(): Promise<void>;
+    revoke: () => Promise<void>;
   }): void | Promise<void>;
 
   /**
@@ -147,7 +147,7 @@ export interface H3TokenPairOptions<TAccess extends SessionData, TRefresh extend
 
 /** Return type of {@link defineTokenPair}. */
 export type DefineTokenPairReturn<TAccess extends SessionData, TRefresh extends SessionData> = (
-  event: HTTPEvent
+  event: HTTPEvent,
 ) => Promise<TokenPair<TAccess, TRefresh>>;
 
 /**
@@ -179,7 +179,7 @@ export type DefineTokenPairReturn<TAccess extends SessionData, TRefresh extends 
  * @throws {Error} If `access.maxAge` or `refresh.maxAge` is missing.
  */
 export function defineTokenPair<TAccess extends SessionData, TRefresh extends SessionData>(
-  options: H3TokenPairOptions<TAccess, TRefresh>
+  options: H3TokenPairOptions<TAccess, TRefresh>,
 ): DefineTokenPairReturn<TAccess, TRefresh> {
   if (!options.access.maxAge) {
     throw new Error("[unauth] access.maxAge is required for defineTokenPair");
@@ -224,6 +224,9 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
           });
           await options.hooks.onReadAccess({
             access: { ...session, id: session.id },
+            // The access token alone authenticates the request, so this hook must fire even when
+            // the refresh cookie is absent; the snapshot type promises an `id` that is then missing.
+            // oxlint-disable-next-line typescript/no-non-null-assertion
             refresh: { ...refresh, id: refresh.id! },
             event,
           });
@@ -252,7 +255,10 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
       }): Promise<void> => {
         const at = await updateJWSSession<TAccess, ExpiresIn>(event, atConfig, arg.accessData);
         await refresh.update(arg.refreshData);
-        issuedAccess = { ...at, id: at.id! };
+        if (!at.id) {
+          throw new Error("[unauth] access token was not issued");
+        }
+        issuedAccess = { ...at, id: at.id };
         issued = true;
       };
 
@@ -270,7 +276,7 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
       if (!revoked && issued && issuedAccess) {
         await options.hooks.onAfterRefresh?.({
           access: issuedAccess,
-          refresh: { ...refresh, id: refresh.id! },
+          refresh: { ...refresh, id: refresh.id },
           previousRefresh,
           event,
         });
@@ -325,7 +331,7 @@ export interface TokenPairMiddlewareConfig<TAccess extends SessionData> {
  */
 export function requireAuth<TAccess extends SessionData, TRefresh extends SessionData>(
   useAuth: DefineTokenPairReturn<TAccess, TRefresh>,
-  config?: TokenPairMiddlewareConfig<TAccess>
+  config?: TokenPairMiddlewareConfig<TAccess>,
 ): (event: HTTPEvent) => Promise<void> {
   return async (event: HTTPEvent): Promise<void> => {
     const { access } = await useAuth(event);
@@ -348,7 +354,7 @@ export function requireAuth<TAccess extends SessionData, TRefresh extends Sessio
  */
 export function optionalAuth<TAccess extends SessionData, TRefresh extends SessionData>(
   useAuth: DefineTokenPairReturn<TAccess, TRefresh>,
-  config?: TokenPairMiddlewareConfig<TAccess>
+  config?: TokenPairMiddlewareConfig<TAccess>,
 ): (event: HTTPEvent) => Promise<void> {
   return async (event: HTTPEvent): Promise<void> => {
     const { access } = await useAuth(event);

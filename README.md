@@ -1,14 +1,11 @@
 # unauth
 
-[![npm version](https://npmx.dev/api/registry/badge/version/unauth?name=true)](https://npmx.dev/package/unauth)
-[![npm downloads](https://npmx.dev/api/registry/badge/downloads/unauth)](https://npmx.dev/package/unauth)
-[![bundle size](https://npmx.dev/api/registry/badge/size/unauth)](https://npmx.dev/package/unauth)
+[![npm version](https://npmx.dev/api/registry/badge/version/unauth?name=true)](https://npmx.dev/package/unauth) [![npm downloads](https://npmx.dev/api/registry/badge/downloads/unauth)](https://npmx.dev/package/unauth) [![bundle size](https://npmx.dev/api/registry/badge/size/unauth)](https://npmx.dev/package/unauth)
 
 A collection of low-level and high-level, server-agnostic, Authentication and Authorization utilities.
 
 > [!WARNING]
-> This package is in active development. It is not recommended for production use yet unless you are willing to help with testing and feedback.
-> Expect breaking changes, as I prioritize usability and correctness over stability at this stage.
+> This package is in active development. It is not recommended for production use yet unless you are willing to help with testing and feedback. Expect breaking changes, as I prioritize usability and correctness over stability at this stage.
 
 ## Features
 
@@ -211,8 +208,7 @@ app.delete("/admin/users/:id", handler, {
 
 ## Why unauth?
 
-I started by building `unjwt`, as I needed a cryptographically secure way to transmit sensitive information between various programming languages and servers. Not long after I started requiring some standardization, in particular on how to prepare and expect authorization data to be shared between parties (client and servers), but as I was testing various libraries I've never been satisfied by their DX (although most of them were great for someone that already knows the topic).
-So I started building `unauth` as a collection of low-level primitives that then can be wrapped in higher-level abstractions, via adapters, to provide a "batteries included" experience while retaining control and flexibility of using your preferred storage, database and web frameworks.
+I started by building `unjwt`, as I needed a cryptographically secure way to transmit sensitive information between various programming languages and servers. Not long after I started requiring some standardization, in particular on how to prepare and expect authorization data to be shared between parties (client and servers), but as I was testing various libraries I've never been satisfied by their DX (although most of them were great for someone that already knows the topic). So I started building `unauth` as a collection of low-level primitives that then can be wrapped in higher-level abstractions, via adapters, to provide a "batteries included" experience while retaining control and flexibility of using your preferred storage, database and web frameworks.
 
 ## Credits
 
@@ -222,12 +218,7 @@ So I started building `unauth` as a collection of low-level primitives that then
 
 <!-- automd:contributors license=MIT -->
 
-Published under the [MIT](https://github.com/sandros94/unauth/blob/main/LICENSE) license.
-Made by [community](https://github.com/sandros94/unauth/graphs/contributors) 💛
-<br><br>
-<a href="https://github.com/sandros94/unauth/graphs/contributors">
-<img src="https://contrib.rocks/image?repo=sandros94/unauth" />
-</a>
+Published under the [MIT](https://github.com/sandros94/unauth/blob/main/LICENSE) license. Made by [community](https://github.com/sandros94/unauth/graphs/contributors) 💛 <br><br> <a href="https://github.com/sandros94/unauth/graphs/contributors"> <img src="https://contrib.rocks/image?repo=sandros94/unauth" /> </a>
 
 <!-- /automd -->
 

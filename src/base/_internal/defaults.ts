@@ -8,7 +8,7 @@ export const DEFAULT_REFRESH_AFTER = 0.75;
 
 export const DEFAULT_CSRF_NAME = "csrf";
 export const DEFAULT_CSRF_HEADER = "x-csrf-token";
-export const DEFAULT_PROTECTED_METHODS = ["POST", "PUT", "DELETE", "PATCH"];
+export const DEFAULT_PROTECTED_METHODS: string[] = ["POST", "PUT", "DELETE", "PATCH"];
 
 export const DEFAULT_AT_NAME = "auth_at";
 export const DEFAULT_RT_NAME = "auth_rt";

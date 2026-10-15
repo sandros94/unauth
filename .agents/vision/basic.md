@@ -1,8 +1,6 @@
 # `unauth` — Base Auth Utilities Planning Document
 
-> **Status:** Draft v5 — reflects actual implementation as of 2026-03-23
-> **Scope:** h3v2 adapter (h3v1 deferred)
-> **Dependencies:** `unjwt` (JWE/JWS session management), `h3` (peer), `unsecure` (HMAC, secure compare), `cookie-es` (peer, cookie serialization)
+> **Status:** Draft v5 — reflects actual implementation as of 2026-03-23 **Scope:** h3v2 adapter (h3v1 deferred) **Dependencies:** `unjwt` (JWE/JWS session management), `h3` (peer), `unsecure` (HMAC, secure compare), `cookie-es` (peer, cookie serialization)
 
 ---
 
@@ -78,14 +76,14 @@ test/
 
 ## 5. Import Strategy
 
-| Module                  | Import style           | Reason                                         |
-| ----------------------- | ---------------------- | ---------------------------------------------- |
-| `unjwt/adapters/h3v2`   | Static                 | Regular dependency, always available           |
-| `unjwt/utils`           | Static                 | Regular dependency                             |
-| `unsecure`              | Static                 | Regular dependency                             |
-| `h3` / `h3v2` (types)   | Static `import type`   | Erased at build, no runtime cost               |
+| Module | Import style | Reason |
+| --- | --- | --- |
+| `unjwt/adapters/h3v2` | Static | Regular dependency, always available |
+| `unjwt/utils` | Static | Regular dependency |
+| `unsecure` | Static | Regular dependency |
+| `h3` / `h3v2` (types) | Static `import type` | Erased at build, no runtime cost |
 | `h3v2` (runtime values) | `await import("h3v2")` | Optional peer dep — defer failure to call site |
-| `cookie-esv2` (types)   | Static `import type`   | Erased at build                                |
+| `cookie-esv2` (types) | Static `import type` | Erased at build |
 
 ---
 
@@ -111,8 +109,7 @@ function defineSession<T extends SessionData>(options: H3SessionOptions<T>): Def
 
 ### `onRefresh` — `refresh()` + `clear()` functions in context
 
-The hook fires only when the session is past the `refreshAfter` threshold.
-The `refresh()` function passes its argument directly to `updateJWESession` — accepts `SessionUpdate<T>` (partial object or `(oldData) => partial` callback).
+The hook fires only when the session is past the `refreshAfter` threshold. The `refresh()` function passes its argument directly to `updateJWESession` — accepts `SessionUpdate<T>` (partial object or `(oldData) => partial` callback).
 
 ```ts
 onRefresh?(args: {
@@ -126,14 +123,14 @@ onRefresh?(args: {
 
 `onRead` also receives a `clear()` function for non-refresh reads.
 
-| Action                                             | Effect                                                    |
-| -------------------------------------------------- | --------------------------------------------------------- |
-| `await refresh()`                                  | Sliding window — re-issue with same data, new jti/iat/exp |
-| `await refresh({ role: 'admin' })`                 | Update data — merge partial, re-issue                     |
-| `await refresh(old => ({ count: old.count + 1 }))` | Callback update — compute from current data               |
-| Don't call `refresh()`                             | Skip — session stays as-is, no re-issue                   |
-| `await clear()`                                    | Destroy the session (from onRefresh or onRead)            |
-| Throw                                              | Error path → forwarded to `onError`                       |
+| Action | Effect |
+| --- | --- |
+| `await refresh()` | Sliding window — re-issue with same data, new jti/iat/exp |
+| `await refresh({ role: 'admin' })` | Update data — merge partial, re-issue |
+| `await refresh(old => ({ count: old.count + 1 }))` | Callback update — compute from current data |
+| Don't call `refresh()` | Skip — session stays as-is, no re-issue |
+| `await clear()` | Destroy the session (from onRefresh or onRead) |
+| Throw | Error path → forwarded to `onError` |
 
 **Default (no `onRefresh` hook):** automatic sliding window via `updateJWESession`.
 
@@ -189,9 +186,7 @@ function defineCsrf(options: H3CsrfOptions): (event: H3Event) => Promise<void>;
 
 ### Status: ✅ Implemented with tests (100% coverage on token-pair.ts)
 
-Access token (JWS, short-lived, client-readable) + refresh token (JWE, long-lived, encrypted).
-Built directly on unjwt's lower-level functions — does NOT compose `defineSession`.
-Middleware (`requireAuth`, `optionalAuth`) lives in the same file.
+Access token (JWS, short-lived, client-readable) + refresh token (JWE, long-lived, encrypted). Built directly on unjwt's lower-level functions — does NOT compose `defineSession`. Middleware (`requireAuth`, `optionalAuth`) lives in the same file.
 
 ### Key types
 
@@ -221,17 +216,15 @@ onRefresh(args: {
 }): void | Promise<void>;
 ```
 
-No `access` in context — AT is always expired when `onRefresh` fires.
-`issue()` accepts `SessionUpdate` (partial object or `(old) => partial` callback) for both tokens —
-`accessData` is required, `refreshData` is optional (omit to rotate with current data).
+No `access` in context — AT is always expired when `onRefresh` fires. `issue()` accepts `SessionUpdate` (partial object or `(old) => partial` callback) for both tokens — `accessData` is required, `refreshData` is optional (omit to rotate with current data).
 
-| Action                                               | Effect                                                  |
-| ---------------------------------------------------- | ------------------------------------------------------- |
-| `await issue({ accessData: { sub, permissions } })`  | AT re-issued, RT rotated with current data              |
-| `await issue({ accessData: ..., refreshData: ... })` | AT re-issued, RT rotated with updated data              |
-| `await revoke()`                                     | Both tokens cleared (e.g., user banned, family revoked) |
-| Don't call either                                    | No refresh — AT stays empty, RT preserved               |
-| Throw                                                | Error path → `onError`, RT preserved, AT empty          |
+| Action | Effect |
+| --- | --- |
+| `await issue({ accessData: { sub, permissions } })` | AT re-issued, RT rotated with current data |
+| `await issue({ accessData: ..., refreshData: ... })` | AT re-issued, RT rotated with updated data |
+| `await revoke()` | Both tokens cleared (e.g., user banned, family revoked) |
+| Don't call either | No refresh — AT stays empty, RT preserved |
+| Throw | Error path → `onError`, RT preserved, AT empty |
 
 ### `onAfterRefresh` — plain snapshots
 
@@ -239,24 +232,16 @@ Uses `SessionSnapshot<T>` instead of full `SessionManager` because we can't safe
 
 ### `maxAge` is required — runtime guard for JS consumers
 
-Both `access.maxAge` and `refresh.maxAge` are required (`ExpiresIn`, non-optional).
-TypeScript enforces this at compile time. For JavaScript consumers, `defineTokenPair()`
-throws eagerly at call time (app startup) if either is missing:
+Both `access.maxAge` and `refresh.maxAge` are required (`ExpiresIn`, non-optional). TypeScript enforces this at compile time. For JavaScript consumers, `defineTokenPair()` throws eagerly at call time (app startup) if either is missing:
 
 ```
 [unauth] access.maxAge is required for defineTokenPair
 [unauth] refresh.maxAge is required for defineTokenPair
 ```
 
-**Rationale:** Token lifetimes are security-critical. There is no sensible universal
-default — the right value depends on the threat model. Unlike `defineSession` (which
-defaults to `"7D"` for convenience), token pairs force an explicit choice. A missing
-`maxAge` would silently produce tokens that never expire, which is a security hole.
+**Rationale:** Token lifetimes are security-critical. There is no sensible universal default — the right value depends on the threat model. Unlike `defineSession` (which defaults to `"7D"` for convenience), token pairs force an explicit choice. A missing `maxAge` would silently produce tokens that never expire, which is a security hole.
 
-**Note for future OAuth 2.1 / OIDC implementations:** Apply the same pattern —
-any security-critical duration (authorization code lifetime, ID token maxAge,
-refresh token absolute expiry, etc.) should be required with a runtime guard.
-TypeScript types catch this for TS consumers; the runtime check catches it for JS.
+**Note for future OAuth 2.1 / OIDC implementations:** Apply the same pattern — any security-critical duration (authorization code lifetime, ID token maxAge, refresh token absolute expiry, etc.) should be required with a runtime guard. TypeScript types catch this for TS consumers; the runtime check catches it for JS.
 
 ### Defaults
 
@@ -280,8 +265,8 @@ unauth/h3v2 (runtime)
 
 ## 10. Summary
 
-| Export        | Contents                                                                                                       | Status                  |
-| ------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| Export | Contents | Status |
+| --- | --- | --- |
 | `unauth/h3v2` | `defineSession`, `requireSession`, `optionalSession`, `SessionManager<T>`, `DefineSessionReturn<T>`, key utils | ✅ Implemented + tested |
-| `unauth/h3v2` | `defineCsrf`                                                                                                   | ✅ Implemented + tested |
-| `unauth/h3v2` | `defineTokenPair`, `requireAuth`, `optionalAuth`                                                               | ✅ Implemented + tested |
+| `unauth/h3v2` | `defineCsrf` | ✅ Implemented + tested |
+| `unauth/h3v2` | `defineTokenPair`, `requireAuth`, `optionalAuth` | ✅ Implemented + tested |

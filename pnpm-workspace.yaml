@@ -1,7 +1,20 @@
 packages:
-  - ./
   - playground
 
-ignoreWorkspaceRootCheck: true
+allowBuilds:
+  "@parcel/watcher": false
+  esbuild: false
+  simple-git-hooks: true
+
+ignoredBuiltDependencies:
+  - "@parcel/watcher"
+  - esbuild
+onlyBuiltDependencies:
+  - simple-git-hooks
+
+minimumReleaseAgeExclude:
+  - unsecure
+  - unjwt
+
 patchedDependencies:
-  unjwt@0.7.1: patches/unjwt@0.7.1.patch
+  unjwt@0.7.3: patches/unjwt@0.7.3.patch
