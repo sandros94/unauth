@@ -93,7 +93,7 @@
     },
     "runtime": {
       "name": "node",
-      "version": "^22.13 || >=24",
+      "version": ">=24.17.0",
       "onFail": "error"
     }
   },
