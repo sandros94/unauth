@@ -19,11 +19,10 @@ const useSession = defineSession({
   key: sessionKey,
   maxAge: "7D",
   cookie: { secure: false }, // dev only — set secure: true behind HTTPS
+  // Reissued once less than a quarter of maxAge remains (the default); `rolling: "1D"` or `true` to tune.
   hooks: {
-    async onRefresh({ session, refresh }) {
-      // Hydrate latest claims from your store on sliding-window refresh.
-      console.log("[session] sliding refresh for", session.data.userId);
-      await refresh();
+    onUpdate({ session, trigger }) {
+      console.log(`[session] ${trigger} issued ${session.id} for`, session.data.userId);
     },
   },
 });

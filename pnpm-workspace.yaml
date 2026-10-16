@@ -15,6 +15,5 @@ onlyBuiltDependencies:
 minimumReleaseAgeExclude:
   - unsecure
   - unjwt
-
 patchedDependencies:
-  unjwt@0.7.3: patches/unjwt@0.7.3.patch
+  unjwt@0.8.1: patches/unjwt@0.8.1.patch

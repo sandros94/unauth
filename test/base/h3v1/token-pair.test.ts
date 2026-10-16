@@ -636,6 +636,89 @@ describe("defineTokenPair (h3v1)", () => {
     expect(onReadRefresh.mock.calls[0]![0].refresh.data.family).toBe("fam1");
   });
 
+  it("fires onReadRefresh and onReadAccess on the same request", async () => {
+    const onReadAccess = vi.fn();
+    const onReadRefresh = vi.fn();
+    const useAuth = createUseAuth({ onReadAccess, onReadRefresh });
+
+    h.router.post(
+      "/login",
+      eventHandler(async (event) => {
+        const auth = await useAuth(event);
+        await auth.issue({
+          accessData: { sub: "u1", permissions: ["read"] },
+          refreshData: { sub: "u1", family: "fam1" },
+        });
+        return { ok: true };
+      }),
+    );
+    h.router.get(
+      "/me",
+      eventHandler(async (event) => {
+        await useAuth(event);
+        return { ok: true };
+      }),
+    );
+
+    const jar = cookieJar();
+
+    const loginRes = await h.request("/login", { method: "POST" });
+    jar.update(loginRes.headers);
+
+    await h.request("/me", { headers: { Cookie: jar.toString() } });
+
+    expect(onReadRefresh).toHaveBeenCalledTimes(1);
+    expect(onReadAccess).toHaveBeenCalledTimes(1);
+    const args = onReadAccess.mock.calls[0]![0];
+    expect(args.access.data.sub).toBe("u1");
+    expect(args.refresh.id).toBe(onReadRefresh.mock.calls[0]![0].refresh.id);
+    expect(args.refresh.data.family).toBe("fam1");
+  });
+
+  it("fires onReadAccess with refresh undefined when the RT cookie is missing", async () => {
+    const onReadAccess = vi.fn();
+    const onReadRefresh = vi.fn();
+    const useAuth = createUseAuth({ onReadAccess, onReadRefresh });
+
+    h.router.post(
+      "/login",
+      eventHandler(async (event) => {
+        const auth = await useAuth(event);
+        await auth.issue({
+          accessData: { sub: "u1", permissions: ["read"] },
+          refreshData: { sub: "u1", family: "fam1" },
+        });
+        return { ok: true };
+      }),
+    );
+    h.router.get(
+      "/me",
+      eventHandler(async (event) => {
+        await useAuth(event);
+        return { ok: true };
+      }),
+    );
+
+    const jar = cookieJar();
+
+    const loginRes = await h.request("/login", { method: "POST" });
+    jar.update(loginRes.headers);
+
+    const accessOnly = jar
+      .toString()
+      .split("; ")
+      .filter((cookie) => cookie.startsWith("auth_at"))
+      .join("; ");
+    expect(accessOnly).not.toBe("");
+
+    await h.request("/me", { headers: { Cookie: accessOnly } });
+
+    expect(onReadRefresh).not.toHaveBeenCalled();
+    expect(onReadAccess).toHaveBeenCalledTimes(1);
+    expect(onReadAccess.mock.calls[0]![0].access.data.sub).toBe("u1");
+    expect(onReadAccess.mock.calls[0]![0].refresh).toBeUndefined();
+  });
+
   it("does not call onReadAccess when no access token exists", async () => {
     const onReadAccess = vi.fn();
     const useAuth = createUseAuth({ onReadAccess });

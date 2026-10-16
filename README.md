@@ -9,7 +9,7 @@ A collection of low-level and high-level, server-agnostic, Authentication and Au
 
 ## Features
 
-- **Session management** — Encrypted JWE sessions with auto-refresh
+- **Session management** — Encrypted JWE sessions with rolling expiry
 - **Token pairs** — Access (JWS) + Refresh (JWE) token lifecycle with coordinated login/logout
 - **CSRF protection** — Double-submit cookie pattern with HMAC
 - **Middleware** — `requireSession`, `optionalSession`, `requireAuth`, `optionalAuth`
@@ -31,10 +31,10 @@ npx nypm install unauth
 
 ### Session
 
-Encrypted session cookies (JWE) with auto-refresh support.
+Encrypted session cookies (JWE) with rolling expiry.
 
 ```ts
-import { defineSession, generateJWK, requireSession } from "unauth/h3v2";
+import { defineSession, generateJWK, requireSession } from "unauth/base/h3";
 
 const sessionKey = await generateJWK("A256GCM");
 
@@ -42,10 +42,11 @@ const useSession = defineSession<{ userId: string; role: string }>({
   key: sessionKey,
   maxAge: "7D",
   hooks: {
-    async onRefresh({ session, refresh }) {
-      // Refresh with updated data from your database
+    async onRead({ session }) {
+      // The live session manager: sync it with your database, or end it
       const user = await db.users.findById(session.data.userId);
-      await refresh({ userId: user.id, role: user.role });
+      if (!user) return session.clear();
+      if (user.role !== session.data.role) await session.update({ role: user.role });
     },
   },
 });
@@ -71,19 +72,16 @@ const app = new H3()
   });
 ```
 
-The `onRefresh` hook fires when the session crosses the `refreshAfter` threshold (default: 75% of `maxAge`). You control what happens:
+The session is reissued on read once less than a quarter of `maxAge` remains, so `exp` slides with activity. Tune it with `rolling`: a duration (`rolling: "1D"`) sets the remaining-time window, `true` reissues on every read, `false` never. A roll fires `onUpdate` with `trigger: "rolling"`.
 
-- `await refresh()` — Sliding window (re-issue with same data)
-- `await refresh({ role: "admin" })` — Update data during refresh
-- `await clear()` — Destroy the session
-- Don't call either — Skip, session stays as-is
+Hooks are [unjwt's session hooks](https://unjwt.s94.dev/adapters/hooks); `session` is the live manager, so `onRead` can `update()` or `clear()` the session it is looking at.
 
 ### Token Pair
 
 Access token (JWS, short-lived, client-readable) + refresh token (JWE, long-lived, encrypted) with coordinated lifecycle.
 
 ```ts
-import { defineTokenPair, generateJWK, requireAuth } from "unauth/h3v2";
+import { defineTokenPair, generateJWK, requireAuth } from "unauth/base/h3";
 
 const atKeys = await generateJWK("ES256");
 const rtKey = await generateJWK("A256GCM");
@@ -146,6 +144,8 @@ When the access token expires:
 - Don't call either to skip (AT stays empty, RT preserved)
 - Throw to forward errors to `onError` without destroying tokens
 
+`onReadAccess` fires whenever a valid access token is read, with or without a refresh token beside it: `refresh` is `undefined` when the refresh cookie is missing, so a revocation check there cannot be bypassed by dropping that cookie.
+
 Both `access` and `refresh` are unjwt session managers exposed directly — call `.update()` or `.clear()` on them for escape-hatch scenarios that bypass hooks.
 
 ### CSRF
@@ -153,7 +153,7 @@ Both `access` and `refresh` are unjwt session managers exposed directly — call
 Double-submit cookie pattern with HMAC-generated tokens.
 
 ```ts
-import { defineCsrf } from "unauth/h3v2";
+import { defineCsrf } from "unauth/base/h3";
 
 const csrf = defineCsrf({ secret: process.env.CSRF_SECRET! });
 
@@ -167,8 +167,7 @@ const app = new H3()
 Separate middleware for sessions and token pairs:
 
 ```ts
-import { requireSession, optionalSession } from "unauth/h3v2";
-import { requireAuth, optionalAuth } from "unauth/h3v2";
+import { requireSession, optionalSession, requireAuth, optionalAuth } from "unauth/base/h3";
 
 // Session middleware
 app.get("/me", handler, { middleware: [requireSession(useSession)] });

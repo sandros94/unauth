@@ -2,94 +2,42 @@ import { type HTTPEvent, HTTPError } from "h3v2";
 import type {
   SessionConfigJWE,
   SessionHooksJWE,
-  SessionJWE,
   SessionManager as BaseSessionManager,
   SessionData,
   SessionClaims,
-  SessionUpdate,
   ExpiresIn,
 } from "unjwt/adapters/h3v2";
-import { updateJWESession, clearJWESession, useJWESession } from "unjwt/adapters/h3v2";
-import { computeDurationInSeconds } from "unjwt/utils";
+import { useJWESession } from "unjwt/adapters/h3v2";
 import {
   DEFAULT_SESSION_NAME,
   DEFAULT_SESSION_MAX_AGE,
-  DEFAULT_REFRESH_AFTER,
   DEFAULT_SECURE_COOKIE,
 } from "../_internal/defaults.ts";
+import { type RollingOption, resolveRolling } from "../_internal/session.ts";
 
 /**
- * Extended session hooks for h3v2.
+ * Session lifecycle hooks — unjwt's JWE session hooks, with the session always carrying a `maxAge`.
  *
- * Extends unjwt's `SessionHooksJWE` with:
- * - `onRead` augmented with a `clear()` function
- * - `onRefresh` for auto-refresh with `refresh()` and `clear()` functions
+ * `session` is the live manager, so `onRead` can act on it in place: `await session.update()` to
+ * reissue (optionally with new data), `await session.clear()` to destroy it.
  */
-export interface H3SessionHooks<
-  T extends SessionData = SessionClaims,
-  MaxAge extends ExpiresIn | undefined = ExpiresIn | undefined,
-> extends Omit<SessionHooksJWE<T, MaxAge>, "onRead"> {
-  /**
-   * Fires after the session is successfully read and validated.
-   * Receives a `clear()` function to destroy the session if needed
-   * (e.g., the user is banned).
-   *
-   * Not called when `onRefresh` fires (they are mutually exclusive).
-   */
-  onRead?(args: {
-    session: SessionJWE<T, MaxAge> & { id: string; token: string };
-    event: HTTPEvent;
-    config: SessionConfigJWE<T, MaxAge>;
-    /** Destroy the session (delete cookie, reset state). */
-    clear: () => Promise<void>;
-  }): void | Promise<void>;
-
-  /**
-   * Fires when the session has crossed the `refreshAfter` threshold.
-   *
-   * Call `refresh()` to re-issue the session:
-   * - `refresh()` — sliding window (same data, new jti/iat/exp)
-   * - `refresh({ role: 'admin' })` — merge partial data
-   * - `refresh(old => ({ count: old.count + 1 }))` — callback update
-   *
-   * Don't call `refresh()` to skip. Call `clear()` to destroy.
-   * Throwing forwards to `onError`.
-   *
-   * If no `onRefresh` hook is registered, the default behavior
-   * is automatic sliding window.
-   */
-  onRefresh?(args: {
-    session: SessionJWE<T, MaxAge> & { id: string; token: string };
-    event: HTTPEvent;
-    config: SessionConfigJWE<T, MaxAge>;
-    /** Re-issue the session. Accepts the same update format as `session.update()`. */
-    refresh: (update?: SessionUpdate<T>) => Promise<void>;
-    /** Destroy the session (delete cookie, reset state). */
-    clear: () => Promise<void>;
-  }): void | Promise<void>;
-}
+export type H3SessionHooks<T extends SessionData = SessionClaims> = SessionHooksJWE<T, ExpiresIn>;
 
 /**
- * Options for {@link defineSession}.
- *
- * Extends unjwt's `SessionConfigJWE` with `refreshAfter` and the
- * extended {@link H3SessionHooks}.
+ * Options for {@link defineSession}: unjwt's `SessionConfigJWE` with unauth's defaults, and a
+ * `rolling` that can also be switched off.
  */
 export interface H3SessionOptions<T extends SessionData> extends Omit<
-  SessionConfigJWE<T>,
-  "hooks"
+  SessionConfigJWE<T, ExpiresIn>,
+  "rolling"
 > {
   /**
-   * When to auto-refresh the session, as a ratio of `maxAge` (0 to 1).
-   * For example, `0.75` means refresh after 75% of the session's
-   * lifetime has elapsed.
+   * Reissue the session on read so `exp` slides with activity: `true` on every read, a duration
+   * (e.g. `"15m"`) once less than that remains, `false` never.
    *
-   * Set to `false` to disable auto-refresh.
-   * @default 0.75
+   * @default a quarter of `maxAge` remaining
    */
-  refreshAfter?: number | false;
-  /** Lifecycle hooks. */
-  hooks?: H3SessionHooks<T>;
+  rolling?: RollingOption;
 }
 
 /** Session manager type alias. Always has a defined `expiresAt`. */
@@ -101,7 +49,7 @@ export type DefineSessionReturn<T extends SessionData> = (
 ) => Promise<SessionManager<T>>;
 
 /**
- * Creates an encrypted session (JWE) composable with auto-refresh support.
+ * Creates an encrypted session (JWE) composable with rolling expiry.
  *
  * Returns a function that resolves the session for the current request.
  * The session is cached per-request by unjwt — calling the composable
@@ -109,13 +57,14 @@ export type DefineSessionReturn<T extends SessionData> = (
  *
  * @example
  * ```ts
- * const useSession = defineSession<{ userId: string }>({
+ * const useSession = defineSession<{ userId: string; role: string }>({
  *   key: await generateJWK("A256GCM"),
  *   maxAge: "7D",
  *   hooks: {
- *     async onRefresh({ session, refresh }) {
+ *     async onRead({ session }) {
  *       const user = await db.users.findById(session.data.userId);
- *       await refresh({ userId: user.id, role: user.role });
+ *       if (!user) return session.clear();
+ *       if (user.role !== session.data.role) await session.update({ role: user.role });
  *     },
  *   },
  * });
@@ -123,90 +72,25 @@ export type DefineSessionReturn<T extends SessionData> = (
  *
  * @default name "auth-session"
  * @default maxAge "7D"
- * @default refreshAfter 0.75
+ * @default rolling a quarter of `maxAge` remaining
  * @default cookie `{ httpOnly: true, secure: true, sameSite: "lax", path: "/" }`
  */
 export function defineSession<T extends SessionData>(
   options: H3SessionOptions<T>,
 ): DefineSessionReturn<T> {
-  const refreshAfter = options.refreshAfter ?? DEFAULT_REFRESH_AFTER;
+  const { rolling, ...rest } = options;
   const maxAge = options.maxAge ?? DEFAULT_SESSION_MAX_AGE;
 
   const jweConfig = {
+    ...rest,
     name: options.name ?? DEFAULT_SESSION_NAME,
     maxAge,
-    key: options.key,
-    cookie: {
-      ...DEFAULT_SECURE_COOKIE,
-      ...options.cookie,
-    } as const,
-    jwe: options.jwe,
-    hooks: {
-      async onRead({ session, config, event, ...ctxRest }) {
-        const clear = (): Promise<void> => clearJWESession(event, config);
-
-        if (refreshAfter !== false && session.id) {
-          const maxAgeSec = computeDurationInSeconds(maxAge);
-          const maxAgeMs = maxAgeSec * 1000;
-          const elapsed = Date.now() - session.createdAt;
-          const threshold = maxAgeMs * refreshAfter;
-
-          if (elapsed >= threshold) {
-            const refresh = async (update?: SessionUpdate<T>): Promise<void> => {
-              await updateJWESession(event, config, update);
-            };
-
-            if (options.hooks?.onRefresh) {
-              try {
-                await options.hooks.onRefresh({
-                  session,
-                  event,
-                  config,
-                  refresh,
-                  clear,
-                });
-              } catch (err) {
-                await options.hooks.onError?.({
-                  session,
-                  error: err,
-                  event,
-                  config,
-                });
-              }
-            } else {
-              try {
-                await updateJWESession(event, config);
-              } catch (err) {
-                await options.hooks?.onError?.({
-                  session,
-                  error: err,
-                  event,
-                  config,
-                });
-              }
-            }
-            return;
-          }
-        }
-        await options.hooks?.onRead?.({ ...ctxRest, session, event, config, clear });
-      },
-      async onUpdate(ctx) {
-        await options.hooks?.onUpdate?.(ctx);
-      },
-      async onClear(ctx) {
-        await options.hooks?.onClear?.(ctx);
-      },
-      async onExpire(ctx) {
-        await options.hooks?.onExpire?.(ctx);
-      },
-      async onError(ctx) {
-        await options.hooks?.onError?.(ctx);
-      },
-    },
+    rolling: resolveRolling(rolling, maxAge),
+    cookie: options.cookie === false ? false : { ...DEFAULT_SECURE_COOKIE, ...options.cookie },
   } satisfies SessionConfigJWE<T, ExpiresIn>;
 
   return async (event: HTTPEvent): Promise<SessionManager<T>> => {
-    return useJWESession<T, typeof jweConfig.maxAge>(event, jweConfig);
+    return useJWESession<T, ExpiresIn>(event, jweConfig);
   };
 }
 

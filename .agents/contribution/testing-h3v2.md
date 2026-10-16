@@ -198,7 +198,7 @@ In tests, import `HTTPError` from `h3v2` directly (static import is fine in test
 
 ## Fake timers
 
-For time-sensitive features (JWT expiry, session refresh thresholds), use vitest's fake timers:
+For time-sensitive features (JWT expiry, rolling windows), use vitest's fake timers:
 
 ```ts
 import { vi, afterEach } from "vitest";
@@ -222,25 +222,23 @@ it("expires after maxAge", async () => {
 
 **Important:** Always restore real timers in `afterEach` to avoid leaking fake timer state across tests.
 
-When testing refresh/rotation that issues new cookies:
+When testing a roll/rotation that issues new cookies:
 
 1. Set initial time, create the session, capture cookies
-2. Advance time past the threshold
-3. Make a request (triggers refresh), update the cookie jar
-4. Optionally advance time slightly past the refresh point (avoid double-refresh)
-5. Make another request with the refreshed cookies to verify new state
+2. Advance time into the rolling window (less than `rolling` remaining)
+3. Make a request (triggers the roll), update the cookie jar
+4. Make another request with the reissued cookies to verify new state
 
 ```ts
 vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
 // ... login, jar.update() ...
 
-vi.setSystemTime(new Date("2026-01-01T00:31:00Z")); // past threshold
-const refreshRes = await app.request("/me", { headers: { Cookie: jar.toString() } });
-jar.update(refreshRes.headers); // capture refreshed cookie
+vi.setSystemTime(new Date("2026-01-01T00:46:00Z")); // 14 min left of 1h: inside the default 15 min window
+const rollRes = await app.request("/me", { headers: { Cookie: jar.toString() } });
+jar.update(rollRes.headers); // capture the reissued cookie
 
-vi.setSystemTime(new Date("2026-01-01T00:31:01Z")); // tiny advance
 const afterRes = await app.request("/me", { headers: { Cookie: jar.toString() } });
-// afterRes now reflects the refreshed session
+// afterRes now reflects the rolled session
 ```
 
 ## Spying on hooks

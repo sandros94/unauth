@@ -4,7 +4,8 @@
 
 export const DEFAULT_SESSION_NAME = "auth-session";
 export const DEFAULT_SESSION_MAX_AGE = "7D" as const;
-export const DEFAULT_REFRESH_AFTER = 0.75;
+/** `rolling` default: reissue once less than this fraction of `maxAge` remains. */
+export const DEFAULT_ROLLING_WINDOW = 0.25;
 
 export const DEFAULT_CSRF_NAME = "csrf";
 export const DEFAULT_CSRF_HEADER = "x-csrf-token";

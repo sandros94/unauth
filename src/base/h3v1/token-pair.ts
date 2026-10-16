@@ -1,4 +1,4 @@
-import { type H3Event, createError, isEvent } from "h3v1";
+import { type H3Event, createError } from "h3v1";
 import type {
   SessionConfigJWE,
   SessionConfigJWS,
@@ -15,7 +15,10 @@ import {
   DEFAULT_AT_COOKIE,
   DEFAULT_SECURE_COOKIE,
 } from "../_internal/defaults.ts";
-import type { SessionSnapshot as _SessionSnapshot } from "../_internal/token-pair.ts";
+import {
+  type SessionSnapshot as _SessionSnapshot,
+  snapshotSession,
+} from "../_internal/token-pair.ts";
 
 /** Session manager type alias for token pair sessions. Always has a defined `expiresAt`. */
 export type TokenPairSessionManager<T extends SessionData> = BaseSessionManager<T, ExpiresIn>;
@@ -50,10 +53,13 @@ export interface H3TokenPairHooks<
   /**
    * Fires when the access token session is successfully read and validated.
    * Use for logging, metrics, or early revocation checks.
+   *
+   * The access token alone authenticates the request, so this fires whether or not a refresh
+   * token came with it; `refresh` is `undefined` when the refresh cookie is absent or invalid.
    */
   onReadAccess?(args: {
     access: SessionSnapshot<TAccess>;
-    refresh: SessionSnapshot<TRefresh>;
+    refresh: SessionSnapshot<TRefresh> | undefined;
     event: H3Event;
   }): void | Promise<void>;
 
@@ -199,15 +205,10 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
     jwe: options.refresh.jwe,
     hooks: {
       async onRead({ session, event }) {
-        if (session.id && isEvent(event)) {
-          await options.hooks.onReadRefresh?.({
-            refresh: { ...session, id: session.id },
-            event,
-          });
-        }
+        await options.hooks.onReadRefresh?.({ refresh: snapshotSession(session), event });
       },
     },
-  } satisfies SessionConfigJWE<TRefresh, ExpiresIn>;
+  } satisfies SessionConfigJWE<TRefresh, ExpiresIn, H3Event>;
 
   const atConfig = {
     key: options.access.key,
@@ -220,34 +221,30 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
     jws: options.access.jws,
     hooks: {
       async onRead({ session, event }) {
-        if (session.id && options.hooks.onReadAccess && isEvent(event)) {
-          const refresh = await getJWESession<TRefresh, ExpiresIn>(event, {
-            ...rtConfig,
-            hooks: undefined,
-          });
-          await options.hooks.onReadAccess({
-            access: { ...session, id: session.id },
-            // The access token alone authenticates the request, so this hook must fire even when
-            // the refresh cookie is absent; the snapshot type promises an `id` that is then missing.
-            // oxlint-disable-next-line typescript/no-non-null-assertion
-            refresh: { ...refresh, id: refresh.id! },
-            event,
-          });
-        }
+        if (!options.hooks.onReadAccess) return;
+        // The RT was loaded before the AT (see below), so this is the cached state: no second read,
+        // and `onReadRefresh` is not fired again.
+        const refresh = await getJWESession<TRefresh, ExpiresIn, H3Event>(event, rtConfig);
+        await options.hooks.onReadAccess({
+          access: snapshotSession(session),
+          refresh: snapshotSession(refresh),
+          event,
+        });
       },
     },
-  } satisfies SessionConfigJWS<TAccess, ExpiresIn>;
+  } satisfies SessionConfigJWS<TAccess, ExpiresIn, H3Event>;
 
   return async (event: H3Event): Promise<TokenPair<TAccess, TRefresh>> => {
-    const access = await useJWSSession<TAccess, ExpiresIn>(event, atConfig);
-    const refresh = await useJWESession<TRefresh, ExpiresIn>(event, rtConfig);
+    // RT first: `onReadRefresh` fires regardless of the AT, and the AT's own read can then
+    // snapshot the RT without triggering a second read.
+    const refresh = await useJWESession<TRefresh, ExpiresIn, H3Event>(event, rtConfig);
+    const access = await useJWSSession<TAccess, ExpiresIn, H3Event>(event, atConfig);
 
     // Auto-refresh: AT is absent (missing cookie or expired JWT) but RT is valid.
     // Handles both cases uniformly — the browser deletes AT cookies when Max-Age
     // elapses, so by the time a request arrives the AT cookie may simply be gone.
-    if (!access.id && refresh.id) {
-      const previousRefresh = { ...refresh, id: refresh.id };
-
+    const previousRefresh = snapshotSession(refresh);
+    if (!access.id && previousRefresh) {
       let issued = false;
       let revoked = false;
       let issuedAccess: SessionSnapshot<TAccess> | undefined;
@@ -256,9 +253,13 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
         accessData: SessionUpdate<TAccess>;
         refreshData?: SessionUpdate<TRefresh>;
       }): Promise<void> => {
-        const at = await updateJWSSession<TAccess, ExpiresIn>(event, atConfig, arg.accessData);
+        const at = await updateJWSSession<TAccess, ExpiresIn, H3Event>(
+          event,
+          atConfig,
+          arg.accessData,
+        );
         await refresh.update(arg.refreshData);
-        issuedAccess = { ...at, id: at.id };
+        issuedAccess = snapshotSession(at);
         issued = true;
       };
 
@@ -273,10 +274,11 @@ export function defineTokenPair<TAccess extends SessionData, TRefresh extends Se
         await options.hooks.onError?.({ error: err, source: "access", event });
       }
 
-      if (!revoked && issued && issuedAccess) {
+      const rotatedRefresh = snapshotSession(refresh);
+      if (!revoked && issued && issuedAccess && rotatedRefresh) {
         await options.hooks.onAfterRefresh?.({
           access: issuedAccess,
-          refresh: { ...refresh, id: refresh.id },
+          refresh: rotatedRefresh,
           previousRefresh,
           event,
         });

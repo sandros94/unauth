@@ -163,7 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  unjwt@0.7.3: a2b22edc94dcbc0ccba5c042991e966f4d6e0a4ea6c398b17d2f47d85bf0c6fd
+  unjwt@0.8.1: 7e2753c17be7948400bbfb0f7fe94faed06d23a16b8d213d0e26b58f7d4b3f45
 
 importers:
 
@@ -228,8 +228,8 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       unjwt:
-        specifier: ^0.7.3
-        version: 0.7.3(patch_hash=a2b22edc94dcbc0ccba5c042991e966f4d6e0a4ea6c398b17d2f47d85bf0c6fd)(cookie-es@3.1.1)(h3@2.0.2)
+        specifier: ^0.8.1
+        version: 0.8.1(patch_hash=7e2753c17be7948400bbfb0f7fe94faed06d23a16b8d213d0e26b58f7d4b3f45)(cookie-es@3.1.1)(h3@2.0.2)
       vitest:
         specifier: ^5.0.4
         version: 5.0.4(@types/node@26.6.5)(@vitest/coverage-v8@5.0.4)(vite@8.3.4(@types/node@26.6.5)(jiti@2.7.0))
@@ -243,8 +243,8 @@ importers:
         specifier: workspace:*
         version: link:..
       unjwt:
-        specifier: ^0.7.3
-        version: 0.7.3(patch_hash=a2b22edc94dcbc0ccba5c042991e966f4d6e0a4ea6c398b17d2f47d85bf0c6fd)(cookie-es@3.1.1)(h3@2.0.2)
+        specifier: ^0.8.1
+        version: 0.8.1(patch_hash=7e2753c17be7948400bbfb0f7fe94faed06d23a16b8d213d0e26b58f7d4b3f45)(cookie-es@3.1.1)(h3@2.0.2)
 
 packages:
 
@@ -1612,21 +1612,18 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  unjwt@0.7.3:
-    resolution: {integrity: sha512-I0qX3hpyOa+PQv4btPQvmpLzxWRrY77u2HqwAyqNM5K1lCjOpcAPZFmVLQzbNgwVj5T9XdwtLSOUjfIX9TnfHw==}
+  unjwt@0.8.1:
+    resolution: {integrity: sha512-BvrutI8ryJ1JEULrek/DX2nLb+NDnV+IAzlRjpoy6riUzbO+Fz/n160QqvTEEKRy/ZtyOfX5QcsZAl/JCWXTfQ==}
     peerDependencies:
       cookie-es: ^1.2.3 || ^3.1.1
-      elysia: ^1.4.0
-      h3: ^1.15.4 || >=2.0.1-rc.22 || ^2.0.1
-      rou3: ^0.8.1
+      elysia: ^1.4.29
+      h3: ^1.15.4 || ^2.0.1
     peerDependenciesMeta:
       cookie-es:
         optional: true
       elysia:
         optional: true
       h3:
-        optional: true
-      rou3:
         optional: true
 
   unsecure@0.3.2:
@@ -2817,7 +2814,7 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  unjwt@0.7.3(patch_hash=a2b22edc94dcbc0ccba5c042991e966f4d6e0a4ea6c398b17d2f47d85bf0c6fd)(cookie-es@3.1.1)(h3@2.0.2):
+  unjwt@0.8.1(patch_hash=7e2753c17be7948400bbfb0f7fe94faed06d23a16b8d213d0e26b58f7d4b3f45)(cookie-es@3.1.1)(h3@2.0.2):
     optionalDependencies:
       cookie-es: 3.1.1
       h3: 2.0.2

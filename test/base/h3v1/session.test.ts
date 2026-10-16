@@ -141,15 +141,16 @@ describe("defineSession (h3v1)", () => {
     expect((await clearedRes.json()).id).toBeNull();
   });
 
-  it("auto-refreshes with sliding window when no onRefresh hook", async () => {
+  it("rolls the session by default once less than a quarter of maxAge remains", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
 
+    const onUpdate = vi.fn();
     const useSession = defineSession({
       key,
       maxAge: "1h",
-      refreshAfter: 0.5,
       cookie: { secure: false },
+      hooks: { onUpdate },
     });
 
     h.router.post(
@@ -173,47 +174,166 @@ describe("defineSession (h3v1)", () => {
     const loginRes = await h.request("/login", { method: "POST" });
     jar.update(loginRes.headers);
 
-    // Read before threshold — capture session id
-    const beforeRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    const idBefore = (await beforeRes.json()).id;
+    // 30 minutes left: more than the 15 minute window, nothing is reissued.
+    vi.setSystemTime(new Date("2026-01-01T00:30:00Z"));
+    const earlyRes = await h.request("/me", { headers: { Cookie: jar.toString() } });
+    const idBefore = (await earlyRes.json()).id;
     expect(idBefore).toBeTypeOf("string");
+    expect(earlyRes.headers.getSetCookie()).toEqual([]);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
 
-    // Advance past 50% of 1h
-    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
+    // 14 minutes left: inside the window, the session rolls.
+    vi.setSystemTime(new Date("2026-01-01T00:46:00Z"));
+    const rollRes = await h.request("/me", { headers: { Cookie: jar.toString() } });
+    jar.update(rollRes.headers);
+    expect(rollRes.headers.getSetCookie()).not.toEqual([]);
+    expect(onUpdate).toHaveBeenCalledTimes(2);
+    expect(onUpdate.mock.calls[1]![0].trigger).toBe("rolling");
 
-    // This request triggers auto-refresh (new cookie set)
-    const refreshRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    jar.update(refreshRes.headers);
-
-    // Reset time to avoid double-refresh
-    vi.setSystemTime(new Date("2026-01-01T00:31:01Z"));
-
-    // Next request uses the refreshed cookie — should have new id
-    const afterRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
+    const afterRes = await h.request("/me", { headers: { Cookie: jar.toString() } });
     const afterBody = await afterRes.json();
     expect(afterBody.id).toBeTypeOf("string");
     expect(afterBody.id).not.toBe(idBefore);
     expect(afterBody.data.userId).toBe("u1");
   });
 
-  it("calls onRefresh and refreshes with new data", async () => {
+  it("rolls once less than a custom duration remains", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
 
+    const onUpdate = vi.fn();
     const useSession = defineSession({
       key,
       maxAge: "1h",
-      refreshAfter: 0.5,
+      rolling: "30m",
+      cookie: { secure: false },
+      hooks: { onUpdate },
+    });
+
+    h.router.post(
+      "/login",
+      eventHandler(async (event) => {
+        const session = await useSession(event);
+        await session.update({ userId: "u1" });
+        return { ok: true };
+      }),
+    );
+    h.router.get(
+      "/me",
+      eventHandler(async (event) => {
+        const session = await useSession(event);
+        return { id: session.id ?? null, data: session.data };
+      }),
+    );
+
+    const jar = cookieJar();
+
+    const loginRes = await h.request("/login", { method: "POST" });
+    jar.update(loginRes.headers);
+    const idBefore = (
+      await (await h.request("/me", { headers: { Cookie: jar.toString() } })).json()
+    ).id;
+
+    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
+    const rollRes = await h.request("/me", { headers: { Cookie: jar.toString() } });
+    jar.update(rollRes.headers);
+
+    const afterBody = await (
+      await h.request("/me", { headers: { Cookie: jar.toString() } })
+    ).json();
+    expect(afterBody.id).not.toBe(idBefore);
+    expect(onUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  it("rolls on every read with rolling: true", async () => {
+    const onUpdate = vi.fn();
+    const useSession = defineSession({
+      key,
+      maxAge: "1h",
+      rolling: true,
+      cookie: { secure: false },
+      hooks: { onUpdate },
+    });
+
+    h.router.post(
+      "/login",
+      eventHandler(async (event) => {
+        const session = await useSession(event);
+        await session.update({ userId: "u1" });
+        return { ok: true };
+      }),
+    );
+    h.router.get(
+      "/me",
+      eventHandler(async (event) => {
+        const session = await useSession(event);
+        return { id: session.id ?? null, data: session.data };
+      }),
+    );
+
+    const jar = cookieJar();
+
+    const loginRes = await h.request("/login", { method: "POST" });
+    jar.update(loginRes.headers);
+
+    const first = await h.request("/me", { headers: { Cookie: jar.toString() } });
+    jar.update(first.headers);
+    const second = await h.request("/me", { headers: { Cookie: jar.toString() } });
+
+    expect((await first.json()).id).not.toBe((await second.json()).id);
+    expect(onUpdate).toHaveBeenCalledTimes(3);
+  });
+
+  it("never rolls with rolling: false", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+    const onUpdate = vi.fn();
+    const useSession = defineSession({
+      key,
+      maxAge: "1h",
+      rolling: false,
+      cookie: { secure: false },
+      hooks: { onUpdate },
+    });
+
+    h.router.post(
+      "/login",
+      eventHandler(async (event) => {
+        const session = await useSession(event);
+        await session.update({ userId: "u1" });
+        return { ok: true };
+      }),
+    );
+    h.router.get(
+      "/me",
+      eventHandler(async (event) => {
+        const session = await useSession(event);
+        return { id: session.id ?? null, data: session.data };
+      }),
+    );
+
+    const jar = cookieJar();
+
+    const loginRes = await h.request("/login", { method: "POST" });
+    jar.update(loginRes.headers);
+
+    vi.setSystemTime(new Date("2026-01-01T00:59:00Z"));
+    const res = await h.request("/me", { headers: { Cookie: jar.toString() } });
+
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect((await res.json()).data.userId).toBe("u1");
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets onRead update the session with new data", async () => {
+    const useSession = defineSession({
+      key,
+      maxAge: "1h",
       cookie: { secure: false },
       hooks: {
-        async onRefresh({ refresh }) {
-          await refresh({ userId: "u1", role: "superadmin" });
+        async onRead({ session }) {
+          if (session.data.role !== "superadmin") await session.update({ role: "superadmin" });
         },
       },
     });
@@ -239,134 +359,25 @@ describe("defineSession (h3v1)", () => {
     const loginRes = await h.request("/login", { method: "POST" });
     jar.update(loginRes.headers);
 
-    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
+    const firstRes = await h.request("/me", { headers: { Cookie: jar.toString() } });
+    jar.update(firstRes.headers);
+    expect((await firstRes.json()).data.role).toBe("superadmin");
 
-    const refreshRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    jar.update(refreshRes.headers);
-
-    vi.setSystemTime(new Date("2026-01-01T00:31:01Z"));
-
-    const afterRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    const body = await afterRes.json();
-    expect(body.data.role).toBe("superadmin");
+    const secondRes = await h.request("/me", { headers: { Cookie: jar.toString() } });
+    expect((await secondRes.json()).data).toEqual({ userId: "u1", role: "superadmin" });
   });
 
-  it("skips refresh when refresh() is not called in onRefresh", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-
-    const onRefreshSpy = vi.fn();
-    const onUpdate = vi.fn();
-    const useSession = defineSession({
-      key,
-      maxAge: "1h",
-      refreshAfter: 0.5,
-      cookie: { secure: false },
-      hooks: {
-        onRefresh: onRefreshSpy,
-        onUpdate,
-      },
-    });
-
-    h.router.post(
-      "/login",
-      eventHandler(async (event) => {
-        const session = await useSession(event);
-        await session.update({ userId: "u1" });
-        return { ok: true };
-      }),
-    );
-    h.router.get(
-      "/me",
-      eventHandler(async (event) => {
-        const session = await useSession(event);
-        return { id: session.id ?? null, data: session.data };
-      }),
-    );
-
-    const jar = cookieJar();
-
-    const loginRes = await h.request("/login", { method: "POST" });
-    jar.update(loginRes.headers);
-
-    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
-
-    const res = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    const body = await res.json();
-
-    expect(onRefreshSpy).toHaveBeenCalledTimes(1);
-    // onUpdate only from login, NOT from refresh
-    expect(onUpdate).toHaveBeenCalledTimes(1);
-    expect(body.data.userId).toBe("u1");
-  });
-
-  it("clears session from onRefresh via clear()", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-
-    const useSession = defineSession({
-      key,
-      maxAge: "1h",
-      refreshAfter: 0.5,
-      cookie: { secure: false },
-      hooks: {
-        async onRefresh({ clear }) {
-          await clear();
-        },
-      },
-    });
-
-    h.router.post(
-      "/login",
-      eventHandler(async (event) => {
-        const session = await useSession(event);
-        await session.update({ userId: "u1" });
-        return { ok: true };
-      }),
-    );
-    h.router.get(
-      "/me",
-      eventHandler(async (event) => {
-        const session = await useSession(event);
-        return { id: session.id ?? null };
-      }),
-    );
-
-    const jar = cookieJar();
-
-    const loginRes = await h.request("/login", { method: "POST" });
-    jar.update(loginRes.headers);
-
-    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
-
-    const refreshRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    jar.update(refreshRes.headers);
-
-    const clearedRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    expect((await clearedRes.json()).id).toBeNull();
-  });
-
-  it("clears session from onRead via clear()", async () => {
+  it("lets onRead clear the session", async () => {
     const clearSpy = vi.fn();
     const useSession = defineSession({
       key,
       maxAge: "1h",
       cookie: { secure: false },
       hooks: {
-        async onRead({ session, clear }) {
-          if (session.id && session.data.banned) {
+        async onRead({ session }) {
+          if (session.data.banned) {
             clearSpy();
-            await clear();
+            await session.clear();
           }
         },
       },
@@ -393,113 +404,14 @@ describe("defineSession (h3v1)", () => {
     const loginRes = await h.request("/login", { method: "POST" });
     jar.update(loginRes.headers);
 
-    const meRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
+    const meRes = await h.request("/me", { headers: { Cookie: jar.toString() } });
     jar.update(meRes.headers);
 
     expect(clearSpy).toHaveBeenCalledTimes(1);
+    expect((await meRes.json()).id).toBeNull();
 
-    const clearedRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
+    const clearedRes = await h.request("/me", { headers: { Cookie: jar.toString() } });
     expect((await clearedRes.json()).id).toBeNull();
-  });
-
-  it("forwards onRefresh errors to onError", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-
-    const onError = vi.fn();
-    const useSession = defineSession({
-      key,
-      maxAge: "1h",
-      refreshAfter: 0.5,
-      cookie: { secure: false },
-      hooks: {
-        onRefresh() {
-          throw new Error("db down");
-        },
-        onError,
-      },
-    });
-
-    h.router.post(
-      "/login",
-      eventHandler(async (event) => {
-        const session = await useSession(event);
-        await session.update({ userId: "u1" });
-        return { ok: true };
-      }),
-    );
-    h.router.get(
-      "/me",
-      eventHandler(async (event) => {
-        const session = await useSession(event);
-        return { id: session.id ?? null, data: session.data };
-      }),
-    );
-
-    const jar = cookieJar();
-
-    const loginRes = await h.request("/login", { method: "POST" });
-    jar.update(loginRes.headers);
-
-    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
-
-    const meRes = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    const body = await meRes.json();
-
-    expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0]![0].error).toBeInstanceOf(Error);
-    // Session preserved (not cleared on error)
-    expect(body.data.userId).toBe("u1");
-  });
-
-  it("does not refresh when refreshAfter is false", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-
-    const onRefresh = vi.fn();
-    const onUpdate = vi.fn();
-    const useSession = defineSession({
-      key,
-      maxAge: "1h",
-      refreshAfter: false,
-      cookie: { secure: false },
-      hooks: { onRefresh, onUpdate },
-    });
-
-    h.router.post(
-      "/login",
-      eventHandler(async (event) => {
-        const session = await useSession(event);
-        await session.update({ userId: "u1" });
-        return { ok: true };
-      }),
-    );
-    h.router.get(
-      "/me",
-      eventHandler(async (event) => {
-        const session = await useSession(event);
-        return { data: session.data };
-      }),
-    );
-
-    const jar = cookieJar();
-
-    const loginRes = await h.request("/login", { method: "POST" });
-    jar.update(loginRes.headers);
-
-    vi.setSystemTime(new Date("2026-01-01T00:55:00Z"));
-
-    await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-    expect(onRefresh).not.toHaveBeenCalled();
-    expect(onUpdate).toHaveBeenCalledTimes(1); // only the login
   });
 
   it("returns empty session after expiry", async () => {
@@ -536,18 +448,15 @@ describe("defineSession (h3v1)", () => {
     // Advance well past maxAge
     vi.setSystemTime(new Date("2026-01-01T02:00:00Z"));
 
-    const res = await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
+    const res = await h.request("/me", { headers: { Cookie: jar.toString() } });
     expect((await res.json()).id).toBeNull();
   });
 
-  it("calls onRead hook on normal reads (below threshold)", async () => {
+  it("calls onRead once per request with the live session manager", async () => {
     const onRead = vi.fn();
     const useSession = defineSession({
       key,
       maxAge: "1h",
-      refreshAfter: 0.5,
       cookie: { secure: false },
       hooks: { onRead },
     });
@@ -572,28 +481,23 @@ describe("defineSession (h3v1)", () => {
 
     const loginRes = await h.request("/login", { method: "POST" });
     jar.update(loginRes.headers);
+    expect(onRead).not.toHaveBeenCalled();
 
-    await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
+    await h.request("/me", { headers: { Cookie: jar.toString() } });
 
-    // onRead called for the GET /me read (below threshold)
-    expect(onRead).toHaveBeenCalled();
-    expect(onRead.mock.calls[0]![0]).toHaveProperty("clear");
+    expect(onRead).toHaveBeenCalledTimes(1);
+    const { session } = onRead.mock.calls[0]![0];
+    expect(session.id).toBeTypeOf("string");
+    expect(session.update).toBeTypeOf("function");
+    expect(session.clear).toBeTypeOf("function");
   });
 
-  it("does not call onRead when onRefresh fires", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-
-    const onRead = vi.fn();
-    const onRefresh = vi.fn();
+  it("forwards the remaining unjwt options", async () => {
     const useSession = defineSession({
       key,
       maxAge: "1h",
-      refreshAfter: 0.5,
       cookie: { secure: false },
-      hooks: { onRead, onRefresh },
+      generateId: () => "fixed-id",
     });
 
     h.router.post(
@@ -608,7 +512,7 @@ describe("defineSession (h3v1)", () => {
       "/me",
       eventHandler(async (event) => {
         const session = await useSession(event);
-        return { data: session.data };
+        return { id: session.id ?? null };
       }),
     );
 
@@ -617,17 +521,8 @@ describe("defineSession (h3v1)", () => {
     const loginRes = await h.request("/login", { method: "POST" });
     jar.update(loginRes.headers);
 
-    // Reset spies after login (which triggers onRead)
-    onRead.mockClear();
-
-    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
-
-    await h.request("/me", {
-      headers: { Cookie: jar.toString() },
-    });
-
-    expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(onRead).not.toHaveBeenCalled();
+    const res = await h.request("/me", { headers: { Cookie: jar.toString() } });
+    expect((await res.json()).id).toBe("fixed-id");
   });
 });
 
@@ -935,49 +830,47 @@ describe("defineSession — read-only compat events (h3v1)", () => {
     expect(session.data).toEqual({});
   });
 
-  it("does not attempt a refresh past the threshold, and reports it as a read", async () => {
+  it("does not roll through a read-only event, and reports it as a read", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const onRefresh = vi.fn();
     const onRead = vi.fn();
+    const onUpdate = vi.fn();
     const onError = vi.fn();
     const useSession = defineSession({
       key,
       maxAge: "1h",
-      refreshAfter: 0.5,
+      rolling: "30m",
       cookie: { secure: false },
-      hooks: { onRefresh, onRead, onError },
+      hooks: { onRead, onUpdate, onError },
     });
     const jar = await login(useSession);
 
-    // Well past `refreshAfter` — an H3Event here would slide the session.
+    // Inside the rolling window — an H3Event here would reissue the session.
     vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
     const session = await useSession(upgradeEvent(jar.toString()));
 
     expect(session.data).toMatchObject({ userId: "u1" });
-    expect(onRefresh).not.toHaveBeenCalled();
-    expect(onError).not.toHaveBeenCalled();
     expect(onRead).toHaveBeenCalledTimes(1);
-    expect(onRead.mock.calls[0]![0].readOnly).toBe(true);
+    expect(onUpdate).toHaveBeenCalledTimes(1); // the login only
+    expect(onError).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toMatch(/read-only/i);
+    warn.mockRestore();
   });
 
-  it("still refreshes normally on a real H3Event", async () => {
+  it("still rolls on a real H3Event", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
 
-    const onRefresh = vi.fn();
+    const onUpdate = vi.fn();
     const useSession = defineSession({
       key,
       maxAge: "1h",
-      refreshAfter: 0.5,
+      rolling: "30m",
       cookie: { secure: false },
-      hooks: {
-        async onRefresh(ctx) {
-          onRefresh(ctx);
-          await ctx.refresh({ role: "superadmin" });
-        },
-      },
+      hooks: { onUpdate },
     });
     const jar = await login(useSession);
 
@@ -992,30 +885,8 @@ describe("defineSession — read-only compat events (h3v1)", () => {
     vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
     jar.update((await h.request("/me", { headers: { Cookie: jar.toString() } })).headers);
 
-    expect(onRefresh).toHaveBeenCalledTimes(1);
-  });
-
-  it("marks a real H3Event read as not read-only", async () => {
-    const onRead = vi.fn();
-    const useSession = defineSession({
-      key,
-      maxAge: "1h",
-      cookie: { secure: false },
-      hooks: { onRead },
-    });
-    const jar = await login(useSession);
-
-    h.router.get(
-      "/me",
-      eventHandler(async (event) => {
-        await useSession(event);
-        return { ok: true };
-      }),
-    );
-    await h.request("/me", { headers: { Cookie: jar.toString() } });
-
-    expect(onRead).toHaveBeenCalledTimes(1);
-    expect(onRead.mock.calls[0]![0].readOnly).toBe(false);
+    expect(onUpdate).toHaveBeenCalledTimes(2);
+    expect(onUpdate.mock.calls[1]![0].trigger).toBe("rolling");
   });
 
   it("refuses to write through a compat event", async () => {

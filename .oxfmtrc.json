@@ -1,13 +1,11 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-
   "tabWidth": 2,
   "singleQuote": false,
   "semi": true,
   "trailingComma": "all",
   "quoteProps": "consistent",
   "proseWrap": "never",
-
   "ignorePatterns": [
     "**/CHANGELOG.md",
     "**/pnpm*.yaml",
@@ -15,7 +13,6 @@
     "**/*.gen.ts",
     "**/.cache/**",
     "**/node_modules/**",
-    "**/coverage/**",
-    "**/.agents/skills/**"
+    "**/coverage/**"
   ]
 }
