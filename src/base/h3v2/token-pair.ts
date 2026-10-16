@@ -1,4 +1,4 @@
-import { type HTTPEvent, HTTPError } from "h3v2";
+import { type HTTPEvent, HTTPError } from "h3";
 import type {
   SessionConfigJWE,
   SessionConfigJWS,

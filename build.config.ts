@@ -1,28 +1,18 @@
 import { defineBuildConfig } from "obuild/config";
-import { replacePlugin } from "rolldown/plugins";
 
+/**
+ * A single bundle for every public entry, so rolldown splits what they share (`src/**\/_internal/**`)
+ * into `dist/_chunks/` once instead of inlining a copy per entry. `dependencies` and
+ * `peerDependencies` are external by default. Declarations come from isolated declarations (see
+ * `tsconfig.base.json`), which never resolve `h3`, so one build serves both h3 majors.
+ */
 export default defineBuildConfig({
   entries: [
     {
       type: "bundle",
       input: ["./src/base/h3v1/index.ts", "./src/base/h3v2/index.ts"],
-      rolldown: {
-        platform: "neutral",
-        external: ["h3v1", "cookie-esv1", "h3v2", "cookie-esv3", "unjwt", "unsecure"],
-        plugins: [
-          replacePlugin(
-            {
-              'h3v1"': 'h3"',
-              'h3v2"': 'h3"',
-              "cookie-esv1": "cookie-es",
-              "cookie-esv3": "cookie-es",
-            },
-            {
-              delimiters: ["", ""],
-            },
-          ),
-        ],
-      },
+      dts: { tsconfig: "./tsconfig.base.json" },
+      rolldown: { platform: "neutral" },
     },
   ],
 });

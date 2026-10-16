@@ -1,4 +1,4 @@
-import type { ExpiresIn } from "unjwt/adapters/h3v2";
+import type { ExpiresIn } from "unjwt";
 import { computeDurationInSeconds } from "unjwt/utils";
 import { DEFAULT_ROLLING_WINDOW } from "./defaults.ts";
 

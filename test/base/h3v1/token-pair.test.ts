@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
-import { eventHandler, createError } from "h3v1";
+import { eventHandler, createError } from "h3";
 
 import {
   type JWK_oct,

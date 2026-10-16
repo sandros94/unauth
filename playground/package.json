@@ -9,6 +9,6 @@
   "devDependencies": {
     "h3": "^2.0.2",
     "unauth": "workspace:*",
-    "unjwt": "^0.8.1"
+    "unjwt": "catalog:"
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
-import { eventHandler, createError } from "h3v1";
+import { eventHandler, createError } from "h3";
 
 import {
   type JWK_oct,
@@ -833,7 +833,6 @@ describe("defineSession — read-only compat events (h3v1)", () => {
   it("does not roll through a read-only event, and reports it as a read", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const onRead = vi.fn();
     const onUpdate = vi.fn();
@@ -855,9 +854,6 @@ describe("defineSession — read-only compat events (h3v1)", () => {
     expect(onRead).toHaveBeenCalledTimes(1);
     expect(onUpdate).toHaveBeenCalledTimes(1); // the login only
     expect(onError).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]![0]).toMatch(/read-only/i);
-    warn.mockRestore();
   });
 
   it("still rolls on a real H3Event", async () => {

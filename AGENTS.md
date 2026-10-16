@@ -1,35 +1,13 @@
 <!-- ⚠️  MAINTENANCE NOTICE
-  This file and the `.agents/` folder are the **single source of truth**
-  for any AI agent working on this project. They MUST be kept up-to-date
-  whenever the project structure, conventions, tooling, or plans change.
-  If you change something in the codebase that invalidates information here
-  or in any `.agents/` document, update the relevant files in the same PR. -->
+  This file is the **single source of truth** for any AI agent working on
+  this project. It MUST be kept up-to-date whenever the project structure,
+  conventions, or tooling change. If you change something in the codebase
+  that invalidates information here, update this file in the same PR.
+  Plans and design notes live in the agent's own memory, not in the repo. -->
 
 ## Core Principle — Ask First
 
 **When in doubt, ask before acting.** It is always more important to understand the vision and the request than to assume. There is no shame or wasted time in asking clarifying questions — this applies to every conversation and every task in this project.
-
-## Agent Memory — `.agents/` Folder
-
-The `.agents/` directory is the **memory** of this project for AI agents. It is organized as follows:
-
-### `contribution/`
-
-Standard approaches, patterns, and implementation guides developed for this project. These documents describe _how_ we build things here.
-
-| File | Description |
-| --- | --- |
-| [`contribution/testing.md`](.agents/contribution/testing.md) (if available) | Testing strategy, test types, and known patterns. |
-
-### `vision/`
-
-If available use [`vision/IDENTITY.md`](.agents/vision/IDENTITY.md) for project identity, core principles, and high-level goals. Use other vision documents for design and planning information that describes _what_ the project should become in each area. Contents come from external discussions, planned designs, and similar sources. Users may bring documents that need slight adaptation to fit the project context before being stored here.
-
-**Important:** if a technical limitation is discovered during implementation that conflicts with a vision document, **stop and update the vision document first** with a new approach or solution before writing any code. Vision documents are the drawing board — go back to it before implementing workarounds.
-
-### [`TODO.md`](.agents/TODO.md)
-
-Tracks current and next steps for project-specific implementations. Completed items are removed once committed — there is no need to accumulate history of past work.
 
 ## First-time Setup for Development
 
@@ -51,7 +29,6 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 
 ## Repository Structure
 
-- `.agents/` — Agent memory: contribution guides, vision documents, and TODO.
 - `.github/` — GitHub configuration (funding, workflows).
 - `src/` — Library source code.
 - `test/` — Tests (unit, nuxt environment, e2e).
@@ -59,8 +36,6 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 - `docs/` — Documentation site.
 
 ## Testing Strategy
-
-See [`.agents/contribution/testing.md`](.agents/contribution/testing.md) (if available) for full documentation.
 
 - `pnpm test` — Run all vitest tests.
 - `pnpm test:coverage` — Run tests with coverage reporting.

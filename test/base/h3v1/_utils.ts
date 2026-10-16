@@ -1,5 +1,5 @@
 import supertest from "supertest";
-import { createApp, createRouter, toNodeListener, type App, type Router } from "h3v1";
+import { createApp, createRouter, toNodeListener, type App, type Router } from "h3";
 
 /**
  * h3 v1 doesn't ship a Fetch-style request method like h3 v2's `app.request()`,

@@ -1,6 +1,6 @@
-import { type H3Event, getCookie, setCookie, getHeader, createError } from "h3v1";
+import { type H3Event, getCookie, setCookie, getHeader, createError } from "h3";
 import { secureCompare } from "unsecure";
-import type { CookieSerializeOptions } from "cookie-esv1";
+import type { CookieSerializeOptions } from "cookie-es";
 import {
   DEFAULT_CSRF_NAME,
   DEFAULT_CSRF_HEADER,

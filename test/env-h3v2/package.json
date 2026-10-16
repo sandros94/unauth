@@ -1,0 +1,10 @@
+{
+  "name": "unauth-env-h3v2",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "cookie-es": "^3.1.1",
+    "h3": "^2.0.2",
+    "unjwt": "catalog:"
+  }
+}

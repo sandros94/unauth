@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { H3 } from "h3v2";
+import { H3 } from "h3";
 
 import { defineCsrf } from "../../../src/base/h3v2/csrf.ts";
 

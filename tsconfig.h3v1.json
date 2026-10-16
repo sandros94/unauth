@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "h3": ["./test/env-h3v1/node_modules/h3"],
+      "cookie-es": ["./test/env-h3v1/node_modules/cookie-es/dist/index.d.mts"]
+    }
+  },
+  "include": [
+    "src/base/_internal/**/*.ts",
+    "src/base/h3v1/**/*.ts",
+    "test/base/_internal/**/*.ts",
+    "test/base/h3v1/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "coverage"]
+}

@@ -162,8 +162,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  unjwt@0.8.1: 7e2753c17be7948400bbfb0f7fe94faed06d23a16b8d213d0e26b58f7d4b3f45
+catalogs:
+  default:
+    unjwt:
+      specifier: https://pkg.pr.new/sandros94/unjwt@7b32b79
+      version: https://pkg.pr.new/sandros94/unjwt@7b32b79
 
 importers:
 
@@ -191,18 +194,6 @@ importers:
       automd:
         specifier: ^0.4.3
         version: 0.4.3(magicast@0.5.5)
-      cookie-esv1:
-        specifier: npm:cookie-es@^1.2.3
-        version: cookie-es@1.2.3
-      cookie-esv3:
-        specifier: npm:cookie-es@^3.1.1
-        version: cookie-es@3.1.1
-      h3v1:
-        specifier: npm:h3@^1.15.11
-        version: h3@1.15.11
-      h3v2:
-        specifier: npm:h3@^2.0.2
-        version: h3@2.0.2
       obuild:
         specifier: ^0.4.45
         version: 0.4.45(dotenv@17.4.2)(giget@3.3.1)(jiti@2.7.0)(magicast@0.5.5)(typescript@7.0.2)
@@ -228,8 +219,8 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       unjwt:
-        specifier: ^0.8.1
-        version: 0.8.1(patch_hash=7e2753c17be7948400bbfb0f7fe94faed06d23a16b8d213d0e26b58f7d4b3f45)(cookie-es@3.1.1)(h3@2.0.2)
+        specifier: 'catalog:'
+        version: https://pkg.pr.new/sandros94/unjwt@7b32b79(cookie-es@3.1.1)(h3@2.0.2)
       vitest:
         specifier: ^5.0.4
         version: 5.0.4(@types/node@26.6.5)(@vitest/coverage-v8@5.0.4)(vite@8.3.4(@types/node@26.6.5)(jiti@2.7.0))
@@ -243,8 +234,32 @@ importers:
         specifier: workspace:*
         version: link:..
       unjwt:
-        specifier: ^0.8.1
-        version: 0.8.1(patch_hash=7e2753c17be7948400bbfb0f7fe94faed06d23a16b8d213d0e26b58f7d4b3f45)(cookie-es@3.1.1)(h3@2.0.2)
+        specifier: 'catalog:'
+        version: https://pkg.pr.new/sandros94/unjwt@7b32b79(cookie-es@3.1.1)(h3@2.0.2)
+
+  test/env-h3v1:
+    devDependencies:
+      cookie-es:
+        specifier: ^1.2.3
+        version: 1.2.3
+      h3:
+        specifier: ^1.15.11
+        version: 1.15.11
+      unjwt:
+        specifier: 'catalog:'
+        version: https://pkg.pr.new/sandros94/unjwt@7b32b79(cookie-es@1.2.3)(h3@1.15.11)
+
+  test/env-h3v2:
+    devDependencies:
+      cookie-es:
+        specifier: ^3.1.1
+        version: 3.1.1
+      h3:
+        specifier: ^2.0.2
+        version: 2.0.2
+      unjwt:
+        specifier: 'catalog:'
+        version: https://pkg.pr.new/sandros94/unjwt@7b32b79(cookie-es@3.1.1)(h3@2.0.2)
 
 packages:
 
@@ -1612,8 +1627,9 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  unjwt@0.8.1:
-    resolution: {integrity: sha512-BvrutI8ryJ1JEULrek/DX2nLb+NDnV+IAzlRjpoy6riUzbO+Fz/n160QqvTEEKRy/ZtyOfX5QcsZAl/JCWXTfQ==}
+  unjwt@https://pkg.pr.new/sandros94/unjwt@7b32b79:
+    resolution: {integrity: sha512-osXorS95JI4mRSV3cSKDa/ToRaaKFvrf0rmi0rj1ws8B1q1HlKFLhFFALt+v+Npq3j8y8Sb6ImI1FzyBCKenTg==, tarball: https://pkg.pr.new/sandros94/unjwt@7b32b79}
+    version: 0.8.1
     peerDependencies:
       cookie-es: ^1.2.3 || ^3.1.1
       elysia: ^1.4.29
@@ -2814,7 +2830,12 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  unjwt@0.8.1(patch_hash=7e2753c17be7948400bbfb0f7fe94faed06d23a16b8d213d0e26b58f7d4b3f45)(cookie-es@3.1.1)(h3@2.0.2):
+  unjwt@https://pkg.pr.new/sandros94/unjwt@7b32b79(cookie-es@1.2.3)(h3@1.15.11):
+    optionalDependencies:
+      cookie-es: 1.2.3
+      h3: 1.15.11
+
+  unjwt@https://pkg.pr.new/sandros94/unjwt@7b32b79(cookie-es@3.1.1)(h3@2.0.2):
     optionalDependencies:
       cookie-es: 3.1.1
       h3: 2.0.2

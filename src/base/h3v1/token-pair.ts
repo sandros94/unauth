@@ -1,4 +1,4 @@
-import { type H3Event, createError } from "h3v1";
+import { type H3Event, createError } from "h3";
 import type {
   SessionConfigJWE,
   SessionConfigJWS,

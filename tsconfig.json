@@ -1,27 +1,11 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "moduleDetection": "force",
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
-    "strict": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "erasableSyntaxOnly": false,
-    "noUncheckedIndexedAccess": true,
-    "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": true,
-    "noImplicitOverride": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "composite": true,
-    "isolatedDeclarations": true,
-    "allowImportingTsExtensions": true,
-    "lib": ["ESNext", "DOM"]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist", "coverage"]
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.h3v2.json"
+    },
+    {
+      "path": "./tsconfig.h3v1.json"
+    }
+  ]
 }
