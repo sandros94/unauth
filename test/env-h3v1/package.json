@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "cookie-es": "^1.2.3",
     "h3": "^1.15.11",
     "unjwt": "catalog:"
   }

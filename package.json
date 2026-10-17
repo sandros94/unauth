@@ -60,14 +60,10 @@
     "vitest": "^5.0.4"
   },
   "peerDependencies": {
-    "cookie-es": "^1.2.3 || ^3.1.1",
     "h3": "^1.15.4 || ^2.0.1",
     "unjwt": "^0.8.1"
   },
   "peerDependenciesMeta": {
-    "cookie-es": {
-      "optional": true
-    },
     "h3": {
       "optional": true
     },

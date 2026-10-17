@@ -1,6 +1,5 @@
 import { type H3Event, getCookie, setCookie, HTTPError } from "h3";
 import { secureCompare } from "unsecure";
-import type { CookieSerializeOptions } from "cookie-es";
 import {
   DEFAULT_CSRF_NAME,
   DEFAULT_CSRF_HEADER,
@@ -10,6 +9,8 @@ import {
 import { type CsrfConfig, createCsrfToken } from "../_internal/csrf.ts";
 
 export type { CsrfConfig };
+
+type CookieSerializeOptions = NonNullable<Parameters<typeof setCookie>[3]>;
 
 /** h3v2-specific CSRF options. */
 export interface H3CsrfOptions extends CsrfConfig {
