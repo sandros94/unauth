@@ -7,7 +7,7 @@ import { configDefaults, defineConfig, type TestProjectInlineConfiguration } fro
  * resolves those packages from there instead of the root, so source and tests import them by their
  * real names and still get the exact tree a consumer on that major would.
  *
- * Suites bound to an env live under `test/**\/<name>/`; everything else is framework-agnostic.
+ * Suites bound to an env live under `test/**\/<name>/`, everything else is framework-agnostic.
  */
 const ENVS = ["h3v1", "h3v2"];
 const ENV_PACKAGES = /^(h3|unjwt)(\/|$)/;

@@ -9,7 +9,12 @@
     "src/base/_internal/**/*.ts",
     "src/base/h3v2/**/*.ts",
     "test/base/_internal/**/*.ts",
-    "test/base/h3v2/**/*.ts"
+    "test/base/h3v2/**/*.ts",
+    "src/_internal/**/*.ts",
+    "src/n/**/*.ts",
+    "test/n/_session.ts",
+    "test/n/flow/_fake-provider.ts",
+    "test/n/h3v2/**/*.ts"
   ],
-  "exclude": ["node_modules", "dist", "coverage"]
+  "exclude": ["node_modules", "dist", "coverage", "src/n/h3v1/**"]
 }

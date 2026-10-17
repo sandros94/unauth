@@ -165,8 +165,8 @@ settings:
 catalogs:
   default:
     unjwt:
-      specifier: https://pkg.pr.new/sandros94/unjwt@aa127d3
-      version: https://pkg.pr.new/sandros94/unjwt@aa127d3
+      specifier: https://pkg.pr.new/sandros94/unjwt@4a035c7
+      version: https://pkg.pr.new/sandros94/unjwt@4a035c7
 
 importers:
 
@@ -217,7 +217,7 @@ importers:
         version: 7.0.2
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@aa127d3(h3@2.0.2)
+        version: https://pkg.pr.new/sandros94/unjwt@4a035c7(h3@2.0.2)
       vitest:
         specifier: ^5.0.4
         version: 5.0.4(@types/node@26.6.5)(@vitest/coverage-v8@5.0.4)(vite@8.3.4(@types/node@26.6.5)(jiti@2.7.0))
@@ -232,7 +232,7 @@ importers:
         version: link:..
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@aa127d3(h3@2.0.2)
+        version: https://pkg.pr.new/sandros94/unjwt@4a035c7(h3@2.0.2)
 
   test/env-h3v1:
     devDependencies:
@@ -241,7 +241,7 @@ importers:
         version: 1.15.11
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@aa127d3(h3@1.15.11)
+        version: https://pkg.pr.new/sandros94/unjwt@4a035c7(h3@1.15.11)
 
   test/env-h3v2:
     devDependencies:
@@ -250,7 +250,7 @@ importers:
         version: 2.0.2
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@aa127d3(h3@2.0.2)
+        version: https://pkg.pr.new/sandros94/unjwt@4a035c7(h3@2.0.2)
 
 packages:
 
@@ -1615,8 +1615,8 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@aa127d3:
-    resolution: {integrity: sha512-1o5jC99SXaGQoAF19na3DPhmm9BxX1U/G5XMs2d+ApkmmELBPfBRZMh7t6C0YmhqXN0ViFVJc94+CJdHKA9Nlg==, tarball: https://pkg.pr.new/sandros94/unjwt@aa127d3}
+  unjwt@https://pkg.pr.new/sandros94/unjwt@4a035c7:
+    resolution: {integrity: sha512-3uEb/b+OGtP12L/Jp78ytINo6qztH7WS5NfJXvSpytPiaw2xtZvOOo2sK7YsG4utp9YYeNOINpTuZw8PX7TAVA==, tarball: https://pkg.pr.new/sandros94/unjwt@4a035c7}
     version: 0.8.1
     peerDependencies:
       elysia: ^1.4.29
@@ -2813,11 +2813,11 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@aa127d3(h3@1.15.11):
+  unjwt@https://pkg.pr.new/sandros94/unjwt@4a035c7(h3@1.15.11):
     optionalDependencies:
       h3: 1.15.11
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@aa127d3(h3@2.0.2):
+  unjwt@https://pkg.pr.new/sandros94/unjwt@4a035c7(h3@2.0.2):
     optionalDependencies:
       h3: 2.0.2
 

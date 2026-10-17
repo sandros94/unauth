@@ -885,13 +885,14 @@ describe("defineSession — read-only compat events (h3v1)", () => {
     expect(onUpdate.mock.calls[1]![0].trigger).toBe("rolling");
   });
 
-  it("refuses to write through a compat event", async () => {
+  it("refuses an update through a compat event, and clears without writing", async () => {
     const useSession = defineSession({ key, maxAge: "1h", cookie: { secure: false } });
     const jar = await login(useSession);
 
     const session = await useSession(upgradeEvent(jar.toString()));
 
     await expect(session.update({ role: "superadmin" })).rejects.toThrow(/read-only/i);
-    await expect(session.clear()).rejects.toThrow(/read-only/i);
+    await session.clear();
+    expect(session.id).toBeUndefined();
   });
 });

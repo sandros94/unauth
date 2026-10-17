@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": ["src/_internal/**/*.ts", "src/n/**/*.ts", "test/n/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "src/n/h3v1/**",
+    "src/n/h3v2/**",
+    "test/n/h3v1/**",
+    "test/n/h3v2/**"
+  ]
+}

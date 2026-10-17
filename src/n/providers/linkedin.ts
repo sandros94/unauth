@@ -1,0 +1,58 @@
+import { profileError } from "../flow/_http.ts";
+import { type OidcProfile, claimsProfile, oidc } from "../flow/oidc.ts";
+import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
+import type { PresetOptions } from "./_shared.ts";
+
+/** LinkedIn's OpenID Connect claims (https://learn.microsoft.com/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2). */
+export interface LinkedInProfile extends Omit<OidcProfile, "locale"> {
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+  email?: string;
+  email_verified?: boolean;
+  /** An object here, not the standard string. */
+  locale?: { country?: string; language?: string } | string;
+}
+
+/** Options of {@link defineLinkedInProvider}. */
+export interface LinkedInProviderOptions extends PresetOptions {
+  clientSecret: string;
+  /** Send PKCE S256, for an app LinkedIn enabled it for. @default false */
+  pkce?: boolean;
+}
+
+/**
+ * LinkedIn ("Sign In with LinkedIn using OpenID Connect"), discovered from
+ * `https://www.linkedin.com/oauth`, with the client secret in the request body. PKCE is off by
+ * default: LinkedIn enables it per app on request, for native apps only
+ * (https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow-native);
+ * set `pkce: true` once your app has it. @default scopes `["openid", "profile", "email"]`
+ */
+export function defineLinkedInProvider(
+  options: LinkedInProviderOptions,
+): Provider<LinkedInProfile> {
+  return oidc({
+    id: options.id ?? "linkedin",
+    label: options.label ?? "LinkedIn",
+    issuer: "https://www.linkedin.com/oauth",
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    tokenAuth: "body",
+    pkce: options.pkce ?? false,
+    scopes: options.scopes ?? ["openid", "profile", "email"],
+    authorizationParams: options.authorizationParams,
+    profile: linkedinProfile,
+  });
+}
+
+function linkedinProfile(context: ProfileContext): ProfileResult<LinkedInProfile> {
+  const result = claimsProfile(context);
+  const { profile } = result;
+  if (!isLinkedInProfile(profile)) throw profileError("The LinkedIn account data has no subject.");
+  return { ...result, profile };
+}
+
+function isLinkedInProfile(value: Record<string, unknown>): value is LinkedInProfile {
+  return typeof value.sub === "string";
+}

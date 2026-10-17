@@ -74,7 +74,7 @@ const app = new H3()
 
 The session is reissued on read once less than a quarter of `maxAge` remains, so `exp` slides with activity. Tune it with `rolling`: a duration (`rolling: "1D"`) sets the remaining-time window, `true` reissues on every read, `false` never. A roll fires `onUpdate` with `trigger: "rolling"`.
 
-Hooks are [unjwt's session hooks](https://unjwt.s94.dev/adapters/hooks); `session` is the live manager, so `onRead` can `update()` or `clear()` the session it is looking at.
+Hooks are [unjwt's session hooks](https://unjwt.s94.dev/adapters/hooks), `session` is the live manager, so `onRead` can `update()` or `clear()` the session it is looking at.
 
 ### Token Pair
 

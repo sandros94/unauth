@@ -21,8 +21,8 @@ import { type RollingOption, resolveRolling } from "../_internal/session.ts";
  * This is what makes a session resolvable outside a normal request — most usefully in a
  * WebSocket `upgrade` hook, where crossws hands over `{ url, headers, context }` (or a web
  * `Request`) rather than an `H3Event`. Such an event is **read-only**: unjwt refuses to write
- * cookies through it, so the session can be verified and decoded but never reissued or cleared,
- * and a `rolling` reissue is skipped with a warning.
+ * cookies through it, so the session can be verified and decoded but never reissued, `clear()`
+ * only empties it in memory, and a `rolling` reissue is skipped with a warning.
  */
 export type CompatEvent =
   | { request: { headers: Headers }; context: H3EventContext }
@@ -35,7 +35,7 @@ export type SessionEvent = H3Event | CompatEvent;
  * Session lifecycle hooks — unjwt's JWE session hooks, with the session always carrying a `maxAge`.
  *
  * `session` is the live manager, so `onRead` can act on it in place: `await session.update()` to
- * reissue (optionally with new data), `await session.clear()` to destroy it. Both throw
+ * reissue (optionally with new data), `await session.clear()` to destroy it. `update()` throws
  * `ERR_SESSION_READONLY_EVENT` when the session was read through a {@link CompatEvent}; narrow
  * `event` with h3's `isEvent()` first when that matters.
  */
@@ -84,7 +84,7 @@ export type DefineSessionReturn<T extends SessionData> = (
  *
  * It also accepts a {@link CompatEvent}, so the same composable resolves a session inside a
  * WebSocket `upgrade` hook. That path is read-only: the session is verified and decoded, a
- * `rolling` reissue is skipped, and `update()` / `clear()` throw.
+ * `rolling` reissue is skipped, `update()` throws and `clear()` only empties it in memory.
  *
  * @example
  * ```ts

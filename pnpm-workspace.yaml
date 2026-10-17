@@ -4,7 +4,7 @@ packages:
   - test/env-*
 
 catalog:
-  unjwt: https://pkg.pr.new/sandros94/unjwt@aa127d3
+  unjwt: https://pkg.pr.new/sandros94/unjwt@4a035c7
 
 allowBuilds:
   "@parcel/watcher": false

@@ -1,0 +1,68 @@
+import { oauth2 } from "../flow/oauth2.ts";
+import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
+import { type PresetOptions, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+
+/** `GET /api/v4/user` (https://docs.gitlab.com/api/users/#for-non-administrator-users). */
+export interface GitLabProfile {
+  id: number;
+  username: string;
+  name: string;
+  state: string;
+  avatar_url: string | null;
+  web_url: string;
+  /** The primary email; with `read_user`. */
+  email?: string;
+  public_email?: string | null;
+  created_at?: string;
+  bio?: string;
+  location?: string | null;
+  locked?: boolean;
+  two_factor_enabled?: boolean;
+}
+
+/** Options of {@link defineGitLabProvider}. */
+export interface GitLabProviderOptions extends PresetOptions {
+  clientSecret: string;
+  /** A self-managed instance. @default "https://gitlab.com" */
+  baseUrl?: string;
+}
+
+/**
+ * GitLab.com or a self-managed instance (`baseUrl`). GitLab does not mark the email as verified
+ * in this payload, so `emailVerified` stays unset. Endpoints: GitLab OAuth 2.0 provider docs and
+ * nuxt-auth-utils. @default scopes `["read_user"]`
+ */
+export function defineGitLabProvider(options: GitLabProviderOptions): Provider<GitLabProfile> {
+  const base = (options.baseUrl ?? "https://gitlab.com").replace(/\/+$/, "");
+  return oauth2({
+    id: options.id ?? "gitlab",
+    label: options.label ?? "GitLab",
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    authorization: `${base}/oauth/authorize`,
+    token: `${base}/oauth/token`,
+    userinfo: `${base}/api/v4/user`,
+    tokenAuth: "body",
+    scopes: options.scopes ?? ["read_user"],
+    authorizationParams: options.authorizationParams,
+    profile: gitlabProfile,
+  });
+}
+
+function gitlabProfile(context: ProfileContext): ProfileResult<GitLabProfile> {
+  const user = userinfoAs(context, isGitLabProfile, { provider: "GitLab" });
+  const result: ProfileResult<GitLabProfile> = {
+    subject: String(user.id),
+    profile: user,
+    name: nonEmpty(user.name) ?? user.username,
+  };
+  const email = nonEmpty(user.email);
+  if (email !== undefined) result.email = email;
+  const avatar = nonEmpty(user.avatar_url);
+  if (avatar !== undefined) result.avatar = avatar;
+  return result;
+}
+
+function isGitLabProfile(value: unknown): value is GitLabProfile {
+  return hasMember(value, "id", "number") && hasMember(value, "username", "string");
+}
