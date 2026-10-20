@@ -1,7 +1,7 @@
-import { oauth2 } from "../flow/oauth2.ts";
+import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
 import { isRecord } from "../flow/_http.ts";
-import { type PresetOptions, nonEmpty, userinfoAs } from "./_shared.ts";
+import { type PresetConfig, nonEmpty, userinfoAs } from "./_shared.ts";
 
 /** `GET /users/@me` (https://discord.com/developers/docs/resources/user#user-object). */
 export interface DiscordProfile {
@@ -27,7 +27,7 @@ export interface DiscordProfile {
 }
 
 /** Options of {@link defineDiscordProvider}. */
-export interface DiscordProviderOptions extends PresetOptions {
+export interface DiscordProviderConfig extends PresetConfig {
   clientSecret: string;
 }
 
@@ -36,8 +36,8 @@ export interface DiscordProviderOptions extends PresetOptions {
  * (https://discord.com/developers/docs/reference#image-formatting).
  * @default scopes `["identify", "email"]`
  */
-export function defineDiscordProvider(options: DiscordProviderOptions): Provider<DiscordProfile> {
-  return oauth2({
+export function defineDiscordProvider(options: DiscordProviderConfig): Provider<DiscordProfile> {
+  return defineOAuth2Provider({
     id: options.id ?? "discord",
     label: options.label ?? "Discord",
     clientId: options.clientId,

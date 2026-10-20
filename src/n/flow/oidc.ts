@@ -7,7 +7,7 @@ import type {
   ProfileContext,
   ProfileResult,
   Provider,
-  ProviderDescriptor,
+  ProviderConfig,
 } from "./types.ts";
 
 /** The OpenID Connect standard claims (OIDC Core §5.1) a provider may return. */
@@ -23,9 +23,9 @@ export interface OidcProfile extends Partial<IdTokenClaims> {
   locale?: string;
 }
 
-/** Options of {@link oidc}. */
-export interface OidcProviderOptions extends Pick<
-  ProviderDescriptor,
+/** Options of {@link defineOidcProvider}. */
+export interface OidcProviderConfig extends Pick<
+  ProviderConfig,
   | "label"
   | "pkce"
   | "tokenAuth"
@@ -50,12 +50,12 @@ export interface OidcProviderOptions extends Pick<
  * userinfo endpoint when the issuer has one. Without `profile`, the account is the id_token claims
  * merged over userinfo.
  */
-export function oidc(options: OidcProviderOptions): Provider<OidcProfile>;
-export function oidc<TProfile>(
-  options: OidcProviderOptions & { profile: ProfileMapper<TProfile> },
+export function defineOidcProvider(options: OidcProviderConfig): Provider<OidcProfile>;
+export function defineOidcProvider<TProfile>(
+  options: OidcProviderConfig & { profile: ProfileMapper<TProfile> },
 ): Provider<TProfile>;
-export function oidc(
-  options: OidcProviderOptions & { profile?: ProfileMapper<unknown> },
+export function defineOidcProvider(
+  options: OidcProviderConfig & { profile?: ProfileMapper<unknown> },
 ): Provider<unknown> {
   const {
     clientId,

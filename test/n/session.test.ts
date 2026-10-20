@@ -13,8 +13,8 @@ import {
   type AuthenticatedData,
   defineAuthSession,
   isUnauthError,
-  optionalSession,
-  requireSession,
+  type AuthenticatedSessionManager,
+  isAuthenticated,
 } from "../../src/n/index.ts";
 import { requestWith, setCookieLine } from "./_session.ts";
 
@@ -43,7 +43,7 @@ afterEach(() => {
 /** Signs a user in on a fresh request; returns the response headers carrying the session cookie. */
 async function signedIn(auth: AuthSessionDefinition<User>, data: User): Promise<Headers> {
   const headers = new Headers();
-  const session = await auth.use({ request: requestWith(), headers });
+  const session = await auth.use({ req: requestWith(), res: { headers } });
   await session.authenticate(data);
   return headers;
 }
@@ -144,7 +144,7 @@ describe("authenticatedAt", () => {
     const auth = defineAuthSession<User>({ key });
     const headers = await signedIn(auth, { userId: "u1" });
 
-    const next = await auth.use({ request: requestWith(headers), headers: new Headers() });
+    const next = await auth.use({ req: requestWith(headers), res: { headers: new Headers() } });
     expect(next.data.authenticatedAt).toBe(T0);
   });
 
@@ -294,27 +294,35 @@ describe("requireRecent", () => {
   });
 });
 
-describe("requireSession / optionalSession", () => {
-  it("return the data of an authenticated session", async () => {
+describe("require / isAuthenticated", () => {
+  it("require() returns the same live session once it authenticated", async () => {
     const auth = defineAuthSession<User>({ key });
-    const session = await auth.use({ token: undefined });
+    const context = { token: undefined };
+    const session = await auth.use(context);
     await session.authenticate({ userId: "u1", role: "admin" });
 
-    expect(requireSession(session)).toEqual({ userId: "u1", role: "admin", authenticatedAt: T0 });
-    expect(optionalSession(session)).toEqual(requireSession(session));
+    const required = await auth.require(context);
+    expect(required.id).toBe(session.id);
+    expect(required.data).toEqual({ userId: "u1", role: "admin", authenticatedAt: T0 });
+    expect(isAuthenticated(session)).toBe(true);
+    await required.update({ role: "user" });
+    expect(session.data.role).toBe("user");
   });
 
   it("treat an empty or never-authenticated session as signed out", async () => {
     const auth = defineAuthSession<User>({ key });
-    const empty = await auth.use({ token: undefined });
-    const anonymous = await auth.use({ token: undefined });
-    await anonymous.update({ userId: "anon" });
+    const empty = { token: undefined };
+    const anonymous = { token: undefined };
+    await (await auth.use(anonymous)).update({ userId: "anon" });
 
-    for (const session of [empty, anonymous]) {
-      const error = catchError(() => requireSession(session));
+    for (const context of [empty, anonymous]) {
+      const error = await auth.require(context).then(
+        () => undefined,
+        (rejection: unknown) => rejection,
+      );
       expect(isUnauthError(error, "ERR_AUTHN_UNAUTHENTICATED")).toBe(true);
       expect(isUnauthError(error) && error.status).toBe(401);
-      expect(optionalSession(session)).toBeUndefined();
+      expect(isAuthenticated(await auth.use(context))).toBe(false);
     }
   });
 });
@@ -344,8 +352,8 @@ describe("define", () => {
     await session.authenticate({ userId: "u1" });
 
     expect(ctx.cookies.get("unauth")).toBe(session.token);
-    const next = await auth.use({ cookies: ctx.cookies, locals: {} });
-    expect(requireSession(next).userId).toBe("u1");
+    const next = await auth.require({ cookies: ctx.cookies, locals: {} });
+    expect(next.data.userId).toBe("u1");
   });
 });
 
@@ -355,7 +363,11 @@ describe("types", () => {
 
     expectTypeOf(auth).toEqualTypeOf<AuthSessionDefinition<User>>();
     expectTypeOf(auth.use).returns.resolves.toEqualTypeOf<AuthSessionManager<User>>();
-    expectTypeOf(requireSession<User>).returns.toEqualTypeOf<AuthenticatedData<User>>();
+    expectTypeOf(auth.require).returns.resolves.toEqualTypeOf<AuthenticatedSessionManager<User>>();
+    expectTypeOf<AuthenticatedSessionManager<User>["data"]>().toEqualTypeOf<
+      AuthenticatedData<User>
+    >();
+    expectTypeOf<AuthenticatedSessionManager<User>["id"]>().toEqualTypeOf<string>();
     expectTypeOf<AuthenticatedData<User>["authenticatedAt"]>().toEqualTypeOf<number>();
     expectTypeOf<AuthSessionManager<User>["expiresAt"]>().toEqualTypeOf<number>();
     expectTypeOf<AuthSessionManager<User>["update"]>()

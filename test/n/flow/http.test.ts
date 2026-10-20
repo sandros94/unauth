@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { type Fetch, readObject } from "../../../src/n/flow/_http.ts";
 import { getJson } from "../../../src/n/flow/_http-json.ts";
 import { PROVIDER_DOCUMENT_MAX_BYTES } from "../../../src/n/flow/_http-body.ts";
-import { exchangeCode, isUnauthError, oauth2 } from "../../../src/n/index.ts";
+import { exchangeCode, isUnauthError, defineOAuth2Provider } from "../../../src/n/index.ts";
 
 const URL_ = "https://idp.test/doc";
 
@@ -160,7 +160,7 @@ describe("readObject", () => {
   });
 
   it("makes exchangeCode name an oversized token response", async () => {
-    const provider = oauth2({
+    const provider = defineOAuth2Provider({
       id: "big",
       clientId: "c",
       clientSecret: "s",

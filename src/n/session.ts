@@ -15,7 +15,7 @@ import {
 } from "unjwt/session";
 import type { AuthConfigInput } from "./_session-config.ts";
 import { composeAuthSession } from "./_session-define.ts";
-import { asAuthenticated, authenticatedData } from "./_session-manager.ts";
+import { isAuthenticatedSession } from "./_session-manager.ts";
 
 /** Session data an application declares. */
 // oxlint-disable-next-line typescript/no-explicit-any -- an interface has no implicit index signature
@@ -27,7 +27,7 @@ export type AuthSessionData<TData extends AuthSessionRecord> = TData & {
   authenticatedAt?: number;
 };
 
-/** Data of a session that authenticated, as {@link requireSession} returns it. */
+/** Data of a session that authenticated: `authenticatedAt` is set. */
 export type AuthenticatedData<TData extends AuthSessionRecord> = SessionData<
   AuthSessionData<TData>
 > & { authenticatedAt: number };
@@ -69,10 +69,20 @@ export interface AuthSessionManager<
   requireRecent: (maxAge: ExpiresIn) => void;
 }
 
+/** The manager of a session that authenticated: it has an `id` and its data carries `authenticatedAt`. */
+export interface AuthenticatedSessionManager<
+  TData extends AuthSessionRecord,
+> extends AuthSessionManager<TData> {
+  readonly id: string;
+  readonly data: AuthenticatedData<TData>;
+}
+
 /** One authentication session, defined once and used on every request. */
 export interface AuthSessionDefinition<TData extends AuthSessionRecord, TContext = SessionContext> {
   /** Reads the request's session once; later calls on the same request share its state. */
   use: (context: TContext) => Promise<AuthSessionManager<TData>>;
+  /** The request's session once it authenticated; throws `ERR_AUTHN_UNAUTHENTICATED` (401) otherwise. */
+  require: (context: TContext) => Promise<AuthenticatedSessionManager<TData>>;
   /** The token the request carries, unopened. */
   token: (context: TContext) => string | undefined;
   /** Mints a token for `data` without a request; an `authenticatedAt` in it is dropped. */
@@ -82,8 +92,8 @@ export interface AuthSessionDefinition<TData extends AuthSessionRecord, TContext
 }
 
 /**
- * Authentication hooks, run in front of unjwt's session hooks. `TArgs` names the request as the
- * unjwt entry does: `{ context }` on `unjwt/session`.
+ * Authentication hooks, run in front of unjwt's session hooks. `TArgs` names the request as
+ * `unjwt/session` does: `{ context }`, the event or context handed to `use()`.
  */
 export interface AuthSessionHooks<
   TData extends AuthSessionRecord,
@@ -107,7 +117,9 @@ export interface AuthSessionHooks<
     | undefined
     | Promise<Partial<SessionData<TData>> | false | undefined>;
   /** Fires after `authenticate()` reissued the session. */
-  onSignIn?: (args: TArgs & { session: AuthSessionManager<TData> }) => void | Promise<void>;
+  onSignIn?: (
+    args: TArgs & { session: AuthenticatedSessionManager<TData> },
+  ) => void | Promise<void>;
   /**
    * Fires after an authenticated session was cleared: the end of its family of ids (each roll is an
    * `onUpdate` with `trigger: "rolling"`). `reason` (closed) tells why: `"clear"` for the app's
@@ -123,28 +135,29 @@ export interface AuthSessionHooks<
 }
 
 /** The auth options layered over an unjwt session config. */
-export interface AuthSessionOptions {
+export interface AuthSessionBaseConfig {
   /** @default "7D" */
   maxAge?: ExpiresIn;
   /**
-   * Reissue the session on read so `exp` slides: `true` on every read, a duration once less than
-   * that remains, `false` never.
+   * Reissue the session on read so `exp` slides: `true` on every read, a duration once the token
+   * is at least that old (so an active session is re-signed at most once per duration), `false`
+   * never. A duration must be shorter than `maxAge`.
    *
-   * @default a quarter of `maxAge` remaining
+   * @default three quarters of `maxAge`: the session is reissued once a quarter of it remains
    */
   rolling?: boolean | ExpiresIn;
 }
 
 /**
- * An auth session config over any unjwt entry's session config `TBase`, whose hooks name the
- * request as `TArgs` (`{ context }`, `{ event }`). Framework glue builds its config from it.
+ * An auth session config over any unjwt session config `TBase`, whose hooks name the request as
+ * `TArgs` (`{ context }`). A session over a driver of your own builds its config from it.
  */
 export type AuthSessionConfigOf<
   TData extends AuthSessionRecord,
   TBase extends { hooks?: object },
   TArgs extends Record<string, unknown>,
 > = Omit<TBase, "maxAge" | "rolling" | "hooks"> &
-  AuthSessionOptions & { hooks?: NonNullable<TBase["hooks"]> & AuthSessionHooks<TData, TArgs> };
+  AuthSessionBaseConfig & { hooks?: NonNullable<TBase["hooks"]> & AuthSessionHooks<TData, TArgs> };
 
 /** {@link defineAuthSession} config over a JWE (encrypted) session, the default. */
 export interface AuthSessionConfigJWE<TData extends AuthSessionRecord, TContext = SessionContext>
@@ -153,7 +166,7 @@ export interface AuthSessionConfigJWE<TData extends AuthSessionRecord, TContext 
       SessionConfigJWE<AuthSessionData<TData>, ExpiresIn, TContext>,
       "maxAge" | "rolling" | "hooks"
     >,
-    AuthSessionOptions {
+    AuthSessionBaseConfig {
   hooks?: SessionHooksJWE<AuthSessionData<TData>, ExpiresIn, TContext> &
     AuthSessionHooks<TData, { context: TContext }>;
 }
@@ -165,7 +178,7 @@ export interface AuthSessionConfigJWS<TData extends AuthSessionRecord, TContext 
       SessionConfigJWS<AuthSessionData<TData>, ExpiresIn, TContext>,
       "maxAge" | "rolling" | "hooks"
     >,
-    AuthSessionOptions {
+    AuthSessionBaseConfig {
   hooks?: SessionHooksJWS<AuthSessionData<TData>, ExpiresIn, TContext> &
     AuthSessionHooks<TData, { context: TContext }>;
 }
@@ -173,14 +186,16 @@ export interface AuthSessionConfigJWS<TData extends AuthSessionRecord, TContext 
 /**
  * Defines the authentication session: an unjwt session (`defineJWESession` from `unjwt/session`
  * unless `options.define` names another factory) plus `authenticatedAt`, revocation, refresh on
- * roll and sign-in/sign-out events.
+ * roll and sign-in/sign-out events. `TContext` narrows `use()` and every hook's `context` to a
+ * framework's own event (`H3Event`, Nuxt's `RequestEvent`); it defaults to `unjwt/session`'s
+ * `SessionContext`: a `{ req, res, context }` event, a request by its headers, or a token in hand.
  */
 export function defineAuthSession<TData extends AuthSessionRecord, TContext = SessionContext>(
   config: AuthSessionConfigJWE<TData, TContext>,
   options?: {
     define?: (
       config: SessionConfigJWE<AuthSessionData<TData>, ExpiresIn, TContext>,
-    ) => SessionDefinition<TContext, AuthSessionData<TData>, ExpiresIn>;
+    ) => SessionDefinition<AuthSessionData<TData>, ExpiresIn, TContext>;
   },
 ): AuthSessionDefinition<TData, TContext>;
 export function defineAuthSession<TData extends AuthSessionRecord, TContext = SessionContext>(
@@ -188,7 +203,7 @@ export function defineAuthSession<TData extends AuthSessionRecord, TContext = Se
   options: {
     define: (
       config: SessionConfigJWS<AuthSessionData<TData>, ExpiresIn, TContext>,
-    ) => SessionDefinition<TContext, AuthSessionData<TData>, ExpiresIn>;
+    ) => SessionDefinition<AuthSessionData<TData>, ExpiresIn, TContext>;
   },
 ): AuthSessionDefinition<TData, TContext>;
 export function defineAuthSession(
@@ -198,16 +213,9 @@ export function defineAuthSession(
   return composeAuthSession(config, { define: options?.define ?? defineJWESession });
 }
 
-/** The data of an authenticated session; throws `ERR_AUTHN_UNAUTHENTICATED` (401) otherwise. */
-export function requireSession<TData extends AuthSessionRecord>(
+/** Whether `session` authenticated: narrows it to {@link AuthenticatedSessionManager}. */
+export function isAuthenticated<TData extends AuthSessionRecord>(
   session: AuthSessionManager<TData>,
-): AuthenticatedData<TData> {
-  return authenticatedData(session);
-}
-
-/** The data of an authenticated session, or `undefined` without one. */
-export function optionalSession<TData extends AuthSessionRecord>(
-  session: AuthSessionManager<TData>,
-): AuthenticatedData<TData> | undefined {
-  return session.id === undefined ? undefined : asAuthenticated(session.data);
+): session is AuthenticatedSessionManager<TData> {
+  return isAuthenticatedSession(session);
 }

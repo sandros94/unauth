@@ -129,7 +129,7 @@ export interface Provider<TProfile = Record<string, unknown>> {
 }
 
 /** The input of `defineProvider`: a {@link Provider} whose defaulted members may be left out. */
-export interface ProviderDescriptor<TProfile = Record<string, unknown>> extends Partial<
+export interface ProviderConfig<TProfile = Record<string, unknown>> extends Partial<
   Omit<Provider<TProfile>, "id" | "kind" | "client" | "pkce" | "profile">
 > {
   id: string;
@@ -140,7 +140,7 @@ export interface ProviderDescriptor<TProfile = Record<string, unknown>> extends 
   profile: (context: ProfileContext) => ProfileResult<TProfile> | Promise<ProfileResult<TProfile>>;
 }
 
-/** What `authorize` remembers for `callback`. */
+/** What `startFlow` remembers for `completeFlow`. */
 export interface FlowRecord {
   /** The `id` of the provider the flow was started for. */
   provider: string;
@@ -162,7 +162,7 @@ export interface FlowRecord {
  * The driver keeping flow records server-side (a KV, a cache) instead of in the sealed cookie,
  * which then only carries the record's id. `take` must return a record once and delete it.
  */
-export interface TransientStore {
+export interface FlowStore {
   put: (id: string, record: FlowRecord, options: { ttl: number }) => Promise<void>;
   take: (id: string) => Promise<FlowRecord | undefined>;
 }

@@ -7,8 +7,8 @@ import { resolveProvider } from "./discovery.ts";
 import { createNonce, createPkce, createState } from "./random.ts";
 import type { FlowRecord, Provider } from "./types.ts";
 
-/** Options of {@link authorize}. */
-export interface AuthorizeOptions extends FlowCarrierOptions {
+/** Options of {@link startFlow}. */
+export interface StartFlowOptions extends FlowCarrierOptions {
   /** The callback URL registered at the provider. */
   redirectUri?: string;
   /** Origins whose requests may derive `redirectUri` from their own URL, when it is not set. */
@@ -33,10 +33,10 @@ export interface AuthorizeOptions extends FlowCarrierOptions {
  * `options.store`). A browser holds one flow at a time: a second sign-in started before the first
  * completes replaces it.
  */
-export async function authorize(
+export async function startFlow(
   provider: Provider<unknown>,
   request: Request,
-  options: AuthorizeOptions,
+  options: StartFlowOptions,
 ): Promise<Response> {
   const redirectUri = resolveRedirectUri(request, options);
   const resolved = await resolveProvider(provider, {

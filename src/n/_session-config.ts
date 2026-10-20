@@ -3,8 +3,8 @@ import { computeDurationInSeconds } from "unjwt/utils";
 import { type ComposableHooks, composeAuthHooks } from "./_session-hooks.ts";
 
 export const DEFAULT_SESSION_MAX_AGE: ExpiresIn = "7D";
-/** `rolling` default: reissue once less than this fraction of `maxAge` remains. */
-export const DEFAULT_ROLLING_WINDOW = 0.25;
+/** `rolling` default: reissue once the token is this fraction of `maxAge` old (a quarter remains). */
+export const DEFAULT_ROLLING_AGE = 0.75;
 
 /** The members of a config the auth layer reads or defaults; the rest passes to unjwt as is. */
 export interface AuthConfigInput {
@@ -31,14 +31,18 @@ export function resolveAuthConfig(config: AuthConfigInput): Record<string, unkno
   };
 }
 
-/** Resolves the `rolling` option into the value unjwt's session config takes. */
+/**
+ * Resolves the `rolling` option into the value unjwt's session config takes: a duration is the
+ * age a token must reach before a read reissues it, and it must be shorter than `maxAge`.
+ */
 export function resolveRolling(
   rolling: boolean | ExpiresIn | undefined,
   maxAge: ExpiresIn,
 ): true | ExpiresIn | undefined {
   if (rolling === false) return undefined;
   if (rolling === undefined) {
-    return Math.max(1, Math.floor(computeDurationInSeconds(maxAge) * DEFAULT_ROLLING_WINDOW));
+    const age = Math.floor(computeDurationInSeconds(maxAge) * DEFAULT_ROLLING_AGE);
+    return age >= 1 ? age : true;
   }
   return rolling;
 }

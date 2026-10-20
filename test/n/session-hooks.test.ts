@@ -38,7 +38,7 @@ async function signInToken(auth: AuthSessionDefinition<User>, data: User): Promi
 
 async function signInHeaders(auth: AuthSessionDefinition<User>, data: User): Promise<Headers> {
   const headers = new Headers();
-  const session = await auth.use({ request: requestWith(), headers });
+  const session = await auth.use({ req: requestWith(), res: { headers } });
   await session.authenticate(data);
   return headers;
 }
@@ -57,7 +57,7 @@ describe("isRevoked", () => {
 
     const request = requestWith(login);
     const headers = new Headers();
-    const session = await auth.use({ request, headers });
+    const session = await auth.use({ req: request, res: { headers } });
 
     expect(session.id).toBeUndefined();
     expect(session.data).toEqual({});
@@ -65,7 +65,7 @@ describe("isRevoked", () => {
     expect(onRead).not.toHaveBeenCalled();
     expect(isRevoked).toHaveBeenCalledOnce();
     const [args] = isRevoked.mock.calls[0] as unknown as [{ context: unknown; session: object }];
-    expect(args.context).toEqual({ request, headers });
+    expect(args.context).toEqual({ req: request, res: { headers } });
     expect(seen).toEqual(["u1"]);
     expect(args.session).toHaveProperty("authenticate");
     expect(onSignOut).toHaveBeenCalledOnce();
@@ -99,8 +99,8 @@ describe("isRevoked", () => {
     const plain = defineAuthSession<User>({ key });
     const request = requestWith(await signInHeaders(plain, { userId: "u1" }));
 
-    const first = await auth.use({ request });
-    const retry = await auth.use({ request });
+    const first = await auth.use({ req: request });
+    const retry = await auth.use({ req: request });
 
     expect(first.id).toBeUndefined();
     expect(first.data).toEqual({});
@@ -114,7 +114,7 @@ describe("refresh", () => {
     const auth = defineAuthSession<User>({ key, maxAge: "1h", rolling: "15m", hooks: { refresh } });
     const token = await signInToken(auth, { userId: "u1" });
 
-    vi.setSystemTime(T0 + 30 * MINUTE);
+    vi.setSystemTime(T0 + 10 * MINUTE);
     await auth.use({ token });
 
     expect(refresh).not.toHaveBeenCalled();
@@ -162,11 +162,11 @@ describe("refresh", () => {
 
     vi.setSystemTime(T0 + 50 * MINUTE);
     const headers = new Headers();
-    await auth.use({ request: requestWith(login), headers });
+    await auth.use({ req: requestWith(login), res: { headers } });
 
     const lines = headers.getSetCookie().filter((line) => line.startsWith("__Host-unauth="));
     expect(lines).toHaveLength(1);
-    const next = await auth.use({ request: requestWith(headers) });
+    const next = await auth.use({ req: requestWith(headers) });
     expect(next.data.role).toBe("admin");
   });
 
@@ -182,7 +182,7 @@ describe("refresh", () => {
 
     vi.setSystemTime(T0 + 50 * MINUTE);
     const headers = new Headers();
-    const session = await auth.use({ request: requestWith(login), headers });
+    const session = await auth.use({ req: requestWith(login), res: { headers } });
 
     expect(session.id).toBeUndefined();
     expect(isExpired(setCookieLine(headers, "__Host-unauth")!)).toBe(true);

@@ -1,7 +1,7 @@
 import { profileError } from "../flow/_http.ts";
-import { type OidcProfile, claimsProfile, oidc } from "../flow/oidc.ts";
+import { type OidcProfile, claimsProfile, defineOidcProvider } from "../flow/oidc.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import type { PresetOptions } from "./_shared.ts";
+import type { PresetConfig } from "./_shared.ts";
 
 /** LinkedIn's OpenID Connect claims (https://learn.microsoft.com/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2). */
 export interface LinkedInProfile extends Omit<OidcProfile, "locale"> {
@@ -16,7 +16,7 @@ export interface LinkedInProfile extends Omit<OidcProfile, "locale"> {
 }
 
 /** Options of {@link defineLinkedInProvider}. */
-export interface LinkedInProviderOptions extends PresetOptions {
+export interface LinkedInProviderConfig extends PresetConfig {
   clientSecret: string;
   /** Send PKCE S256, for an app LinkedIn enabled it for. @default false */
   pkce?: boolean;
@@ -29,10 +29,8 @@ export interface LinkedInProviderOptions extends PresetOptions {
  * (https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow-native);
  * set `pkce: true` once your app has it. @default scopes `["openid", "profile", "email"]`
  */
-export function defineLinkedInProvider(
-  options: LinkedInProviderOptions,
-): Provider<LinkedInProfile> {
-  return oidc({
+export function defineLinkedInProvider(options: LinkedInProviderConfig): Provider<LinkedInProfile> {
+  return defineOidcProvider({
     id: options.id ?? "linkedin",
     label: options.label ?? "LinkedIn",
     issuer: "https://www.linkedin.com/oauth",

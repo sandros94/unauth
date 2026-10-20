@@ -7,7 +7,7 @@ import {
   fetchJwks,
   isUnauthError,
   resolveProvider,
-  oidc,
+  defineOidcProvider,
   verifyIdToken,
 } from "../../../src/n/index.ts";
 import { CLIENT_ID, ISSUER, CLIENT_SECRET, atHash, createFakeProvider } from "./_fake-provider.ts";
@@ -153,7 +153,11 @@ describe("discover", () => {
   it("resolveProvider fills the endpoints of a discovery provider from the cached document", async () => {
     const fake = await fakeAt("resolve");
     const issuer = "https://resolve.idp.test";
-    const provider = oidc({ issuer, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
+    const provider = defineOidcProvider({
+      issuer,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
 
     const resolved = await resolveProvider(provider, { fetch: fake.fetch, now });
     await resolveProvider(provider, { fetch: fake.fetch, now });
@@ -213,7 +217,11 @@ describe("discover", () => {
   it("resolveProvider turns issuerParameter on when the metadata advertises it, unless set", async () => {
     const fake = await fakeAt("iss-param");
     const issuer = "https://iss-param.idp.test";
-    const provider = oidc({ issuer, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
+    const provider = defineOidcProvider({
+      issuer,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
 
     expect(provider.issuerParameter).toBeUndefined();
     expect((await resolveProvider(provider, { fetch: fake.fetch, now })).issuerParameter).toBe(
@@ -224,7 +232,7 @@ describe("discover", () => {
 
     const silent = await fakeAt("iss-param-silent");
     silent.discovery.authorization_response_iss_parameter_supported = undefined;
-    const quiet = oidc({
+    const quiet = defineOidcProvider({
       issuer: "https://iss-param-silent.idp.test",
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,

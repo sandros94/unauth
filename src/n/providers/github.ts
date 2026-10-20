@@ -1,8 +1,8 @@
 import { profileError } from "../flow/_http.ts";
 import { getJson } from "../flow/_http-json.ts";
-import { oauth2 } from "../flow/oauth2.ts";
+import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetOptions, grantedScopes, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import { type PresetConfig, grantedScopes, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
 
 /** `GET /user` (https://docs.github.com/en/rest/users/users#get-the-authenticated-user). */
 export interface GitHubProfile {
@@ -37,7 +37,7 @@ export interface GitHubEmail {
 }
 
 /** Options of {@link defineGitHubProvider}. */
-export interface GitHubProviderOptions extends PresetOptions {
+export interface GitHubProviderConfig extends PresetConfig {
   clientSecret: string;
 }
 
@@ -55,8 +55,8 @@ const HEADERS = { "user-agent": "unauth", "accept": "application/vnd.github+json
  * https://github.blog/changelog/2025-07-14-pkce-support-for-oauth-and-github-app-authentication/.
  * @default scopes `["read:user", "user:email"]`
  */
-export function defineGitHubProvider(options: GitHubProviderOptions): Provider<GitHubProfile> {
-  return oauth2({
+export function defineGitHubProvider(options: GitHubProviderConfig): Provider<GitHubProfile> {
+  return defineOAuth2Provider({
     id: options.id ?? "github",
     label: options.label ?? "GitHub",
     clientId: options.clientId,

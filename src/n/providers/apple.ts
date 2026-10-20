@@ -3,7 +3,7 @@ import { safeJsonParse } from "unsecure";
 import { isRecord, profileError } from "../flow/_http.ts";
 import { defineProvider } from "../flow/provider.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetOptions, booleanClaim, nonEmpty } from "./_shared.ts";
+import { type PresetConfig, booleanClaim, nonEmpty } from "./_shared.ts";
 
 /** What Apple posts as `user` on the first authorization only. */
 export interface AppleUser {
@@ -28,7 +28,7 @@ export interface AppleProfile {
 }
 
 /** Options of {@link defineAppleProvider}. */
-export interface AppleProviderOptions extends PresetOptions {
+export interface AppleProviderConfig extends PresetConfig {
   /** The Services ID. */
   clientId: string;
   teamId: string;
@@ -52,7 +52,7 @@ const SECRET_LIFETIME = 300;
  * The name arrives only on the first sign-in, in the posted `user` field (a quirk nuxt-auth-utils
  * handles too). @default scopes `["name", "email"]`
  */
-export function defineAppleProvider(options: AppleProviderOptions): Provider<AppleProfile> {
+export function defineAppleProvider(options: AppleProviderConfig): Provider<AppleProfile> {
   return defineProvider({
     id: options.id ?? "apple",
     label: options.label ?? "Apple",
@@ -74,13 +74,16 @@ export function defineAppleProvider(options: AppleProviderOptions): Provider<App
 
 /** Mints Apple's client secret: an ES256 JWT from the team to `appleid.apple.com`. */
 export function appleClientSecret(
-  options: Pick<AppleProviderOptions, "clientId" | "teamId" | "keyId" | "privateKey">,
+  options: Pick<AppleProviderConfig, "clientId" | "teamId" | "keyId" | "privateKey">,
 ): () => Promise<string> {
   let key: Promise<JWSSignJWK> | undefined;
   return async () => {
     key ??=
       typeof options.privateKey === "string"
-        ? importPEM<JWSSignJWK>(options.privateKey, "ES256", { jwkParams: { kid: options.keyId } })
+        ? importPEM(options.privateKey, "ES256", {
+            pemType: "pkcs8",
+            jwkParams: { kid: options.keyId },
+          })
         : Promise.resolve({ ...options.privateKey, kid: options.keyId });
     const iat = Math.floor(Date.now() / 1000);
     return sign(

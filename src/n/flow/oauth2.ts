@@ -1,16 +1,16 @@
 import { configError } from "./_http.ts";
 import { standardProfile } from "./_profile.ts";
 import { defineProvider } from "./provider.ts";
-import type { ProfileContext, ProfileResult, Provider, ProviderDescriptor } from "./types.ts";
+import type { ProfileContext, ProfileResult, Provider, ProviderConfig } from "./types.ts";
 
 /** Maps a provider's account data to an identity. */
 export type ProfileMapper<TProfile> = (
   context: ProfileContext,
 ) => ProfileResult<TProfile> | Promise<ProfileResult<TProfile>>;
 
-/** Options of {@link oauth2}. */
-export interface OAuth2ProviderOptions extends Pick<
-  ProviderDescriptor,
+/** Options of {@link defineOAuth2Provider}. */
+export interface OAuth2ProviderConfig extends Pick<
+  ProviderConfig,
   | "label"
   | "scopes"
   | "scopeSeparator"
@@ -37,12 +37,14 @@ export type OAuthClientSecret = string | (() => string | Promise<string>);
  * A generic OAuth 2.0 provider (authorization code with PKCE). Without `profile`, the account is
  * the userinfo payload read through its standard claims (`sub` or `id`, `name`, `email`…).
  */
-export function oauth2(options: OAuth2ProviderOptions & { userinfo: string }): Provider;
-export function oauth2<TProfile>(
-  options: OAuth2ProviderOptions & { profile: ProfileMapper<TProfile> },
+export function defineOAuth2Provider(
+  options: OAuth2ProviderConfig & { userinfo: string },
+): Provider;
+export function defineOAuth2Provider<TProfile>(
+  options: OAuth2ProviderConfig & { profile: ProfileMapper<TProfile> },
 ): Provider<TProfile>;
-export function oauth2(
-  options: OAuth2ProviderOptions & { profile?: ProfileMapper<unknown> },
+export function defineOAuth2Provider(
+  options: OAuth2ProviderConfig & { profile?: ProfileMapper<unknown> },
 ): Provider<unknown> {
   const { clientId, clientSecret, profile, ...rest } = options;
   if (!profile && !options.userinfo) {

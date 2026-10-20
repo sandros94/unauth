@@ -1,7 +1,7 @@
 import { isRecord } from "../flow/_http.ts";
-import { oauth2 } from "../flow/oauth2.ts";
+import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetOptions, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
 
 /** Graph API `GET /me` with the requested `fields` (https://developers.facebook.com/docs/graph-api/reference/user). */
 export interface FacebookProfile {
@@ -15,7 +15,7 @@ export interface FacebookProfile {
 }
 
 /** Options of {@link defineFacebookProvider}. */
-export interface FacebookProviderOptions extends PresetOptions {
+export interface FacebookProviderConfig extends PresetConfig {
   clientSecret: string;
   /**
    * Graph API version; versions expire about two years after release. @default "v26.0"
@@ -31,12 +31,10 @@ export interface FacebookProviderOptions extends PresetOptions {
  * header (never in the URL). Facebook does not say whether `email` is verified, so
  * `emailVerified` stays unset. @default scopes `["email", "public_profile"]`
  */
-export function defineFacebookProvider(
-  options: FacebookProviderOptions,
-): Provider<FacebookProfile> {
+export function defineFacebookProvider(options: FacebookProviderConfig): Provider<FacebookProfile> {
   const version = options.version ?? "v26.0";
   const fields = (options.fields ?? ["id", "name", "email", "picture"]).join(",");
-  return oauth2({
+  return defineOAuth2Provider({
     id: options.id ?? "facebook",
     label: options.label ?? "Facebook",
     clientId: options.clientId,

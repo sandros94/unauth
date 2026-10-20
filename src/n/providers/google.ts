@@ -1,7 +1,7 @@
 import { profileError } from "../flow/_http.ts";
-import { type OidcProfile, claimsProfile, oidc } from "../flow/oidc.ts";
+import { type OidcProfile, claimsProfile, defineOidcProvider } from "../flow/oidc.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import type { PresetOptions } from "./_shared.ts";
+import type { PresetConfig } from "./_shared.ts";
 
 /** Google's id_token claims and userinfo (https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo). */
 export interface GoogleProfile extends OidcProfile {
@@ -17,7 +17,7 @@ export interface GoogleProfile extends OidcProfile {
 }
 
 /** Options of {@link defineGoogleProvider}. */
-export interface GoogleProviderOptions extends PresetOptions {
+export interface GoogleProviderConfig extends PresetConfig {
   clientSecret: string;
 }
 
@@ -26,8 +26,8 @@ export interface GoogleProviderOptions extends PresetOptions {
  * Restrict to a Workspace domain by checking `identity.profile.hd` (the `hd` authorization
  * parameter is only a hint). @default scopes `["openid", "email", "profile"]`
  */
-export function defineGoogleProvider(options: GoogleProviderOptions): Provider<GoogleProfile> {
-  return oidc({
+export function defineGoogleProvider(options: GoogleProviderConfig): Provider<GoogleProfile> {
+  return defineOidcProvider({
     id: options.id ?? "google",
     label: options.label ?? "Google",
     issuer: "https://accounts.google.com",

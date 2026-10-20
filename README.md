@@ -9,187 +9,123 @@ A collection of low-level and high-level, server-agnostic, Authentication and Au
 
 ## Features
 
-- **Session management** — Encrypted JWE sessions with rolling expiry
-- **Token pairs** — Access (JWS) + Refresh (JWE) token lifecycle with coordinated login/logout
-- **CSRF protection** — Double-submit cookie pattern with HMAC
-- **Middleware** — `requireSession`, `optionalSession`, `requireAuth`, `optionalAuth`
-- **Runtime-agnostic** — Built on Web Crypto API
-- **OAuth 2.1 and OIDC** — Planned
+- **Authentication session** — an encrypted (JWE) or signed (JWS) cookie session from [`unjwt/session`](https://unjwt.s94.dev/frameworks/session), plus `authenticate()`, `authenticatedAt`, revocation, refresh on roll and sign-in/sign-out events
+- **OAuth 2.1 and OpenID Connect** — `startFlow` / `completeFlow` over the Web `Request`, one handler for both legs, presets for GitHub, Google, Apple, Microsoft, Discord, GitLab, LinkedIn, Facebook, Twitch and X
+- **Sign-in resolution** — `signIn()` maps a proven identity to your user and identity records, linking included
+- **One-time tokens** — signed, single-use, expiring tokens for invitations, password resets and magic links
+- **Framework-free** — the event h3 v2, Nitro 3 and Nuxt's `nuxt/server` hand a handler is taken as it is; a `Request` and a `Headers` serve every other runtime
+- **Authorization** — Planned
 
 Built on top of minimal dependencies:
 
-- [`unjwt`](https://github.com/sandros94/unjwt) — Low-level JWT (JWS/JWE/JWK) via Web Crypto
+- [`unjwt`](https://github.com/sandros94/unjwt) — Low-level JWT (JWS/JWE/JWK) and cookie sessions via Web Crypto
 - [`unsecure`](https://github.com/sandros94/unsecure) — Cryptographic utilities (HMAC, secure compare, etc.)
 
 ## Usage
 
-Install the package:
+Install the package and its `unjwt` peer:
 
 ```sh
-npx nypm install unauth
+npx nypm install unauth unjwt
 ```
 
 ### Session
 
-Encrypted session cookies (JWE) with rolling expiry.
+The authentication session is an `unjwt/session` definition with authentication on top: `authenticate()` sets `authenticatedAt` and reissues the token under a new id; `require(event)` returns the session once it authenticated, typed as such, or throws `ERR_AUTHN_UNAUTHENTICATED` (401); `isAuthenticated(session)` narrows one already in hand.
 
 ```ts
-import { defineSession, generateJWK, requireSession } from "unauth/base/h3";
+import { H3 } from "h3";
+import { generateJWK } from "unjwt/session";
+import { defineAuthSession, defineSessionGuard } from "unauth/n";
 
-const sessionKey = await generateJWK("A256GCM");
+const key = await generateJWK("A256GCM"); // load a persisted key in production
 
-const useSession = defineSession<{ userId: string; role: string }>({
-  key: sessionKey,
+const auth = defineAuthSession<{ userId: string; role: string }>({
+  key,
   maxAge: "7D",
   hooks: {
-    async onRead({ session }) {
-      // The live session manager: sync it with your database, or end it
-      const user = await db.users.findById(session.data.userId);
-      if (!user) return session.clear();
-      if (user.role !== session.data.role) await session.update({ role: user.role });
-    },
+    // Runs once per request on a session read from its token; `true` clears it.
+    isRevoked: async ({ session }) => !(await db.users.exists(session.data.userId)),
+    onSignIn: ({ session }) => audit("sign-in", session.data.userId),
+    onSignOut: ({ oldSession, reason }) => audit("sign-out", oldSession.data.userId, reason),
   },
 });
 
 const app = new H3()
   .post("/login", async (event) => {
-    const session = await useSession(event);
-    await session.update({ userId: "u1", role: "admin" });
+    const session = await auth.use(event);
+    await session.authenticate({ userId: "u1", role: "admin" });
     return { ok: true };
   })
-  .get(
-    "/me",
-    async (event) => {
-      const session = await useSession(event);
-      return { user: session.data };
-    },
-    { middleware: [requireSession(useSession)] },
-  )
+  .get("/me", async (event) => (await auth.require(event)).data, {
+    middleware: [defineSessionGuard(auth)],
+  })
   .post("/logout", async (event) => {
-    const session = await useSession(event);
-    await session.clear();
+    await (await auth.use(event)).clear();
     return { ok: true };
   });
 ```
 
-The session is reissued on read once less than a quarter of `maxAge` remains, so `exp` slides with activity. Tune it with `rolling`: a duration (`rolling: "1D"`) sets the remaining-time window, `true` reissues on every read, `false` never. A roll fires `onUpdate` with `trigger: "rolling"`.
+`use()` takes what `unjwt/session` takes: the `{ req, res, context }` event of h3 v2, Nitro 3 and a `nuxt/server` handler, a request by its headers (a WebSocket upgrade), or `{ token }` for a token in hand. A third generic (`defineAuthSession<Data, H3Event>`) narrows `use()` and every hook's `context` to a framework's own event.
 
-Hooks are [unjwt's session hooks](https://unjwt.s94.dev/adapters/hooks), `session` is the live manager, so `onRead` can `update()` or `clear()` the session it is looking at.
+The cookie is `__Host-unauth` (secure, `httpOnly`, `SameSite=Lax`), `__Secure-unauth` when a `domain` or `path` rules the `__Host-` prefix out, `unauth` without `secure`. The session is reissued on read once the token is three quarters of `maxAge` old, so `exp` slides with activity; tune it with `rolling`: a duration is the age a token must reach, `true` reissues on every read, `false` never. A roll fires unjwt's `onUpdate` with `trigger: "rolling"` and the `refresh` hook, which can merge data into the session or clear it.
 
-### Token Pair
+Every [unjwt session hook](https://unjwt.s94.dev/frameworks/hooks) passes through: `session` is the live manager, so `onRead` can `update()` or `clear()` the session it is looking at.
 
-Access token (JWS, short-lived, client-readable) + refresh token (JWE, long-lived, encrypted) with coordinated lifecycle.
+### Sign in with a provider
+
+One route serves both legs of a sign-in: without `code` it answers the redirect to the provider with a sealed flow cookie (state, PKCE and, for OpenID Connect, a nonce); with one it completes the callback and hands the proven identity to `onSuccess`.
 
 ```ts
-import { defineTokenPair, generateJWK, requireAuth } from "unauth/base/h3";
+import { defineSignInHandler, signIn } from "unauth/n";
+import { defineGitHubProvider } from "unauth/n/providers/github";
 
-const atKeys = await generateJWK("ES256");
-const rtKey = await generateJWK("A256GCM");
-
-const useAuth = defineTokenPair<
-  { sub: string; permissions: string[] },
-  { sub: string; family: string }
->({
-  access: { key: atKeys, maxAge: "15m" },
-  refresh: { key: rtKey, maxAge: "30D" },
-  hooks: {
-    async onRefresh({ refresh, issue }) {
-      const user = await db.users.findById(refresh.data.sub);
-      if (!user || user.suspended) return; // don't issue — AT stays empty
-      await issue({
-        accessData: { sub: user.id, permissions: user.permissions },
-        // refreshData is optional — omit to rotate with current data
-      });
-    },
-    onAfterRefresh({ access, refresh, previousRefresh }) {
-      logger.info("token_refresh", {
-        sub: access.data.sub,
-        newAtId: access.id,
-        oldRtId: previousRefresh.id,
-        newRtId: refresh.id,
-      });
-    },
-  },
+const github = defineGitHubProvider({
+  clientId: process.env.GITHUB_CLIENT_ID!,
+  clientSecret: process.env.GITHUB_CLIENT_SECRET!,
 });
 
-const app = new H3()
-  .post("/login", async (event) => {
-    const auth = await useAuth(event);
-    await auth.issue({
-      accessData: { sub: user.id, permissions: user.permissions },
-      refreshData: { sub: user.id, family: crypto.randomUUID() },
-    });
-    return { ok: true };
-  })
-  .get(
-    "/me",
-    async (event) => {
-      const { access } = await useAuth(event);
-      return { user: access.data };
+app.get(
+  "/auth/github",
+  defineSignInHandler(github, {
+    key: flowKey, // seals the flow cookie
+    redirectUri: "https://app.example/auth/github",
+    onSuccess: async (event, { identity, redirect }) => {
+      const { user } = await signIn(identity, { identities });
+      const session = await auth.use(event);
+      await session.authenticate({ userId: user.id, role: user.role });
+      return new Response(null, { status: 302, headers: { location: redirect ?? "/" } });
     },
-    { middleware: [requireAuth(useAuth)] },
-  )
-  .post("/logout", async (event) => {
-    const auth = await useAuth(event);
-    await auth.revoke();
-    return { ok: true };
-  });
+  }),
+);
 ```
 
-When the access token expires:
+The handler returns a `Response` for the redirect and what `onSuccess` returns for the callback, which h3 v2, Nitro 3 and `nuxt/server` send as they are. A failed flow is an `UnauthError` with a status: answered by `onError` when given, else with a plain `Response` carrying that status. `signIn()` resolves the identity against your `IdentityStore` (find by provider account, create, link) and never matches accounts by email.
 
-- `onRefresh` fires with the valid refresh token
-- Call `issue({ accessData, refreshData? })` to re-issue the AT and rotate the RT
-- Call `revoke()` to clear both tokens (e.g., user banned, family revoked)
-- Don't call either to skip (AT stays empty, RT preserved)
-- Throw to forward errors to `onError` without destroying tokens
+Generic providers come from `defineOAuth2Provider({ id, clientId, clientSecret, authorization, token, userinfo })` and `defineOidcProvider({ issuer, clientId, clientSecret })`, which reads the endpoints from the issuer's discovery document. The lower-level `startFlow(provider, request, options)` and `completeFlow(provider, request, options)` work on a Web `Request` on any runtime.
 
-`onReadAccess` fires whenever a valid access token is read, with or without a refresh token beside it: `refresh` is `undefined` when the refresh cookie is missing, so a revocation check there cannot be bypassed by dropping that cookie.
+### Guard
 
-Both `access` and `refresh` are unjwt session managers exposed directly — call `.update()` or `.clear()` on them for escape-hatch scenarios that bypass hooks.
-
-### CSRF
-
-Double-submit cookie pattern with HMAC-generated tokens.
+`defineSessionGuard(auth)` is a middleware answering a `401` `Response` unless the request carries an authenticated session; the handler behind it reads the same session with `auth.require(event)`. `onAuthenticated` runs with the authenticated session and the context before the handler, where a throw refuses the request:
 
 ```ts
-import { defineCsrf } from "unauth/base/h3";
+import { HTTPError } from "h3";
+import { defineSessionGuard } from "unauth/n";
 
-const csrf = defineCsrf({ secret: process.env.CSRF_SECRET! });
-
-const app = new H3()
-  .get("/form", handler, { middleware: [csrf] })
-  .post("/form", handler, { middleware: [csrf] });
-```
-
-### Middleware
-
-Separate middleware for sessions and token pairs:
-
-```ts
-import { requireSession, optionalSession, requireAuth, optionalAuth } from "unauth/base/h3";
-
-// Session middleware
-app.get("/me", handler, { middleware: [requireSession(useSession)] });
-app.get("/feed", handler, { middleware: [optionalSession(useSession)] });
-
-// Token pair middleware
-app.get("/me", handler, { middleware: [requireAuth(useAuth)] });
-app.get("/feed", handler, { middleware: [optionalAuth(useAuth)] });
-
-// With authorization checks
 app.delete("/admin/users/:id", handler, {
   middleware: [
-    requireAuth(useAuth, {
+    defineSessionGuard(auth, {
       onAuthenticated({ session }) {
-        if (!session.data.permissions.includes("admin:users:delete")) {
-          throw new HTTPError("Forbidden", { status: 403 });
-        }
+        if (session.data.role !== "admin") throw new HTTPError({ status: 403 });
       },
     }),
   ],
 });
 ```
+
+### Frameworks
+
+The [`playgrounds/`](./playgrounds) directory runs the same application on h3 v2, Nitro 3 and Nuxt 4.6: a password login, the GitHub sign-in, a guarded route and a WebSocket upgrade. On Nuxt the handlers come from `nuxt/server`, whose event is the web-standard one; on Nitro everything comes from `nitro`. Neither needs `h3` as a dependency.
 
 ## Development
 
@@ -201,7 +137,7 @@ app.delete("/admin/users/:id", handler, {
 - Install latest LTS version of [Node.js](https://nodejs.org/en/)
 - Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable`
 - Install dependencies using `pnpm install`
-- Run interactive tests using `pnpm dev`
+- Run `pnpm dev:prepare` once, then `pnpm dev` (h3), `pnpm dev:nitro` or `pnpm dev:nuxt`
 
 </details>
 

@@ -1,9 +1,0 @@
-{
-  "name": "unauth-env-h3v2",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "h3": "^2.0.2",
-    "unjwt": "catalog:"
-  }
-}

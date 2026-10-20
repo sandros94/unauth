@@ -6,6 +6,7 @@ import type {
   AuthSessionManager,
   AuthSessionRecord,
   AuthenticatedData,
+  AuthenticatedSessionManager,
 } from "./session.ts";
 
 /** The claim `authenticate()` alone sets. */
@@ -58,7 +59,7 @@ export function authSessionManager<TData extends AuthSessionRecord>(
       return manager;
     },
     requireRecent: (maxAge) => {
-      const { authenticatedAt } = authenticatedData(manager);
+      const { authenticatedAt } = requireAuthenticated(manager).data;
       if (Date.now() - authenticatedAt > computeDurationInSeconds(maxAge) * 1000) {
         throw new UnauthError(
           `[unauth/n] The session authenticated more than ${String(maxAge)} ago; sign in again.`,
@@ -71,17 +72,23 @@ export function authSessionManager<TData extends AuthSessionRecord>(
   return manager;
 }
 
-/** The data of a session that authenticated, else `ERR_AUTHN_UNAUTHENTICATED`. */
-export function authenticatedData<TData extends AuthSessionRecord>(
-  session: Pick<AuthSessionManager<TData>, "id" | "data">,
-): AuthenticatedData<TData> {
-  const data = session.id === undefined ? undefined : asAuthenticated(session.data);
-  if (!data) {
+/** `session` once it authenticated, else `ERR_AUTHN_UNAUTHENTICATED` (401). */
+export function requireAuthenticated<TData extends AuthSessionRecord>(
+  session: AuthSessionManager<TData>,
+): AuthenticatedSessionManager<TData> {
+  if (!isAuthenticatedSession(session)) {
     throw new UnauthError("[unauth/n] No authenticated session.", "ERR_AUTHN_UNAUTHENTICATED", {
       status: 401,
     });
   }
-  return data;
+  return session;
+}
+
+/** Whether a persisted session's data carries `authenticatedAt`: narrows the manager. */
+export function isAuthenticatedSession<TData extends AuthSessionRecord>(
+  session: AuthSessionManager<TData>,
+): session is AuthenticatedSessionManager<TData> {
+  return session.id !== undefined && isAuthenticatedData(session.data);
 }
 
 /** `data` without `authenticatedAt`, which only `authenticate()` may set. */
@@ -92,11 +99,11 @@ export function withoutReserved<T extends object>(data: T): T {
   return copy;
 }
 
-/** The data of a session as authenticated, when its `authenticatedAt` is set. */
-export function asAuthenticated<TData extends AuthSessionRecord>(
+/** Whether session data carries the `authenticatedAt` only `authenticate()` sets. */
+function isAuthenticatedData<TData extends AuthSessionRecord>(
   data: SessionData<AuthSessionData<TData>>,
-): AuthenticatedData<TData> | undefined {
-  return isAuthenticated(data) ? data : undefined;
+): data is AuthenticatedData<TData> {
+  return typeof Reflect.get(data, AUTHENTICATED_AT) === "number";
 }
 
 /**
@@ -106,10 +113,4 @@ export function asAuthenticated<TData extends AuthSessionRecord>(
 function nextAuthenticatedAt(old: Record<string, unknown>): number {
   const previous = old[AUTHENTICATED_AT];
   return typeof previous === "number" ? Math.max(Date.now(), previous + 1) : Date.now();
-}
-
-function isAuthenticated<TData extends AuthSessionRecord>(
-  data: SessionData<AuthSessionData<TData>>,
-): data is AuthenticatedData<TData> {
-  return typeof Reflect.get(data, AUTHENTICATED_AT) === "number";
 }

@@ -5,13 +5,13 @@ import {
   type CacheDriver,
   type FlowRecord,
   type Provider,
-  type TransientStore,
-  authorize,
-  callback,
+  type FlowStore,
+  startFlow,
+  completeFlow,
   defineProvider,
   isUnauthError,
-  oauth2,
-  oidc,
+  defineOAuth2Provider,
+  defineOidcProvider,
 } from "../../../src/n/index.ts";
 import { cookieHeader, isExpired } from "../_session.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "./_fake-provider.ts";
@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 function fakeOAuth2(): Provider {
-  return oauth2({
+  return defineOAuth2Provider({
     id: "fake",
     clientId: CLIENT_ID,
     clientSecret: CLIENT_SECRET,
@@ -49,17 +49,17 @@ function fakeOAuth2(): Provider {
 async function oidcSetup() {
   const issuer = `https://${crypto.randomUUID()}.idp.test`;
   const fake = await createFakeProvider({ issuer });
-  const provider = oidc({ issuer, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
+  const provider = defineOidcProvider({ issuer, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
   return { fake, provider };
 }
 
-/** Runs `authorize`, the provider's consent and returns what `callback` needs. */
-async function startFlow(
+/** Runs `startFlow`, the provider's consent and returns what `completeFlow` needs. */
+async function beginSignIn(
   provider: Provider,
   fake: Awaited<ReturnType<typeof createFakeProvider>>,
-  options: Partial<Parameters<typeof authorize>[2]> = {},
+  options: Partial<Parameters<typeof startFlow>[2]> = {},
 ) {
-  const response = await authorize(provider, new Request(`${APP}/auth/fake`), {
+  const response = await startFlow(provider, new Request(`${APP}/auth/fake`), {
     key,
     redirectUri: REDIRECT_URI,
     fetch: fake.fetch,
@@ -85,10 +85,10 @@ function flowCookieCleared(headers: Headers): boolean {
   return line !== undefined && isExpired(line);
 }
 
-describe("authorize", () => {
+describe("startFlow", () => {
   it("redirects to the provider with state, PKCE S256 and a sealed flow cookie", async () => {
     const fake = await createFakeProvider();
-    const { response, location } = await startFlow(fakeOAuth2(), fake);
+    const { response, location } = await beginSignIn(fakeOAuth2(), fake);
 
     expect(response.status).toBe(302);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -106,7 +106,7 @@ describe("authorize", () => {
 
   it("adds a nonce for OIDC and resolves endpoints through discovery", async () => {
     const { fake, provider } = await oidcSetup();
-    const { location } = await startFlow(provider, fake);
+    const { location } = await beginSignIn(provider, fake);
 
     expect(location.searchParams.get("nonce")).toMatch(/^[\w-]{43}$/);
     expect(location.searchParams.get("scope")).toBe("openid profile email");
@@ -114,7 +114,7 @@ describe("authorize", () => {
 
   it("refuses to guess a redirect URI", async () => {
     const error = await rejection(
-      authorize(fakeOAuth2(), new Request(`${APP}/auth/fake`), { key }),
+      startFlow(fakeOAuth2(), new Request(`${APP}/auth/fake`), { key }),
     );
 
     expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
@@ -122,7 +122,7 @@ describe("authorize", () => {
 
   it("derives the redirect URI from a trusted request origin only", async () => {
     const fake = await createFakeProvider();
-    const trusted = await authorize(fakeOAuth2(), new Request(`${APP}/auth/fake?x=1`), {
+    const trusted = await startFlow(fakeOAuth2(), new Request(`${APP}/auth/fake?x=1`), {
       key,
       trustedOrigins: [APP],
       fetch: fake.fetch,
@@ -131,7 +131,7 @@ describe("authorize", () => {
     expect(location.searchParams.get("redirect_uri")).toBe(`${APP}/auth/fake`);
 
     const error = await rejection(
-      authorize(fakeOAuth2(), new Request("https://evil.test/auth/fake"), {
+      startFlow(fakeOAuth2(), new Request("https://evil.test/auth/fake"), {
         key,
         trustedOrigins: [APP],
       }),
@@ -141,7 +141,7 @@ describe("authorize", () => {
 
   it("drops a SameSite=Lax cookie for form_post providers in favour of SameSite=None", async () => {
     const fake = await createFakeProvider();
-    const provider = oauth2({
+    const provider = defineOAuth2Provider({
       id: "fake",
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -150,22 +150,22 @@ describe("authorize", () => {
       userinfo: `${ISSUER}/userinfo`,
       responseMode: "form_post",
     });
-    const { response } = await startFlow(provider, fake);
+    const { response } = await beginSignIn(provider, fake);
 
     expect(response.headers.getSetCookie().join("\n")).toMatch(/SameSite=None/i);
   });
 });
 
-describe("callback", () => {
+describe("completeFlow", () => {
   it("completes an OAuth 2.0 flow and clears the flow cookie", async () => {
     const fake = await createFakeProvider();
-    const { request } = await startFlow(fakeOAuth2(), fake, {
+    const { request } = await beginSignIn(fakeOAuth2(), fake, {
       redirect: "/dashboard?tab=1",
       link: { userId: "u-42" },
     });
     const headers = new Headers();
 
-    const result = await callback(fakeOAuth2(), request, { key, headers, fetch: fake.fetch });
+    const result = await completeFlow(fakeOAuth2(), request, { key, headers, fetch: fake.fetch });
 
     expect(result.identity).toMatchObject({
       provider: "fake",
@@ -184,9 +184,9 @@ describe("callback", () => {
 
   it("fetches the discovery document once across both legs", async () => {
     const { fake, provider } = await oidcSetup();
-    const { request } = await startFlow(provider, fake);
+    const { request } = await beginSignIn(provider, fake);
 
-    await callback(provider, request, { key, headers: new Headers(), fetch: fake.fetch });
+    await completeFlow(provider, request, { key, headers: new Headers(), fetch: fake.fetch });
 
     const discoveries = fake.requests.filter((r) =>
       r.url.pathname.endsWith("openid-configuration"),
@@ -197,7 +197,7 @@ describe("callback", () => {
   it("hands the callback parameters to profile() as untrusted input", async () => {
     const fake = await createFakeProvider();
     const seen: Record<string, string>[] = [];
-    const provider = oauth2({
+    const provider = defineOAuth2Provider({
       id: "fake",
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -208,18 +208,18 @@ describe("callback", () => {
         return { subject: "s", profile: {} };
       },
     });
-    const { back, request } = await startFlow(provider, fake);
+    const { back, request } = await beginSignIn(provider, fake);
 
-    await callback(provider, request, { key, headers: new Headers(), fetch: fake.fetch });
+    await completeFlow(provider, request, { key, headers: new Headers(), fetch: fake.fetch });
 
     expect(seen[0]).toMatchObject({ code: back.searchParams.get("code") });
   });
 
   it("completes an OIDC flow, verifying the id_token", async () => {
     const { fake, provider } = await oidcSetup();
-    const { request } = await startFlow(provider, fake);
+    const { request } = await beginSignIn(provider, fake);
 
-    const result = await callback(provider, request, {
+    const result = await completeFlow(provider, request, {
       key,
       headers: new Headers(),
       fetch: fake.fetch,
@@ -238,15 +238,15 @@ describe("callback", () => {
   it("verifies the id_token over an http JWKS on a host the provider lists in insecureHosts", async () => {
     const issuer = "http://callback-insecure.lan";
     const fake = await createFakeProvider({ issuer });
-    const provider = oidc({
+    const provider = defineOidcProvider({
       issuer,
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
       insecureHosts: ["callback-insecure.lan"],
     });
-    const { request } = await startFlow(provider, fake);
+    const { request } = await beginSignIn(provider, fake);
 
-    const result = await callback(provider, request, {
+    const result = await completeFlow(provider, request, {
       key,
       headers: new Headers(),
       fetch: fake.fetch,
@@ -270,9 +270,9 @@ describe("callback", () => {
     ["dashboard"],
   ])("drops the unsafe redirect %s", async (redirect) => {
     const fake = await createFakeProvider();
-    const { request } = await startFlow(fakeOAuth2(), fake, { redirect });
+    const { request } = await beginSignIn(fakeOAuth2(), fake, { redirect });
 
-    const result = await callback(fakeOAuth2(), request, {
+    const result = await completeFlow(fakeOAuth2(), request, {
       key,
       headers: new Headers(),
       fetch: fake.fetch,
@@ -283,12 +283,12 @@ describe("callback", () => {
 
   it("throws ERR_AUTHN_STATE_MISMATCH on another state, and still clears the cookie", async () => {
     const fake = await createFakeProvider();
-    const { back, request } = await startFlow(fakeOAuth2(), fake);
+    const { back, request } = await beginSignIn(fakeOAuth2(), fake);
     back.searchParams.set("state", "forged");
     const headers = new Headers();
 
     const error = await rejection(
-      callback(fakeOAuth2(), new Request(back, { headers: request.headers }), {
+      completeFlow(fakeOAuth2(), new Request(back, { headers: request.headers }), {
         key,
         headers,
         fetch: fake.fetch,
@@ -302,8 +302,8 @@ describe("callback", () => {
 
   it("throws ERR_AUTHN_STATE_MISMATCH when the flow was started for another provider", async () => {
     const fake = await createFakeProvider();
-    const { request } = await startFlow(fakeOAuth2(), fake);
-    const other = oauth2({
+    const { request } = await beginSignIn(fakeOAuth2(), fake);
+    const other = defineOAuth2Provider({
       ...fakeOAuth2(),
       id: "other",
       clientId: CLIENT_ID,
@@ -314,7 +314,7 @@ describe("callback", () => {
     });
 
     const error = await rejection(
-      callback(other, request, { key, headers: new Headers(), fetch: fake.fetch }),
+      completeFlow(other, request, { key, headers: new Headers(), fetch: fake.fetch }),
     );
 
     expect(isUnauthError(error, "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
@@ -322,23 +322,27 @@ describe("callback", () => {
 
   it("throws ERR_AUTHN_FLOW_EXPIRED without a flow cookie or after ten minutes", async () => {
     const fake = await createFakeProvider();
-    const { back, request } = await startFlow(fakeOAuth2(), fake);
+    const { back, request } = await beginSignIn(fakeOAuth2(), fake);
 
     const missing = await rejection(
-      callback(fakeOAuth2(), new Request(back), { key, headers: new Headers(), fetch: fake.fetch }),
+      completeFlow(fakeOAuth2(), new Request(back), {
+        key,
+        headers: new Headers(),
+        fetch: fake.fetch,
+      }),
     );
     expect(isUnauthError(missing, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
 
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 10 * 60_000 + 1000 });
     const expired = await rejection(
-      callback(fakeOAuth2(), request, { key, headers: new Headers(), fetch: fake.fetch }),
+      completeFlow(fakeOAuth2(), request, { key, headers: new Headers(), fetch: fake.fetch }),
     );
     expect(isUnauthError(expired, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
   });
 
   it("throws ERR_AUTHN_PROVIDER_REFUSED on ?error=, with the provider's error in cause", async () => {
     const fake = await createFakeProvider();
-    const { back, request } = await startFlow(fakeOAuth2(), fake);
+    const { back, request } = await beginSignIn(fakeOAuth2(), fake);
     const refused = new URL(REDIRECT_URI);
     refused.searchParams.set("error", "access_denied");
     refused.searchParams.set("error_description", "The user said no");
@@ -346,7 +350,7 @@ describe("callback", () => {
     const headers = new Headers();
 
     const error = await rejection(
-      callback(fakeOAuth2(), new Request(refused, { headers: request.headers }), {
+      completeFlow(fakeOAuth2(), new Request(refused, { headers: request.headers }), {
         key,
         headers,
         fetch: fake.fetch,
@@ -363,11 +367,11 @@ describe("callback", () => {
 
   it("throws ERR_AUTHN_TOKEN_EXCHANGE when the token endpoint refuses the code", async () => {
     const fake = await createFakeProvider();
-    const { request } = await startFlow(fakeOAuth2(), fake);
+    const { request } = await beginSignIn(fakeOAuth2(), fake);
     fake.nextTokenResponse(Response.json({ error: "invalid_grant" }, { status: 400 }));
 
     const error = await rejection(
-      callback(fakeOAuth2(), request, { key, headers: new Headers(), fetch: fake.fetch }),
+      completeFlow(fakeOAuth2(), request, { key, headers: new Headers(), fetch: fake.fetch }),
     );
 
     expect(isUnauthError(error, "ERR_AUTHN_TOKEN_EXCHANGE")).toBe(true);
@@ -375,11 +379,11 @@ describe("callback", () => {
 
   it("throws ERR_AUTHN_ID_TOKEN_INVALID on a nonce mismatch", async () => {
     const { fake, provider } = await oidcSetup();
-    const { request } = await startFlow(provider, fake);
+    const { request } = await beginSignIn(provider, fake);
     fake.idTokenClaims.nonce = "replayed";
 
     const error = await rejection(
-      callback(provider, request, { key, headers: new Headers(), fetch: fake.fetch }),
+      completeFlow(provider, request, { key, headers: new Headers(), fetch: fake.fetch }),
     );
 
     expect(isUnauthError(error, "ERR_AUTHN_ID_TOKEN_INVALID")).toBe(true);
@@ -387,11 +391,11 @@ describe("callback", () => {
 
   it("throws ERR_AUTHN_PROFILE_INVALID when userinfo names another subject than the id_token", async () => {
     const { fake, provider } = await oidcSetup();
-    const { request } = await startFlow(provider, fake);
+    const { request } = await beginSignIn(provider, fake);
     fake.userinfo = { ...fake.userinfo, sub: "user-2" };
 
     const error = await rejection(
-      callback(provider, request, { key, headers: new Headers(), fetch: fake.fetch }),
+      completeFlow(provider, request, { key, headers: new Headers(), fetch: fake.fetch }),
     );
 
     expect(isUnauthError(error, "ERR_AUTHN_PROFILE_INVALID")).toBe(true);
@@ -399,7 +403,7 @@ describe("callback", () => {
 
   it("reads a form_post callback from the request body", async () => {
     const fake = await createFakeProvider();
-    const provider = oauth2({
+    const provider = defineOAuth2Provider({
       id: "fake",
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -408,7 +412,7 @@ describe("callback", () => {
       userinfo: `${ISSUER}/userinfo`,
       responseMode: "form_post",
     });
-    const { back, request } = await startFlow(provider, fake);
+    const { back, request } = await beginSignIn(provider, fake);
     const post = new Request(REDIRECT_URI, {
       method: "POST",
       headers: {
@@ -418,7 +422,7 @@ describe("callback", () => {
       body: back.searchParams.toString(),
     });
 
-    const result = await callback(provider, post, {
+    const result = await completeFlow(provider, post, {
       key,
       headers: new Headers(),
       fetch: fake.fetch,
@@ -444,8 +448,8 @@ describe("callback", () => {
       profile: ({ claims }) => ({ subject: claims!.sub, profile: claims! }),
     });
 
-    const { location, request } = await startFlow(provider, fake);
-    const result = await callback(provider, request, {
+    const { location, request } = await beginSignIn(provider, fake);
+    const result = await completeFlow(provider, request, {
       key,
       headers: new Headers(),
       fetch: fake.fetch,
@@ -454,10 +458,10 @@ describe("callback", () => {
     expect(location.searchParams.get("nonce")).toMatch(/^[\w-]{43}$/);
     expect(result.identity.subject).toBe("user-1");
 
-    const replayed = await startFlow(provider, fake);
+    const replayed = await beginSignIn(provider, fake);
     fake.idTokenClaims.nonce = "replayed";
     const error = await rejection(
-      callback(provider, replayed.request, { key, headers: new Headers(), fetch: fake.fetch }),
+      completeFlow(provider, replayed.request, { key, headers: new Headers(), fetch: fake.fetch }),
     );
     expect(isUnauthError(error, "ERR_AUTHN_ID_TOKEN_INVALID")).toBe(true);
   });
@@ -470,10 +474,10 @@ describe("RFC 9207 iss parameter", () => {
   ) {
     const { fake, provider } = await oidcSetup();
     setup?.(fake);
-    const { back, request } = await startFlow(provider, fake);
+    const { back, request } = await beginSignIn(provider, fake);
     if (iss === undefined) back.searchParams.delete("iss");
     else back.searchParams.set("iss", iss);
-    return callback(provider, new Request(back, { headers: request.headers }), {
+    return completeFlow(provider, new Request(back, { headers: request.headers }), {
       key,
       headers: new Headers(),
       fetch: fake.fetch,
@@ -482,9 +486,9 @@ describe("RFC 9207 iss parameter", () => {
 
   it("accepts the issuer's own iss when the issuer advertises the parameter", async () => {
     const { fake, provider } = await oidcSetup();
-    const { back, request } = await startFlow(provider, fake);
+    const { back, request } = await beginSignIn(provider, fake);
 
-    const result = await callback(provider, request, {
+    const result = await completeFlow(provider, request, {
       key,
       headers: new Headers(),
       fetch: fake.fetch,
@@ -521,13 +525,13 @@ describe("RFC 9207 iss parameter", () => {
   it("reads iss from a form_post body", async () => {
     const issuer = `https://${crypto.randomUUID()}.idp.test`;
     const fake = await createFakeProvider({ issuer });
-    const provider = oidc({
+    const provider = defineOidcProvider({
       issuer,
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
       responseMode: "form_post",
     });
-    const { back, request } = await startFlow(provider, fake);
+    const { back, request } = await beginSignIn(provider, fake);
     const post = (iss: string) => {
       const body = new URLSearchParams(back.searchParams);
       body.set("iss", iss);
@@ -542,7 +546,7 @@ describe("RFC 9207 iss parameter", () => {
     };
 
     const error = await rejection(
-      callback(provider, post("https://evil.test"), {
+      completeFlow(provider, post("https://evil.test"), {
         key,
         headers: new Headers(),
         fetch: fake.fetch,
@@ -558,14 +562,14 @@ describe("flow lifetime", () => {
     const fake = await createFakeProvider();
     const ttls: number[] = [];
     const records = new Map<string, FlowRecord>();
-    const store: TransientStore = {
+    const store: FlowStore = {
       put: async (id, record, { ttl }) => {
         ttls.push(ttl);
         records.set(id, record);
       },
       take: async (id) => records.get(id),
     };
-    const { response, request } = await startFlow(fakeOAuth2(), fake, { store, maxAge: 30 });
+    const { response, request } = await beginSignIn(fakeOAuth2(), fake, { store, maxAge: 30 });
 
     expect(ttls).toEqual([30]);
     const line = response.headers.getSetCookie().find((l) => l.startsWith(`${FLOW_COOKIE}=`))!;
@@ -575,7 +579,7 @@ describe("flow lifetime", () => {
 
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 31_000 });
     const error = await rejection(
-      callback(fakeOAuth2(), request, {
+      completeFlow(fakeOAuth2(), request, {
         key,
         store,
         maxAge: 30,
@@ -588,7 +592,7 @@ describe("flow lifetime", () => {
 
   it("refuses a maxAge that is not a positive duration", async () => {
     const error = await rejection(
-      authorize(fakeOAuth2(), new Request(`${APP}/auth/fake`), {
+      startFlow(fakeOAuth2(), new Request(`${APP}/auth/fake`), {
         key,
         redirectUri: REDIRECT_URI,
         maxAge: 0,
@@ -611,9 +615,14 @@ describe("cache driver", () => {
         entries.set(name, value);
       },
     };
-    const { request } = await startFlow(provider, fake, { cache });
+    const { request } = await beginSignIn(provider, fake, { cache });
 
-    await callback(provider, request, { key, cache, headers: new Headers(), fetch: fake.fetch });
+    await completeFlow(provider, request, {
+      key,
+      cache,
+      headers: new Headers(),
+      fetch: fake.fetch,
+    });
 
     expect(sets).toEqual([600, 600]);
     expect(entries.size).toBe(2);
@@ -624,10 +633,10 @@ describe("cache driver", () => {
   });
 });
 
-describe("TransientStore", () => {
+describe("FlowStore", () => {
   function memoryStore() {
     const records = new Map<string, { record: FlowRecord; ttl: number }>();
-    const store: TransientStore = {
+    const store: FlowStore = {
       put: async (id, record, { ttl }) => {
         records.set(id, { record, ttl });
       },
@@ -643,7 +652,7 @@ describe("TransientStore", () => {
   it("keeps the flow record in the store and only a reference in the cookie", async () => {
     const fake = await createFakeProvider();
     const { store, records } = memoryStore();
-    const { location, request } = await startFlow(fakeOAuth2(), fake, { store, redirect: "/x" });
+    const { location, request } = await beginSignIn(fakeOAuth2(), fake, { store, redirect: "/x" });
 
     expect(records.size).toBe(1);
     const [entry] = records.values();
@@ -655,7 +664,7 @@ describe("TransientStore", () => {
       redirect: "/x",
     });
 
-    const result = await callback(fakeOAuth2(), request, {
+    const result = await completeFlow(fakeOAuth2(), request, {
       key,
       store,
       headers: new Headers(),
@@ -668,11 +677,16 @@ describe("TransientStore", () => {
   it("throws ERR_AUTHN_FLOW_EXPIRED when the store no longer has the record", async () => {
     const fake = await createFakeProvider();
     const { store, records } = memoryStore();
-    const { request } = await startFlow(fakeOAuth2(), fake, { store });
+    const { request } = await beginSignIn(fakeOAuth2(), fake, { store });
     records.clear();
 
     const error = await rejection(
-      callback(fakeOAuth2(), request, { key, store, headers: new Headers(), fetch: fake.fetch }),
+      completeFlow(fakeOAuth2(), request, {
+        key,
+        store,
+        headers: new Headers(),
+        fetch: fake.fetch,
+      }),
     );
 
     expect(isUnauthError(error, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);

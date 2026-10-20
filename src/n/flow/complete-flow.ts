@@ -9,8 +9,8 @@ import { exchangeCode } from "./token.ts";
 import type { IdTokenClaims, OAuthTokens, Provider, ProvenIdentity } from "./types.ts";
 import { fetchProfile } from "./userinfo.ts";
 
-/** Options of {@link callback}. */
-export interface CallbackOptions extends FlowCarrierOptions {
+/** Options of {@link completeFlow}. */
+export interface CompleteFlowOptions extends FlowCarrierOptions {
   /** The response's headers: the consumed flow cookie is expired on them. */
   headers: Headers;
   fetch?: Fetch;
@@ -20,12 +20,12 @@ export interface CallbackOptions extends FlowCarrierOptions {
 }
 
 /** A completed sign-in. What to do with it (sign in, link, redirect) is the caller's call. */
-export interface CallbackResult<TProfile = Record<string, unknown>> {
+export interface FlowResult<TProfile = Record<string, unknown>> {
   identity: ProvenIdentity<TProfile>;
   tokens: OAuthTokens;
   /** The user who started the flow to link this account; check it is still the signed-in one. */
   link?: { userId: string };
-  /** The same-origin path given to `authorize`. */
+  /** The same-origin path given to `startFlow`. */
   redirect?: string;
 }
 
@@ -39,11 +39,11 @@ export interface CallbackResult<TProfile = Record<string, unknown>> {
  * missing one is accepted but one naming another issuer is not (`ERR_AUTHN_STATE_MISMATCH`, cause
  * `reason: "issuer"`).
  */
-export async function callback<TProfile>(
+export async function completeFlow<TProfile>(
   provider: Provider<TProfile>,
   request: Request,
-  options: CallbackOptions,
-): Promise<CallbackResult<TProfile>> {
+  options: CompleteFlowOptions,
+): Promise<FlowResult<TProfile>> {
   const record = await takeFlow({ request, headers: options.headers, provider, options });
   const params = await callbackParams(request);
 
@@ -121,7 +121,7 @@ export async function callback<TProfile>(
   }
 
   const identity = await mapProfile(resolved, { tokens, claims, userinfo, params, fetch });
-  const result: CallbackResult<TProfile> = { identity, tokens };
+  const result: FlowResult<TProfile> = { identity, tokens };
   if (record.link) result.link = record.link;
   if (record.redirect !== undefined) result.redirect = record.redirect;
   return result;

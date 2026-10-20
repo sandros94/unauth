@@ -1,17 +1,17 @@
 import { type ExpiresIn, type SessionConfigJWE, defineJWESession } from "unjwt/session";
 import { durationSeconds } from "./_http.ts";
 import { createState } from "./random.ts";
-import type { FlowRecord, Provider, TransientStore } from "./types.ts";
+import type { FlowRecord, Provider, FlowStore } from "./types.ts";
 
 /** Where a flow record waits between the two legs. */
 export interface FlowCarrierOptions {
   /** Seals the flow cookie. */
   key: SessionConfigJWE["key"];
   /** Keep records here; the cookie then carries only their id. */
-  store?: TransientStore;
+  store?: FlowStore;
   cookie?: { /** @default true */ secure?: boolean };
   /**
-   * How long a sign-in may take between `authorize` and `callback` (seconds, or `"10m"`…): the
+   * How long a sign-in may take between `startFlow` and `completeFlow` (seconds, or `"10m"`…): the
    * flow cookie's lifetime and the store's `ttl`. Give both legs the same value.
    *
    * @default "10m"
@@ -41,7 +41,7 @@ export async function saveFlow(
     await options.store.put(ref, record, { ttl: flowMaxAge(options) });
     cookie = { ref };
   }
-  const session = await flowSession(context).use({ request, headers });
+  const session = await flowSession(context).use({ req: request, res: { headers } });
   if (session.id !== undefined) await session.clear();
   await session.update(cookie);
 }
@@ -59,8 +59,9 @@ export async function takeFlow(context: {
 }): Promise<FlowRecord | undefined> {
   const { request, headers, options } = context;
   const definition = flowSession(context);
-  const present = definition.token({ request, headers }) !== undefined;
-  const session = await definition.use({ request, headers });
+  const event = { req: request, res: { headers } };
+  const present = definition.token(event) !== undefined;
+  const session = await definition.use(event);
   const { record, ref } = session.id === undefined ? {} : session.data;
   if (present) await session.clear();
   if (record) return record;

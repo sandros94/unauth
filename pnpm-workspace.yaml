@@ -1,10 +1,8 @@
 packages:
   - playground
-  # resolve to that h3 major. Tests and type-checking resolve from them, not the root.
-  - test/env-*
 
 catalog:
-  unjwt: https://pkg.pr.new/sandros94/unjwt@4a035c7
+  unjwt: https://pkg.pr.new/sandros94/unjwt@ca3e192
 
 allowBuilds:
   "@parcel/watcher": false

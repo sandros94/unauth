@@ -1,14 +1,26 @@
 {
-  "files": [],
-  "references": [
-    {
-      "path": "./tsconfig.n.json"
-    },
-    {
-      "path": "./tsconfig.h3v2.json"
-    },
-    {
-      "path": "./tsconfig.h3v1.json"
-    }
-  ]
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "preserve",
+    "moduleDetection": "force",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": false,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
+    "noImplicitOverride": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedDeclarations": true,
+    "allowImportingTsExtensions": true,
+    "lib": ["ESNext", "DOM"],
+    "composite": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist", "playgrounds"]
 }

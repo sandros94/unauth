@@ -1,6 +1,6 @@
-import { oauth2 } from "../flow/oauth2.ts";
+import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetOptions, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
 
 /** Microsoft Graph `GET /me` (https://learn.microsoft.com/graph/api/user-get). */
 export interface MicrosoftProfile {
@@ -20,7 +20,7 @@ export interface MicrosoftProfile {
 }
 
 /** Options of {@link defineMicrosoftProvider}. */
-export interface MicrosoftProviderOptions extends PresetOptions {
+export interface MicrosoftProviderConfig extends PresetConfig {
   clientSecret: string;
   /** `common`, `organizations`, `consumers` or a tenant id. @default "common" */
   tenant?: string;
@@ -33,10 +33,10 @@ export interface MicrosoftProviderOptions extends PresetOptions {
  * `emailVerified` stays unset. @default scopes `["User.Read"]`
  */
 export function defineMicrosoftProvider(
-  options: MicrosoftProviderOptions,
+  options: MicrosoftProviderConfig,
 ): Provider<MicrosoftProfile> {
   const base = `https://login.microsoftonline.com/${encodeURIComponent(options.tenant ?? "common")}/oauth2/v2.0`;
-  return oauth2({
+  return defineOAuth2Provider({
     id: options.id ?? "microsoft",
     label: options.label ?? "Microsoft",
     clientId: options.clientId,

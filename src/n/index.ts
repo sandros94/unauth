@@ -11,7 +11,7 @@ export {
   type AuthSessionConfigJWE,
   type AuthSessionConfigJWS,
   type AuthSessionConfigOf,
-  type AuthSessionOptions,
+  type AuthSessionBaseConfig,
   type AuthSessionData,
   type AuthSessionDefinition,
   type AuthSessionHooks,
@@ -19,9 +19,9 @@ export {
   type AuthSessionRecord,
   type AuthSessionSnapshot,
   type AuthenticatedData,
+  type AuthenticatedSessionManager,
   defineAuthSession,
-  optionalSession,
-  requireSession,
+  isAuthenticated,
 } from "./session.ts";
 export type {
   FlowRecord,
@@ -32,9 +32,9 @@ export type {
   ProfileResult,
   ProvenIdentity,
   Provider,
-  ProviderDescriptor,
+  ProviderConfig,
   TokenAuthMethod,
-  TransientStore,
+  FlowStore,
 } from "./flow/types.ts";
 export type { Fetch } from "./flow/_http.ts";
 export type { CacheDriver } from "./flow/_cache.ts";
@@ -56,15 +56,15 @@ export {
 } from "./flow/discovery.ts";
 export { type FetchJwksOptions, fetchJwks } from "./flow/jwks.ts";
 export { type VerifyIdTokenOptions, verifyIdToken } from "./flow/id-token.ts";
-export { type AuthorizeOptions, authorize } from "./flow/authorize.ts";
-export { type CallbackOptions, type CallbackResult, callback } from "./flow/callback.ts";
+export { type StartFlowOptions, startFlow } from "./flow/start-flow.ts";
+export { type CompleteFlowOptions, type FlowResult, completeFlow } from "./flow/complete-flow.ts";
 export {
-  type OAuth2ProviderOptions,
+  type OAuth2ProviderConfig,
   type OAuthClientSecret,
   type ProfileMapper,
-  oauth2,
+  defineOAuth2Provider,
 } from "./flow/oauth2.ts";
-export { type OidcProfile, type OidcProviderOptions, oidc } from "./flow/oidc.ts";
+export { type OidcProfile, type OidcProviderConfig, defineOidcProvider } from "./flow/oidc.ts";
 export {
   type IdentityRef,
   type IdentityStore,
@@ -72,6 +72,15 @@ export {
   type SignInResult,
   signIn,
 } from "./sign-in.ts";
+export {
+  type FlowIntent,
+  type HandlerEvent,
+  type SignInHandlerConfig,
+  type AuthSessionGuardConfig,
+  defineSessionGuard,
+  defineSignInHandler,
+  isCallback,
+} from "./handler.ts";
 export {
   type OneTimeToken,
   type OneTimeTokenConfig,

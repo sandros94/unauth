@@ -1,6 +1,6 @@
-import { oauth2 } from "../flow/oauth2.ts";
+import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetOptions, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
 
 /** `GET /api/v4/user` (https://docs.gitlab.com/api/users/#for-non-administrator-users). */
 export interface GitLabProfile {
@@ -21,7 +21,7 @@ export interface GitLabProfile {
 }
 
 /** Options of {@link defineGitLabProvider}. */
-export interface GitLabProviderOptions extends PresetOptions {
+export interface GitLabProviderConfig extends PresetConfig {
   clientSecret: string;
   /** A self-managed instance. @default "https://gitlab.com" */
   baseUrl?: string;
@@ -32,9 +32,9 @@ export interface GitLabProviderOptions extends PresetOptions {
  * in this payload, so `emailVerified` stays unset. Endpoints: GitLab OAuth 2.0 provider docs and
  * nuxt-auth-utils. @default scopes `["read_user"]`
  */
-export function defineGitLabProvider(options: GitLabProviderOptions): Provider<GitLabProfile> {
+export function defineGitLabProvider(options: GitLabProviderConfig): Provider<GitLabProfile> {
   const base = (options.baseUrl ?? "https://gitlab.com").replace(/\/+$/, "");
-  return oauth2({
+  return defineOAuth2Provider({
     id: options.id ?? "gitlab",
     label: options.label ?? "GitLab",
     clientId: options.clientId,

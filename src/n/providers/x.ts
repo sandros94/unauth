@@ -1,7 +1,7 @@
 import { isRecord } from "../flow/_http.ts";
-import { oauth2 } from "../flow/oauth2.ts";
+import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetOptions, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
 
 /** `GET /2/users/me` `data` (https://docs.x.com/x-api/users/user-lookup-me). */
 export interface XProfile {
@@ -16,7 +16,7 @@ export interface XProfile {
 }
 
 /** Options of {@link defineXProvider}. */
-export interface XProviderOptions extends PresetOptions {
+export interface XProviderOptions extends PresetConfig {
   /** Confidential clients authenticate with HTTP Basic; public clients leave it out. */
   clientSecret?: string;
 }
@@ -28,7 +28,7 @@ export interface XProviderOptions extends PresetOptions {
  */
 export function defineXProvider(options: XProviderOptions): Provider<XProfile> {
   const fields = "profile_image_url,description,verified,verified_type,created_at";
-  return oauth2({
+  return defineOAuth2Provider({
     id: options.id ?? "x",
     label: options.label ?? "X",
     clientId: options.clientId,

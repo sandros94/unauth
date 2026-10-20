@@ -1,5 +1,5 @@
 import { assertSecureUrl, configError } from "./_http.ts";
-import type { Provider, ProviderDescriptor, TokenAuthMethod } from "./types.ts";
+import type { Provider, ProviderConfig, TokenAuthMethod } from "./types.ts";
 
 /**
  * A provider from its descriptor, with secure defaults filled in: PKCE `S256`, a nonce for
@@ -7,7 +7,7 @@ import type { Provider, ProviderDescriptor, TokenAuthMethod } from "./types.ts";
  * Throws `ERR_UNAUTH_CONFIG_INVALID` for a descriptor that cannot work; performs no I/O.
  */
 export function defineProvider<TProfile = Record<string, unknown>>(
-  descriptor: ProviderDescriptor<TProfile>,
+  descriptor: ProviderConfig<TProfile>,
 ): Provider<TProfile> {
   const { pkce = "S256", profile, ...rest } = descriptor;
   const provider: Provider<TProfile> = {
@@ -77,7 +77,7 @@ export function assertProvider(provider: Provider<unknown>): void {
   }
 }
 
-function defaultTokenAuth(client: ProviderDescriptor["client"]): TokenAuthMethod {
+function defaultTokenAuth(client: ProviderConfig["client"]): TokenAuthMethod {
   if (client.privateKey) return "private_key_jwt";
   return client.secret ? "basic" : "none";
 }

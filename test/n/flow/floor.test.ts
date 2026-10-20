@@ -3,7 +3,7 @@ import { generateJWK, verify } from "unjwt";
 
 import {
   type Provider,
-  type ProviderDescriptor,
+  type ProviderConfig,
   buildAuthorizationUrl,
   createNonce,
   createPkce,
@@ -18,7 +18,7 @@ import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider, s256 } from "./_f
 
 const BASE64URL = /^[\w-]+$/;
 
-function github(overrides: Partial<ProviderDescriptor> = {}): Provider {
+function github(overrides: Partial<ProviderConfig> = {}): Provider {
   return defineProvider({
     id: "fake",
     kind: "oauth2",
@@ -143,7 +143,7 @@ describe("defineProvider", () => {
   });
 
   it("lets a provider leave out the openid scope with openidScope: false", () => {
-    const oidcProvider = (overrides: Partial<ProviderDescriptor>) =>
+    const oidcProvider = (overrides: Partial<ProviderConfig>) =>
       github({
         kind: "oidc",
         issuer: ISSUER,

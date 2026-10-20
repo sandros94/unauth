@@ -1,7 +1,7 @@
 import { isRecord } from "../flow/_http.ts";
-import { oauth2 } from "../flow/oauth2.ts";
+import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetOptions, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
 
 /** An entry of Helix `GET /users` (https://dev.twitch.tv/docs/api/reference/#get-users). */
 export interface TwitchProfile {
@@ -19,7 +19,7 @@ export interface TwitchProfile {
 }
 
 /** Options of {@link defineTwitchProvider}. */
-export interface TwitchProviderOptions extends PresetOptions {
+export interface TwitchProviderConfig extends PresetConfig {
   clientSecret: string;
 }
 
@@ -30,8 +30,8 @@ export interface TwitchProviderOptions extends PresetOptions {
  * (https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/). @default scopes
  * `["user:read:email"]`
  */
-export function defineTwitchProvider(options: TwitchProviderOptions): Provider<TwitchProfile> {
-  return oauth2({
+export function defineTwitchProvider(options: TwitchProviderConfig): Provider<TwitchProfile> {
+  return defineOAuth2Provider({
     id: options.id ?? "twitch",
     label: options.label ?? "Twitch",
     clientId: options.clientId,

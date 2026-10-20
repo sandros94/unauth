@@ -2,7 +2,7 @@ import { isRecord, profileError } from "../flow/_http.ts";
 import type { ProfileContext } from "../flow/types.ts";
 
 /** What every preset accepts besides its own options. */
-export interface PresetOptions {
+export interface PresetConfig {
   clientId: string;
   /** Replaces the preset's default scopes. */
   scopes?: string[];

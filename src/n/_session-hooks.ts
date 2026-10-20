@@ -1,6 +1,11 @@
 import type { ExpiresIn, SessionManager } from "unjwt/session";
 import type { AuthSessionHooks, AuthSessionRecord, AuthSessionSnapshot } from "./session.ts";
-import { AUTHENTICATED_AT, authSessionManager, withoutReserved } from "./_session-manager.ts";
+import {
+  AUTHENTICATED_AT,
+  authSessionManager,
+  requireAuthenticated,
+  withoutReserved,
+} from "./_session-manager.ts";
 
 type Manager = SessionManager<AuthSessionRecord, ExpiresIn>;
 type HookArgs = Record<string, unknown>;
@@ -71,7 +76,9 @@ export function composeAuthHooks(hooks: ComposableHooks | undefined): Record<str
         else if (verdict) await args.session.update(withoutReserved(verdict));
         return;
       }
-      if (onSignIn && signedIn(args)) await onSignIn({ ...requestArgs(args), session });
+      if (onSignIn && signedIn(args)) {
+        await onSignIn({ ...requestArgs(args), session: requireAuthenticated(session) });
+      }
       await onUpdate?.(args);
     };
   }
