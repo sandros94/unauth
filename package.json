@@ -29,18 +29,6 @@
     "./n/providers/*": {
       "types": "./dist/n/providers/*.d.mts",
       "default": "./dist/n/providers/*.mjs"
-    },
-    "./base/h3": {
-      "types": "./dist/base/h3v2/index.d.mts",
-      "default": "./dist/base/h3v2/index.mjs"
-    },
-    "./base/h3v1": {
-      "types": "./dist/base/h3v1/index.d.mts",
-      "default": "./dist/base/h3v1/index.mjs"
-    },
-    "./base/h3v2": {
-      "types": "./dist/base/h3v2/index.d.mts",
-      "default": "./dist/base/h3v2/index.mjs"
     }
   },
   "scripts": {

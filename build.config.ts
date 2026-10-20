@@ -25,8 +25,6 @@ export default defineBuildConfig({
     {
       type: "bundle",
       input: [
-        "./src/base/h3v1/index.ts",
-        "./src/base/h3v2/index.ts",
         "./src/n/index.ts",
         "./src/n/h3v1/index.ts",
         "./src/n/h3v2/index.ts",
