@@ -165,8 +165,8 @@ settings:
 catalogs:
   default:
     unjwt:
-      specifier: https://pkg.pr.new/sandros94/unjwt@ca3e192
-      version: https://pkg.pr.new/sandros94/unjwt@ca3e192
+      specifier: https://pkg.pr.new/sandros94/unjwt@bb916c2
+      version: https://pkg.pr.new/sandros94/unjwt@bb916c2
 
 importers:
 
@@ -211,7 +211,7 @@ importers:
         version: 7.0.2
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@ca3e192(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
+        version: https://pkg.pr.new/sandros94/unjwt@bb916c2(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
       vitest:
         specifier: ^5.0.4
         version: 5.0.4(@types/node@26.6.5)(@vitest/coverage-v8@5.0.4)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))
@@ -226,7 +226,7 @@ importers:
         version: link:../..
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@ca3e192(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
+        version: https://pkg.pr.new/sandros94/unjwt@bb916c2(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -242,7 +242,7 @@ importers:
         version: link:../..
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@ca3e192(h3@2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0))
+        version: https://pkg.pr.new/sandros94/unjwt@bb916c2(h3@2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0))
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -261,7 +261,7 @@ importers:
         version: link:../..
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@ca3e192(h3@1.15.11)
+        version: https://pkg.pr.new/sandros94/unjwt@bb916c2(h3@1.15.11)
       vue:
         specifier: ^3.5.0
         version: 3.5.44(typescript@7.0.2)
@@ -3630,8 +3630,8 @@ packages:
       rolldown:
         optional: true
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@ca3e192:
-    resolution: {integrity: sha512-u+CceExSDqaO/xVL520H06EJo8ooHgpn2RuzKiNtgOVeVVCQFxjHLzicVQhGYlnxFFkaB3fMkdvpHUIiJa1VoA==, tarball: https://pkg.pr.new/sandros94/unjwt@ca3e192}
+  unjwt@https://pkg.pr.new/sandros94/unjwt@bb916c2:
+    resolution: {integrity: sha512-pgJcUQT9Tk80PhJh5jDyymJxHAGgDksogjg5sBQhCFL2saUyFkfvJ21d+t6jnhFTGkiWfVLzMt8SzOdYXKgqqg==, tarball: https://pkg.pr.new/sandros94/unjwt@bb916c2}
     version: 0.8.1
     peerDependencies:
       elysia: ^1.4.29
@@ -7563,15 +7563,15 @@ snapshots:
       - vite
       - webpack
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@ca3e192(h3@1.15.11):
+  unjwt@https://pkg.pr.new/sandros94/unjwt@bb916c2(h3@1.15.11):
     optionalDependencies:
       h3: 1.15.11
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@ca3e192(h3@2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0)):
+  unjwt@https://pkg.pr.new/sandros94/unjwt@bb916c2(h3@2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0)):
     optionalDependencies:
       h3: 2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0)
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@ca3e192(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)):
+  unjwt@https://pkg.pr.new/sandros94/unjwt@bb916c2(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)):
     optionalDependencies:
       h3: 2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)
 
