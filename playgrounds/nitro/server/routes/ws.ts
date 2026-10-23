@@ -1,5 +1,5 @@
 import { defineWebSocketHandler } from "nitro";
-import type { SessionManager } from "unjwt/session";
+import type { SessionManager } from "unauth/session";
 
 import { type SessionData, useAuthSession } from "../utils/session.ts";
 

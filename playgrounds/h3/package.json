@@ -8,8 +8,7 @@
   },
   "dependencies": {
     "h3": "^2.0.5",
-    "unauth": "workspace:*",
-    "unjwt": "catalog:"
+    "unauth": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5"

@@ -1,4 +1,6 @@
-import { type JWK_EC_Private, digestUrl, generateJWK, sign, toPublicJWK } from "unjwt";
+import { type JWK_EC_Private, generateJWK, toPublicJWK } from "unjwt/jwk";
+import { sign } from "unjwt/jws";
+import { digestUrl } from "unjwt/utils";
 import { type Fetch, providerError, stringField } from "../../../flow/_internal/http/shared.ts";
 import { type FormAnswer, postForm } from "../../../flow/_internal/http/json.ts";
 import { createJti } from "../../../flow/random.ts";

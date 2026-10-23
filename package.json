@@ -22,6 +22,26 @@
       "types": "./dist/n/providers/*.d.mts",
       "default": "./dist/n/providers/*.mjs"
     },
+    "./jwk": {
+      "types": "./dist/jwk.d.mts",
+      "default": "./dist/jwk.mjs"
+    },
+    "./jws": {
+      "types": "./dist/jws.d.mts",
+      "default": "./dist/jws.mjs"
+    },
+    "./jwe": {
+      "types": "./dist/jwe.d.mts",
+      "default": "./dist/jwe.mjs"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.mts",
+      "default": "./dist/utils.mjs"
+    },
+    "./session": {
+      "types": "./dist/session.d.mts",
+      "default": "./dist/session.mjs"
+    },
     "./error": {
       "types": "./dist/error.d.mts",
       "default": "./dist/error.mjs"
@@ -48,6 +68,7 @@
     "typecheck:playgrounds": "tsc -p playgrounds/h3 && tsc -p playgrounds/nitro && pnpm --dir playgrounds/nuxt-4 typecheck"
   },
   "dependencies": {
+    "unjwt": "catalog:",
     "unsecure": "^0.3.3"
   },
   "devDependencies": {
@@ -62,16 +83,7 @@
     "rolldown": "1.2.14",
     "simple-git-hooks": "^2.14.0",
     "typescript": "^7.0.2",
-    "unjwt": "catalog:",
     "vitest": "^5.0.4"
-  },
-  "peerDependencies": {
-    "unjwt": "^0.8.3"
-  },
-  "peerDependenciesMeta": {
-    "unjwt": {
-      "optional": true
-    }
   },
   "resolutions": {
     "unauth": "link:."

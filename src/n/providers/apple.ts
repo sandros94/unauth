@@ -1,4 +1,5 @@
-import { type JWSSignJWK, importPEM, sign } from "unjwt";
+import { importPEM } from "unjwt/jwk";
+import { type JWSSignJWK, sign } from "unjwt/jws";
 import { safeJsonParse } from "unsecure/sanitize";
 import { isRecord, profileError } from "../flow/_internal/http/shared.ts";
 import { defineProvider } from "../flow/provider.ts";

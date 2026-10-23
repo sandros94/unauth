@@ -1,5 +1,5 @@
 import { H3, type H3Event, HTTPError, serve } from "h3";
-import { defineJWESession, deriveJWKFromPassword } from "unjwt/session";
+import { defineJWESession, deriveJWKFromPassword } from "unauth/session";
 
 import { defineSignInHandler } from "unauth/n";
 import { defineAtprotoProvider } from "unauth/n/providers/atproto";

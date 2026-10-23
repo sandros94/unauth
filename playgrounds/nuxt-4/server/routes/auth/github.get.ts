@@ -5,7 +5,7 @@ import {
   deriveSecret,
   useRuntimeConfig,
 } from "nuxt/server";
-import { base64UrlStringify } from "unjwt/utils";
+import { base64UrlStringify } from "unauth/utils";
 import { defineGitHubHandler } from "unauth/n/providers/github";
 
 export default defineEventHandler(

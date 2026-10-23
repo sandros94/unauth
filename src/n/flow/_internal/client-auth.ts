@@ -1,5 +1,5 @@
 import { base64Stringify } from "unsecure/utils";
-import { sign } from "unjwt";
+import { sign } from "unjwt/jws";
 import { configError } from "./http/shared.ts";
 import { createJti } from "../random.ts";
 import type { OAuthProvider } from "../types.ts";

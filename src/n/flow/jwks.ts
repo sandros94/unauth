@@ -1,4 +1,4 @@
-import type { JWKSet } from "unjwt";
+import type { JWKSet } from "unjwt/jwk";
 import {
   type Fetch,
   assertSecureUrl,

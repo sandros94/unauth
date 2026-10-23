@@ -1,4 +1,4 @@
-import type { JWSSignJWK } from "unjwt";
+import type { JWSSignJWK } from "unjwt/jws";
 import type { CacheDriver } from "./_internal/cache/load.ts";
 import type { Fetch } from "./_internal/http/shared.ts";
 

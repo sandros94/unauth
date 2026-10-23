@@ -4,7 +4,7 @@ import {
   type WebSessionEvent,
   defineJWESession,
   deriveJWKFromPassword,
-} from "unjwt/session";
+} from "unauth/session";
 
 export interface SessionData {
   userId: string;

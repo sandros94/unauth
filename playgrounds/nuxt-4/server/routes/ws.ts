@@ -1,5 +1,5 @@
 import { defineWebSocketHandler } from "h3";
-import type { SessionManager } from "unjwt/session";
+import type { SessionManager } from "unauth/session";
 
 export default defineWebSocketHandler({
   async upgrade(request) {

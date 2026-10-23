@@ -4,8 +4,8 @@ import {
   type SessionManager,
   type WebSessionEvent,
   defineJWESession,
-} from "unjwt/session";
-import { base64UrlStringify } from "unjwt/utils";
+} from "unauth/session";
+import { base64UrlStringify } from "unauth/utils";
 
 let definition: Promise<SessionDefinition<SessionData, "1h", WebSessionEvent>> | undefined;
 

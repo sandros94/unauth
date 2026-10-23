@@ -1,5 +1,5 @@
 import { type RequestEvent, createError, defineEventHandler, deriveSecret } from "nuxt/server";
-import { base64UrlStringify } from "unjwt/utils";
+import { base64UrlStringify } from "unauth/utils";
 import { defineAtprotoHandler } from "unauth/n/providers/atproto";
 
 export default defineEventHandler(

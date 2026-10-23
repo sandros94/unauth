@@ -9,8 +9,7 @@
   },
   "dependencies": {
     "nitro": "3.0.260903-beta",
-    "unauth": "workspace:*",
-    "unjwt": "catalog:"
+    "unauth": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5"

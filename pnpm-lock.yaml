@@ -165,13 +165,16 @@ settings:
 catalogs:
   default:
     unjwt:
-      specifier: ^0.8.3
-      version: 0.8.3
+      specifier: https://pkg.pr.new/sandros94/unjwt@1913c73
+      version: https://pkg.pr.new/sandros94/unjwt@1913c73
 
 importers:
 
   .:
     dependencies:
+      unjwt:
+        specifier: 'catalog:'
+        version: https://pkg.pr.new/sandros94/unjwt@1913c73(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
       unsecure:
         specifier: ^0.3.3
         version: 0.3.3
@@ -209,9 +212,6 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
-      unjwt:
-        specifier: 'catalog:'
-        version: 0.8.3(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
       vitest:
         specifier: ^5.0.4
         version: 5.0.4(@types/node@26.6.5)(@vitest/coverage-v8@5.0.4)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))
@@ -224,9 +224,6 @@ importers:
       unauth:
         specifier: workspace:*
         version: link:../..
-      unjwt:
-        specifier: 'catalog:'
-        version: 0.8.3(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -240,9 +237,6 @@ importers:
       unauth:
         specifier: workspace:*
         version: link:../..
-      unjwt:
-        specifier: 'catalog:'
-        version: 0.8.3(h3@2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0))
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -259,9 +253,6 @@ importers:
       unauth:
         specifier: workspace:*
         version: link:../..
-      unjwt:
-        specifier: 'catalog:'
-        version: 0.8.3(h3@1.15.11)
       vue:
         specifier: ^3.5.0
         version: 3.5.44(typescript@6.0.3)
@@ -3665,8 +3656,9 @@ packages:
       rolldown:
         optional: true
 
-  unjwt@0.8.3:
-    resolution: {integrity: sha512-U6yRwxmCS0LlNIp+SlQC1fZQO4U8hnTM1yRM/6Sk23gUYqXxITamwdbgDJXxWPFHfHYj4ok42p12oOsp/D5/Og==}
+  unjwt@https://pkg.pr.new/sandros94/unjwt@1913c73:
+    resolution: {integrity: sha512-y0rH24GacTGhK5xAkwzXkd13PyVUoTkfaNp5cEKjEbvjFFHBfwEVvkQrIidIqFfRtpIQj/Nr2ymxIRaKAadwAQ==, tarball: https://pkg.pr.new/sandros94/unjwt@1913c73}
+    version: 0.8.4
     peerDependencies:
       elysia: ^1.4.29
       h3: ^1.15.4 || ^2.0.1
@@ -6265,15 +6257,6 @@ snapshots:
       crossws: 0.4.15(srvx@1.0.5)
       ocache: 0.3.0
 
-  h3@2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0):
-    dependencies:
-      rou3: 1.0.0
-      srvx: 1.0.6
-    optionalDependencies:
-      crossws: 0.4.15(srvx@1.0.5)
-      ocache: 0.3.0
-    optional: true
-
   h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0):
     dependencies:
       rou3: 1.0.0
@@ -7648,15 +7631,7 @@ snapshots:
       - vite
       - webpack
 
-  unjwt@0.8.3(h3@1.15.11):
-    optionalDependencies:
-      h3: 1.15.11
-
-  unjwt@0.8.3(h3@2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0)):
-    optionalDependencies:
-      h3: 2.0.5(crossws@0.4.15(srvx@1.0.5))(ocache@0.3.0)
-
-  unjwt@0.8.3(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)):
+  unjwt@https://pkg.pr.new/sandros94/unjwt@1913c73(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)):
     optionalDependencies:
       h3: 2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)
 

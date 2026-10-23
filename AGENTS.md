@@ -76,7 +76,7 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 ## Code Conventions
 
 - Use **ESM** and modern JavaScript.
-- Import from specific modules, never through a barrel, for anything internal and for `unjwt`/`unsecure` subpaths (TypeScript then loads only what the file uses). Public entry points (`src/n/index.ts`, `src/error.ts`, `src/argon2.ts`) are the one place that re-exports.
+- Import from specific modules, never through a barrel, for anything internal and for `unjwt`/`unsecure` subpaths (TypeScript then loads only what the file uses). Public entry points (`src/n/index.ts` and the top-level `src/*.ts` files, which mirror `unjwt`'s and `unsecure`'s subpaths) are the one place that re-exports.
 - Place non-exported/internal helpers at the end of the file.
 - For multi-arg functions, use an options object as the second parameter.
 - Split logic across files; avoid long single-file modules (>200 LoC). Internal files live in an `_internal/` folder next to the public modules they serve (`src/n/_internal/`, `src/n/flow/_internal/`, `src/n/providers/_internal/`), grouped by concern once a folder grows; no `_` prefix on the files themselves.

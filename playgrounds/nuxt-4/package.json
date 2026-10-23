@@ -14,7 +14,6 @@
     "h3": "^1.15.11",
     "nuxt": "^4.6.2",
     "unauth": "workspace:*",
-    "unjwt": "catalog:",
     "vue": "^3.5.0"
   },
   "devDependencies": {

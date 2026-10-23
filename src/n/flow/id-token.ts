@@ -1,4 +1,5 @@
-import { type JWKSet, type JWSAlgorithm, type JWSVerifyResult, verify } from "unjwt";
+import type { JWKSet } from "unjwt/jwk";
+import { type JWSAlgorithm, type JWSVerifyResult, verify } from "unjwt/jws";
 import { type DigestAlgorithm, hash } from "unsecure/hash";
 import { base64Stringify } from "unsecure/utils";
 import { secureCompare } from "unsecure/compare";

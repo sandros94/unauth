@@ -14,6 +14,7 @@ A collection of low-level and high-level, server-agnostic, Authentication and Au
 - **Custom providers** — any protocol over the same engine, with `start` and `complete` legs
 - **One-time tokens** — signed, single-use, expiring tokens
 - **Web-standard** — handlers take a request event `{ req, res: { headers } }`; `startFlow` and `completeFlow` take a `Request`
+- **unjwt included** — `unauth/jwk`, `unauth/jws`, `unauth/jwe`, `unauth/utils` and `unauth/session` are unjwt's subpaths, one dependency to install
 
 Built on:
 
@@ -23,15 +24,15 @@ Built on:
 ## Usage
 
 ```sh
-npx nypm install unauth unjwt
+npx nypm install unauth
 ```
 
 ### Session
 
-The session is the application's own `unjwt/session` definition. A sign-in writes to it in `onSuccess`.
+The session is the application's own `unauth/session` definition (unjwt's `defineJWESession`, re-exported). A sign-in writes to it in `onSuccess`.
 
 ```ts
-import { defineJWESession } from "unjwt/session";
+import { defineJWESession } from "unauth/session";
 
 const session = defineJWESession<SessionData, "1h">({ key, maxAge: "1h", rolling: "15m" });
 export const useAuthSession = (event: WebSessionEvent) => session.use(event);
@@ -62,7 +63,7 @@ app.get(
 );
 ```
 
-- `key`: a JWE key, or a callback returning one, called once on the first request. `deriveKey(secret, { info })` derives an `A256GCM` key from a random secret of 32+ characters. A PEM goes through unjwt's `importPEM(pem, alg)`.
+- `key`: a JWE key, or a callback returning one, called once on the first request. `deriveKey(secret, { info })` derives an `A256GCM` key from a random secret of 32+ characters. A PEM goes through `importPEM(pem, alg)` from `unauth/jwk`.
 - `origin`: the callback is this route on that origin; `redirectUri` names it outright instead.
 - `onStart(event)`: optional; returns `{ redirect, link, login, scopes, params }` for this request.
 - `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `link` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.
