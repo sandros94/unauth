@@ -1,3 +1,7 @@
-import type { AuthSessionData } from "unauth/n";
-
-export interface SessionData extends AuthSessionData {}
+export interface SessionData {
+  userId: string;
+  provider: string;
+  subject: string;
+  name?: string;
+  signedInAt: number;
+}

@@ -1,8 +1,7 @@
 import { configError } from "../flow/_http.ts";
 import { defineProvider } from "../flow/provider.ts";
 import type { CustomProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import { type PresetHandler, type PresetHandlerConfig, presetHandler } from "./_shared.ts";
 import { type AtprotoProfile, complete } from "./_atproto/callback.ts";
 import { type AtprotoClient, resolveClient } from "./_atproto/client.ts";
@@ -19,26 +18,27 @@ export interface AtprotoProviderConfig {
   /** @default "AT Protocol" */
   label?: string;
   /**
-   * The URL the client metadata document is published at, which is the app's identity to every
-   * authorization server: `https://`, no port. An `http://` URL on a loopback host, which no
-   * server could fetch, selects the spec's development client instead
-   * (`http://localhost?redirect_uri=…&scope=…`), as does leaving it unset with a loopback
-   * `redirectUri`; the development client publishes no document.
+   * The URL the client metadata document is published at: `https://`, no port. An `http://` URL
+   * on a loopback or `devHosts` host, or no `clientId` with an `http:` loopback `redirectUri`,
+   * selects the atproto development client (`http://localhost?redirect_uri=…&scope=…`), which
+   * publishes no document.
    */
   clientId?: string;
   /**
-   * The callback URL, listed in the client metadata. With the development client it must be on a
-   * loopback IP (`http://127.0.0.1:3000/…`, `http://[::1]:3000/…`): the atproto profile refuses
-   * `localhost` there (RFC 8252 §8.3), so a `localhost` callback is only accepted through
-   * `devHosts`, which maps it to `127.0.0.1`.
+   * The callback URL, listed in the client metadata; `https:` for a published client. The
+   * development client's callback is on a loopback IP (`http://127.0.0.1:3000/…`,
+   * `http://[::1]:3000/…`; the atproto profile refuses `localhost`, RFC 8252 §8.3); a callback on
+   * a `devHosts` host is registered on `127.0.0.1`.
    */
   redirectUri: string;
   /**
-   * Development only: hosts the app is also reached on, such as `localhost`, when the development
-   * client's callback must be the loopback IP. A `redirectUri` on one of them is registered on
-   * `127.0.0.1` instead, and a sign-in started on one of them is first sent to the same URL on
-   * that IP, before any cookie is set, so the flow cookie comes back with the callback; the
-   * session then lives on that host. Off by default.
+   * Development only: hosts the app is also reached on with the development client, such as
+   * `localhost`. A `redirectUri` on one of them is registered on `127.0.0.1`. A sign-in started on
+   * one of them is sent to the same URL on the callback's host before any cookie is set; the sign-in
+   * handler then returns the completed result to the starting host in a sealed, single-use,
+   * one-minute token, and `onSuccess` runs there.
+   *
+   * @default []
    */
   devHosts?: string[];
   /** Must include `atproto`. @default ["atproto"] */
@@ -69,7 +69,8 @@ export interface AtprotoProvider extends CustomProvider<AtprotoProfile> {
  * authorization server is discovered through its DID document and PDS; the request is pushed
  * (PAR) with PKCE and a DPoP proof signed by a key minted for this sign-in; the callback's `iss`,
  * the token's `sub` and the account's PDS are checked against each other. The DPoP-bound tokens
- * are not kept: who signed in is the result.
+ * are not kept: the result is who signed in. Throws `ERR_UNAUTH_CONFIG_INVALID` for a config that
+ * cannot work (see `clientId`, `redirectUri`, `scopes`).
  */
 export function defineAtprotoProvider(config: AtprotoProviderConfig): AtprotoProvider {
   const devHosts = config.devHosts ?? [];
@@ -102,10 +103,10 @@ export type AtprotoProviderPart =
 
 /** Options of {@link defineAtprotoHandler}: the provider part and `defineSignInHandler`'s, in one object. */
 export type AtprotoHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<AtprotoProviderPart, AtprotoProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<AtprotoProviderPart, AtprotoProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of an AT Protocol sign-in on one route: `defineSignInHandler` on the provider, the options

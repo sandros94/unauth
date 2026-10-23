@@ -12,7 +12,7 @@ import { assertIssuerDocument, defineMetadataLoader, requiredMember } from "./_m
 import { assertProvider } from "./provider.ts";
 import type { OAuthProvider } from "./types.ts";
 
-/** The OpenID OAuthProvider metadata a flow uses (OpenID Connect Discovery 1.0 §3). */
+/** The OpenID Provider metadata a flow uses (OpenID Connect Discovery 1.0 §3). */
 export interface OidcMetadata {
   issuer: string;
   authorization_endpoint: string;

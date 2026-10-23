@@ -1,8 +1,7 @@
 import { isRecord } from "../flow/_http.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -32,9 +31,12 @@ export interface XProviderOptions extends PresetConfig {
 }
 
 /**
- * X (formerly Twitter) OAuth 2.0, which requires PKCE. The API exposes no email here, so
- * `email` stays unset. @default scopes `["users.read", "tweet.read"]` (X requires `tweet.read`
- * alongside `users.read`)
+ * X OAuth 2.0: authorization `https://x.com/i/oauth2/authorize`, token
+ * `https://api.x.com/2/oauth2/token`, account from `GET https://api.x.com/2/users/me`. PKCE
+ * `S256`, which X requires; the client secret over HTTP Basic, or a public client without one. The
+ * API exposes no email: `email` stays unset.
+ *
+ * @default scopes `["users.read", "tweet.read"]` (X requires `tweet.read` alongside `users.read`)
  */
 export function defineXProvider(options: XProviderOptions): OAuthProvider<XProfile> {
   const fields = "profile_image_url,description,verified,verified_type,created_at";
@@ -55,13 +57,13 @@ export function defineXProvider(options: XProviderOptions): OAuthProvider<XProfi
 
 /** Options of {@link defineXHandler}: {@link XProviderOptions} and `defineSignInHandler`'s, in one object. */
 export type XHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<XProviderOptions, XProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<XProviderOptions, XProfile, TResult, TEvent, TLink>;
 
 /**
- * Both legs of a X sign-in on one route: `defineSignInHandler` on {@link defineXProvider}, the
+ * Both legs of an X sign-in on one route: `defineSignInHandler` on {@link defineXProvider}, the
  * options split between them by the provider's keys.
  */
 export const defineXHandler: PresetHandler<XProviderOptions, XProfile> =

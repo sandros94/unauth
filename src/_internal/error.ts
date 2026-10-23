@@ -1,16 +1,11 @@
 /**
- * The error codes unauth itself throws.
- *
- * - `ERR_AUTHN_*`: authentication (`unauth/n`).
- * - `ERR_UNAUTH_*`: misconfiguration, whatever the entry.
- *   `_ROLE_UNKNOWN`, `_ROLE_REACH` and `_BOOTSTRAP_CLOSED` are reserved for permission management.
- *
- * Use this type where a typo must not compile: {@link isUnauthError} takes it.
+ * The error codes unauth defines: `ERR_AUTHN_*` for authentication (`unauth/n`), `ERR_UNAUTH_*`
+ * for misconfiguration. {@link isUnauthError} takes this type, so a misspelled code does not compile.
  */
 export type KnownUnauthErrorCode =
   | "ERR_UNAUTH_CONFIG_INVALID" // a configuration that cannot work
   // authn (`unauth/n`)
-  | "ERR_AUTHN_UNAUTHENTICATED" // reserved for the `unauth/session` guard: no signed-in session
+  | "ERR_AUTHN_UNAUTHENTICATED" // no signed-in session; for the application's own guards, never thrown by unauth
   | "ERR_AUTHN_LOGIN_REQUIRED" // the provider needs to know which account signs in (`login`)
   | "ERR_AUTHN_LOGIN_INVALID" // `login` names no usable account at the provider
   | "ERR_AUTHN_FLOW_EXPIRED" // no sign-in flow to complete: never started, expired or already used
@@ -24,10 +19,7 @@ export type KnownUnauthErrorCode =
   | "ERR_AUTHN_TOKEN_PURPOSE" // a one-time token was issued for another purpose
   | "ERR_AUTHN_TOKEN_USED"; // a one-time token was already used
 
-/**
- * An {@link UnauthError} `code`: every {@link KnownUnauthErrorCode}, plus any other string, so a
- * newer unauth or an application's own `UnauthError` may carry a code this version does not list.
- */
+/** An {@link UnauthError} `code`: a {@link KnownUnauthErrorCode}, or any code of the application's own. */
 export type UnauthErrorCode = KnownUnauthErrorCode | (string & {});
 
 /**
@@ -38,7 +30,7 @@ export interface UnauthErrorCauseMap {
   /**
    * Why the callback carries no flow: `missing`, no flow cookie came back at all (the sign-in
    * started on another host, or cookies are off); `unreadable`, the cookie expired or does not
-   * open; `consumed`, the flow store no longer has the record.
+   * open; `consumed`, the flow store has no record.
    */
   ERR_AUTHN_FLOW_EXPIRED: { reason: "missing" | "unreadable" | "consumed" };
   /**
@@ -80,13 +72,13 @@ export interface OAuthErrorResponse {
 export interface UnauthErrorOptions {
   /** The failure underneath, or the structured context listed in {@link UnauthErrorCauseMap}. */
   cause?: unknown;
-  /** HTTP status a framework glue answers with (400, 401, 403, 409, 500, 502); a hint, never the mechanism. */
+  /** The HTTP status to answer with, a hint; unauth uses 400, 401, 500 and 502. */
   status?: number;
 }
 
 /**
- * Every error unauth throws. Messages shown to users carry no oracle: why a sign-in or a flow
- * failed lives in `cause`, not in `message`.
+ * Every error unauth throws. `message` carries no oracle: why a sign-in or a flow failed is in
+ * `cause`.
  *
  * @example
  * try {

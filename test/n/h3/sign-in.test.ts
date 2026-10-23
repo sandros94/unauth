@@ -3,11 +3,12 @@ import { H3, type H3Event, HTTPError } from "h3";
 import { type JWK_oct, defineJWESession, generateJWK } from "unjwt/session";
 
 import {
-  type AuthSessionData,
   type Provider,
+  type WebRequestEvent,
   defineSignInHandler,
   defineOAuth2Provider,
 } from "../../../src/n/index.ts";
+import { type GitHubProfile, defineGitHubHandler } from "../../../src/n/providers/github.ts";
 import { cookieJar } from "../_cookies.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "../flow/_fake-provider.ts";
 
@@ -23,6 +24,11 @@ beforeAll(async () => {
 
 interface User {
   userId: string;
+}
+
+interface SignedIn {
+  provider: string;
+  subject: string;
 }
 
 function fakeProvider(): Provider {
@@ -113,7 +119,7 @@ describe("h3 v2", () => {
 
   it("writes the session through a util typed on the h3 event", async () => {
     fake = await createFakeProvider();
-    const auth = defineJWESession<AuthSessionData, "1h", H3Event>({
+    const auth = defineJWESession<SignedIn, "1h", H3Event>({
       key,
       name: "__Host-unauth",
       maxAge: "1h",
@@ -123,9 +129,15 @@ describe("h3 v2", () => {
       key: flowKey,
       redirectUri: REDIRECT_URI,
       fetch: fake.fetch,
-      session: useAuthSession,
+      onSuccess: async (event: H3Event, { identity }) => {
+        expectTypeOf(event).toEqualTypeOf<H3Event>();
+        const session = await useAuthSession(event);
+        await session.clear();
+        await session.update({ provider: identity.provider, subject: identity.subject });
+      },
     });
-    expectTypeOf(handler).toEqualTypeOf<(event: H3Event) => Promise<Response>>();
+    expectTypeOf(handler).parameter(0).toEqualTypeOf<H3Event>();
+    expectTypeOf(handler).returns.resolves.toEqualTypeOf<Response>();
     app = new H3().get("/auth/fake", handler).get("/me", async (event) => {
       const session = await useAuthSession(event);
       if (!session.id) throw new HTTPError({ status: 401 });
@@ -141,5 +153,54 @@ describe("h3 v2", () => {
 
     const me = await app.request("/me", { headers: { cookie: jar.toString() } });
     expect(await me.json()).toMatchObject({ provider: "fake", subject: "user-1" });
+  });
+
+  it("narrows TEvent from one annotation on the event of a hook, the result still inferred", () => {
+    const fromSuccess = defineGitHubHandler({
+      clientId: "c",
+      clientSecret: "s",
+      key: flowKey,
+      onStart: () => ({ link: { userId: "u1" } }),
+      onSuccess: (event: H3Event, { identity, link }) => {
+        expectTypeOf(identity.profile).toEqualTypeOf<GitHubProfile>();
+        expectTypeOf(link).toEqualTypeOf<{ userId: string } | undefined>();
+        return identity.subject;
+      },
+      onError: (event, error) => {
+        expectTypeOf(event).toEqualTypeOf<H3Event>();
+        return new Response(null, { status: error.status ?? 500 });
+      },
+    });
+    expectTypeOf(fromSuccess).parameter(0).toEqualTypeOf<H3Event>();
+    expectTypeOf(fromSuccess).returns.resolves.toEqualTypeOf<Response | string>();
+
+    const fromStart = defineSignInHandler(fakeProvider(), {
+      key: flowKey,
+      onStart: (event: H3Event) => (event.req.url ? { link: { userId: "u1" } } : undefined),
+      onSuccess: (event, { identity, link }) => {
+        expectTypeOf(event).toEqualTypeOf<H3Event>();
+        expectTypeOf(identity.profile).toEqualTypeOf<Record<string, unknown>>();
+        expectTypeOf(link).toEqualTypeOf<{ userId: string } | undefined>();
+      },
+      onError: (event) => {
+        expectTypeOf(event).toEqualTypeOf<H3Event>();
+        return new Response(null, { status: 500 });
+      },
+    });
+    expectTypeOf(fromStart).parameter(0).toEqualTypeOf<H3Event>();
+
+    const plain = defineGitHubHandler({
+      clientId: "c",
+      clientSecret: "s",
+      key: flowKey,
+      onStart: (event) => {
+        expectTypeOf(event).toEqualTypeOf<WebRequestEvent>();
+      },
+      onSuccess: (event, { identity }) => {
+        expectTypeOf(event).toEqualTypeOf<WebRequestEvent>();
+        expectTypeOf(identity.profile).toEqualTypeOf<GitHubProfile>();
+      },
+    });
+    expectTypeOf(plain).parameter(0).toEqualTypeOf<WebRequestEvent>();
   });
 });

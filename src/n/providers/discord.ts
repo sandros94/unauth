@@ -1,8 +1,7 @@
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
 import { isRecord } from "../flow/_http.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -41,8 +40,12 @@ export interface DiscordProviderConfig extends PresetConfig {
 }
 
 /**
- * Discord. `avatar` is built on Discord's CDN, falling back to the default avatar Discord shows
+ * Discord: authorization `https://discord.com/oauth2/authorize`, token
+ * `https://discord.com/api/oauth2/token`, account from `GET https://discord.com/api/users/@me`.
+ * PKCE `S256`; the client secret in the request body. `avatar` is the user's avatar on Discord's
+ * CDN, else the default avatar Discord assigns
  * (https://discord.com/developers/docs/reference#image-formatting).
+ *
  * @default scopes `["identify", "email"]`
  */
 export function defineDiscordProvider(
@@ -65,10 +68,10 @@ export function defineDiscordProvider(
 
 /** Options of {@link defineDiscordHandler}: {@link DiscordProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type DiscordHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<DiscordProviderConfig, DiscordProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<DiscordProviderConfig, DiscordProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of a Discord sign-in on one route: `defineSignInHandler` on {@link defineDiscordProvider}, the

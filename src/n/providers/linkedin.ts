@@ -1,8 +1,7 @@
 import { profileError } from "../flow/_http.ts";
 import { type OidcProfile, claimsProfile, defineOidcProvider } from "../flow/oidc.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -31,10 +30,11 @@ export interface LinkedInProviderConfig extends PresetConfig {
 
 /**
  * LinkedIn ("Sign In with LinkedIn using OpenID Connect"), discovered from
- * `https://www.linkedin.com/oauth`, with the client secret in the request body. PKCE is off by
- * default: LinkedIn enables it per app on request, for native apps only
- * (https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow-native);
- * set `pkce: true` once your app has it. @default scopes `["openid", "profile", "email"]`
+ * `https://www.linkedin.com/oauth`: a nonce, the client secret in the request body. PKCE is off
+ * unless `pkce: true`; LinkedIn enables it per app, for native apps
+ * (https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow-native).
+ *
+ * @default scopes `["openid", "profile", "email"]`
  */
 export function defineLinkedInProvider(
   options: LinkedInProviderConfig,
@@ -55,10 +55,10 @@ export function defineLinkedInProvider(
 
 /** Options of {@link defineLinkedInHandler}: {@link LinkedInProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type LinkedInHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<LinkedInProviderConfig, LinkedInProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<LinkedInProviderConfig, LinkedInProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of a LinkedIn sign-in on one route: `defineSignInHandler` on {@link defineLinkedInProvider}, the

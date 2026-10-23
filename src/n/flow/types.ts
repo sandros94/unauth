@@ -22,7 +22,7 @@ export interface OAuthTokens {
   refresh_token?: string;
   scope?: string;
   id_token?: string;
-  /** The token endpoint's response as received, before unauth read the standard fields. */
+  /** The token endpoint's response body as received. */
   raw: Record<string, unknown>;
 }
 
@@ -53,12 +53,10 @@ export interface ProvenIdentity<TProfile = Record<string, unknown>> {
   /** Whether the provider vouches for `email`; absent when it does not say. */
   emailVerified?: boolean;
   avatar?: string;
-  /** The provider's tokens; absent when a custom provider keeps none past the sign-in. */
-  tokens?: OAuthTokens;
 }
 
-/** What a provider's `profile()` returns; the flow adds `provider` and `tokens`. */
-export type ProfileResult<TProfile> = Omit<ProvenIdentity<TProfile>, "provider" | "tokens">;
+/** What a provider's `profile()` returns; the flow adds `provider`. */
+export type ProfileResult<TProfile> = Omit<ProvenIdentity<TProfile>, "provider">;
 
 /** What a provider's `profile()` reads the account from. */
 export interface ProfileContext {
@@ -68,15 +66,19 @@ export interface ProfileContext {
   /** The userinfo endpoint's answer, when the provider has one. */
   userinfo?: Record<string, unknown>;
   /**
-   * The callback's query or form parameters. Untrusted: they passed through the browser, so read
-   * only what a provider sends nowhere else (a display name), never identity or email.
+   * The callback's query or form parameters. Untrusted, as they pass through the browser: read only
+   * what the provider sends nowhere else (a display name), never identity or email.
    */
   params: Record<string, string>;
   /** For providers that need another request (an email list, an avatar URL). */
   fetch: Fetch;
 }
 
-/** How the client authenticates at the token endpoint. Closed. */
+/**
+ * How the client authenticates at the token endpoint: `body` (`client_id` and `client_secret` form
+ * fields), `basic` (HTTP Basic, RFC 6749 §2.3.1), `private_key_jwt` (RFC 7523) or `none` (a public
+ * client sending only `client_id`).
+ */
 export type TokenAuthMethod = "body" | "basic" | "private_key_jwt" | "none";
 
 /** A provider the flow engine runs itself (OAuth 2.0 or OpenID Connect), or one running its own legs. */
@@ -103,7 +105,7 @@ export interface OAuthProvider<TProfile = Record<string, unknown>> {
   discovery: boolean;
   scopes: string[];
   scopeSeparator: " " | ",";
-  /** `false` only for providers that cannot do PKCE. */
+  /** The PKCE method; `false` for a provider without PKCE. */
   pkce: false | "S256" | "plain";
   /** Send and check a `nonce`; on by default for OpenID Connect. */
   nonce: boolean;
@@ -121,10 +123,9 @@ export interface OAuthProvider<TProfile = Record<string, unknown>> {
    */
   issuerParameter?: boolean;
   /**
-   * Development only: hosts whose endpoints may use plain `http:`, for a provider on a private
-   * network. Exact hostnames or IP literals (IPv6 in brackets), compared case-insensitively. Tokens
-   * and client secrets travel in cleartext on that network, so in anything shared prefer `https:`
-   * with a local CA (mkcert). Loopback hosts are allowed without being listed.
+   * Development only: hosts whose endpoints may use plain `http:`. Exact hostnames or IP literals
+   * (IPv6 in brackets), compared case-insensitively; tokens and client secrets travel to them in
+   * cleartext. Loopback hosts are allowed without being listed.
    */
   insecureHosts?: string[];
   tokenAuth: TokenAuthMethod;
@@ -178,9 +179,10 @@ export interface CustomStartContext extends CustomFlowContext {
 }
 
 /**
- * What `CustomProvider.start` returns: the flow started, with where the user is sent and what to
- * seal; or a relocation, where the user is sent to start over elsewhere and nothing is sealed (a
- * sign-in that must start on another host, so its cookie comes back).
+ * What `CustomProvider.start` returns: the started flow, with where the user is sent and what to
+ * seal; or a relocation, which sends the user to start over at another URL and records no flow.
+ * The engine seals the request's intent and origin host beside a relocation and returns the user
+ * to that host once the sign-in completes.
  */
 export type CustomStart =
   | {
@@ -188,16 +190,15 @@ export type CustomStart =
       url: URL | string;
       /** Sealed into the record as `data`, for `complete`. */
       data?: Record<string, unknown>;
-      /**
-       * The host the user started on before a relocation, to be sent back to once the sign-in
-       * completed: the handler hands the result over in a sealed token. Only a host the provider
-       * vouches for (a `devHosts` entry), never one read from the request as is.
-       */
-      returnHost?: string;
       relocate?: undefined;
     }
   | {
-      /** Where the user starts over; no flow is recorded. */
+      /**
+       * Where the user starts over; no flow is recorded. The engine seals the request's intent
+       * and origin host beside it, as `unauth_intent`, for the start there to read back, and
+       * returns the user to the origin host once the sign-in completes: relocate only a request
+       * whose host the provider vouches for.
+       */
       relocate: URL | string;
     };
 
@@ -228,8 +229,11 @@ export interface ProviderConfig<TProfile = Record<string, unknown>> extends Part
 /** The input of `defineProvider` for a {@link CustomProvider}: the provider itself. */
 export type CustomProviderConfig<TProfile = Record<string, unknown>> = CustomProvider<TProfile>;
 
-/** What `startFlow` remembers for `completeFlow`. */
-export interface FlowRecord {
+/**
+ * What `startFlow` keeps for `completeFlow`, sealed as JSON: `link` must survive a JSON round
+ * trip. A store or a custom provider sees `link` as `unknown`.
+ */
+export interface FlowRecord<TLink = unknown> {
   /** The `id` of the provider the flow was started for. */
   provider: string;
   state: string;
@@ -240,8 +244,8 @@ export interface FlowRecord {
   nonce?: string;
   /** Same-origin path to return to after sign-in. */
   redirect?: string;
-  /** The signed-in user who asked to link this provider. */
-  link?: { userId: string };
+  /** The application's link intent, as `startFlow` was given it. */
+  link?: TLink;
   /** Provider-private values; open to any provider. */
   data?: Record<string, unknown>;
   /** The host the user started on before a relocation, to return to after the sign-in. */
@@ -249,8 +253,8 @@ export interface FlowRecord {
 }
 
 /**
- * The driver keeping flow records server-side (a KV, a cache) instead of in the sealed cookie,
- * which then only carries the record's id. `take` must return a record once and delete it.
+ * A server-side store of flow records; the sealed cookie then carries only the record's id. `put`
+ * takes a `ttl` in seconds; `take` returns a record once and deletes it, `undefined` when absent.
  */
 export interface FlowStore {
   put: (id: string, record: FlowRecord, options: { ttl: number }) => Promise<void>;

@@ -3,15 +3,13 @@ import { hkdf } from "unsecure/hkdf";
 import { configError } from "./flow/_http.ts";
 
 /**
- * An `A256GCM` key for a JWE session (a sign-in's `key`), derived from `secret` with
- * HKDF-SHA-256 under `options.info`. Deterministic: the same secret and info give the same key on
- * every instance and restart; another info gives an unrelated key. The salt (`"unauth"`) is fixed
- * and part of the derivation, as the info is: changing either invalidates every flow in flight.
- * A runtime that already derives purpose-bound secrets (Nuxt's `deriveSecret`) builds the `oct`
- * JWK from that material instead of deriving again.
+ * An `A256GCM` JWK for a JWE session (a sign-in's `key`), derived from `secret` with HKDF-SHA-256
+ * under `options.info` and the fixed salt `"unauth"`. The same secret and info give the same key on
+ * every instance and restart; another info gives an unrelated key. Changing the secret or the info
+ * invalidates every flow in flight.
  *
- * HKDF is not a password KDF: `secret` must be random (`openssl rand -base64 32`), never a
- * passphrase; the length check is a floor, not a measure of entropy.
+ * `secret` must be random (`openssl rand -base64 32`), never a passphrase: HKDF is not a password
+ * KDF, and the length check is a floor, not a measure of entropy.
  *
  * @throws `ERR_UNAUTH_CONFIG_INVALID` for a secret shorter than 32 characters or an empty `info`.
  */

@@ -1,7 +1,6 @@
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -38,9 +37,11 @@ export interface GitLabProviderConfig extends PresetConfig {
 }
 
 /**
- * GitLab.com or a self-managed instance (`baseUrl`). GitLab does not mark the email as verified
- * in this payload, so `emailVerified` stays unset. Endpoints: GitLab OAuth 2.0 provider docs and
- * nuxt-auth-utils. @default scopes `["read_user"]`
+ * GitLab.com or a self-managed instance (`baseUrl`): authorization `/oauth/authorize`, token
+ * `/oauth/token`, account from `GET /api/v4/user`. PKCE `S256`; the client secret in the request
+ * body. The payload has no email verification flag: `emailVerified` stays unset.
+ *
+ * @default scopes `["read_user"]`
  */
 export function defineGitLabProvider(options: GitLabProviderConfig): OAuthProvider<GitLabProfile> {
   const base = (options.baseUrl ?? "https://gitlab.com").replace(/\/+$/, "");
@@ -61,10 +62,10 @@ export function defineGitLabProvider(options: GitLabProviderConfig): OAuthProvid
 
 /** Options of {@link defineGitLabHandler}: {@link GitLabProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type GitLabHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<GitLabProviderConfig, GitLabProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<GitLabProviderConfig, GitLabProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of a GitLab sign-in on one route: `defineSignInHandler` on {@link defineGitLabProvider}, the

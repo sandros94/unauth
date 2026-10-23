@@ -2,7 +2,7 @@ import { UnauthError } from "../../../_internal/error.ts";
 import { assertSecureUrl, configError, providerError, stringField } from "../../flow/_http.ts";
 import { createPkce } from "../../flow/random.ts";
 import type { CustomStart, CustomStartContext } from "../../flow/types.ts";
-import { type AtprotoClient, relocation, returnHostOf, sameCallback } from "./client.ts";
+import { type AtprotoClient, relocation, sameCallback } from "./client.ts";
 import { type DpopKey, createDpopKey, dpopPost } from "./dpop.ts";
 import {
   type AtprotoIdentity,
@@ -72,7 +72,6 @@ export async function start(
   const { client, resolvers } = provider;
   const relocate = relocation(context.request, { client, devHosts: provider.devHosts });
   if (relocate) return { relocate };
-  const returnHost = returnHostOf(context.request, { client, devHosts: provider.devHosts });
   if (!sameCallback(context.redirectUri, client.redirectUri, provider.devHosts)) {
     throw configError(
       `The AT Protocol sign-in runs at ${context.redirectUri}, but the provider's "redirectUri" is ${client.redirectUri}; they must be the same URL.`,
@@ -164,7 +163,5 @@ export async function start(
   };
   if (pushed.nonce !== undefined) data.nonce = pushed.nonce;
   if (identity) data.account = identity;
-  return returnHost === undefined
-    ? { url, data: { ...data } }
-    : { url, data: { ...data }, returnHost };
+  return { url, data: { ...data } };
 }

@@ -5,8 +5,8 @@ export interface AtprotoClient {
   id: string;
   /** The callback as registered: the configured one, or its `devHosts` host mapped to `127.0.0.1`. */
   redirectUri: string;
-  /** Whether `id` is the development client, which publishes no metadata document. */
-  loopback: boolean;
+  /** Whether `id` is the atproto development client (`http://localhost?…`), which publishes no metadata document. */
+  development: boolean;
   /** The document to serve as JSON at `id`; absent for the development client, which has none. */
   metadata?: AtprotoClientMetadata;
 }
@@ -42,8 +42,6 @@ export interface AtprotoClientConfig {
 
 const LOOPBACK_IPS = new Set(["127.0.0.1", "[::1]"]);
 const LOOPBACK_HOSTS = new Set([...LOOPBACK_IPS, "localhost"]);
-/** Carries the `devHosts` host a relocated start came from, so the sign-in returns there. */
-const FROM_PARAM = "unauth_from";
 
 /**
  * The provider's client. A published one needs an `https:` client id without a port and an
@@ -79,7 +77,7 @@ export function resolveClient(config: AtprotoClientConfig, devHosts: string[]): 
     return {
       id: id.href,
       redirectUri: redirect.href,
-      loopback: false,
+      development: false,
       metadata: metadataOf(config, { id: id.href, redirectUri: redirect.href }),
     };
   }
@@ -106,37 +104,25 @@ export function resolveClient(config: AtprotoClientConfig, devHosts: string[]): 
     redirect_uri: redirect.href,
     scope: (config.scopes ?? ["atproto"]).join(" "),
   });
-  return { id: `http://localhost?${query}`, redirectUri: redirect.href, loopback: true };
+  return { id: `http://localhost?${query}`, redirectUri: redirect.href, development: true };
 }
 
 /**
  * Where a start on a `devHosts` host is sent first: the same URL on the callback's host, port and
- * all, so the flow cookie is set where the callback returns (what the official browser client does).
+ * all, so the flow cookie is set where the callback returns.
  */
 export function relocation(
   request: Request,
   options: { client: AtprotoClient; devHosts: string[] },
 ): URL | undefined {
-  if (!options.client.loopback) return undefined;
+  if (!options.client.development) return undefined;
   const url = new URL(request.url);
   const callback = new URL(options.client.redirectUri);
   if (url.hostname === callback.hostname || !options.devHosts.includes(url.hostname)) {
     return undefined;
   }
   url.hostname = callback.hostname;
-  url.searchParams.set(FROM_PARAM, new URL(request.url).hostname);
   return url;
-}
-
-/** The `devHosts` host a relocated start names as where it came from; anything else is ignored. */
-export function returnHostOf(
-  request: Request,
-  options: { client: AtprotoClient; devHosts: string[] },
-): string | undefined {
-  if (!options.client.loopback) return undefined;
-  const from = new URL(request.url).searchParams.get(FROM_PARAM);
-  if (from === null || !options.devHosts.includes(from)) return undefined;
-  return from === new URL(options.client.redirectUri).hostname ? undefined : from;
 }
 
 /** Whether `given` is the registered callback, or the same URL on a `devHosts` host. */

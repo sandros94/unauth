@@ -1,8 +1,7 @@
 import { profileError } from "../flow/_http.ts";
 import { type OidcProfile, claimsProfile, defineOidcProvider } from "../flow/oidc.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -29,9 +28,11 @@ export interface GoogleProviderConfig extends PresetConfig {
 }
 
 /**
- * Google, as an OpenID Connect provider discovered from `https://accounts.google.com`.
- * Restrict to a Workspace domain by checking `identity.profile.hd` (the `hd` authorization
- * parameter is only a hint). @default scopes `["openid", "email", "profile"]`
+ * Google, OpenID Connect discovered from `https://accounts.google.com`: PKCE `S256`, a nonce, the
+ * client secret over HTTP Basic. Restrict to a Workspace domain by checking
+ * `identity.profile.hd`; the `hd` authorization parameter is only a hint.
+ *
+ * @default scopes `["openid", "email", "profile"]`
  */
 export function defineGoogleProvider(options: GoogleProviderConfig): OAuthProvider<GoogleProfile> {
   return defineOidcProvider({
@@ -48,10 +49,10 @@ export function defineGoogleProvider(options: GoogleProviderConfig): OAuthProvid
 
 /** Options of {@link defineGoogleHandler}: {@link GoogleProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type GoogleHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<GoogleProviderConfig, GoogleProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<GoogleProviderConfig, GoogleProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of a Google sign-in on one route: `defineSignInHandler` on {@link defineGoogleProvider}, the

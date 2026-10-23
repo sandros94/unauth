@@ -11,10 +11,9 @@ import { base64UrlParse } from "unjwt/utils";
 import { hkdf } from "unsecure/hkdf";
 
 import {
-  type AuthSessionData,
   type CacheDriver,
   type FlowKey,
-  type HandlerEvent,
+  type WebRequestEvent,
   type Provider,
   type UnauthError,
   defineOidcProvider,
@@ -22,7 +21,6 @@ import {
   deriveKey,
   isUnauthError,
   defineOAuth2Provider,
-  toSessionData,
 } from "../../src/n/index.ts";
 import { cookieJar } from "./_cookies.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "./flow/_fake-provider.ts";
@@ -64,13 +62,13 @@ function fakeProvider(options: { responseMode?: "query" | "form_post" } = {}): P
 }
 
 /** A web-standard event for `request`, with the `Headers` its response is sent with. */
-function eventFor(request: Request): HandlerEvent & { res: { headers: Headers } } {
+function eventFor(request: Request): WebRequestEvent & { res: { headers: Headers } } {
   return { req: request, res: { headers: new Headers() }, context: {} };
 }
 
 /** Runs a handler and turns what it returns into a `Response`, the way a runtime would. */
 async function call(
-  handler: (event: HandlerEvent) => Promise<unknown>,
+  handler: (event: WebRequestEvent) => Promise<unknown>,
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
@@ -98,7 +96,7 @@ describe("defineSignInHandler without a session", () => {
       cookie: { secure: false },
       redirectUri: REDIRECT_URI,
       fetch: fake.fetch,
-      onSuccess: async (event, result) => {
+      onSuccess: async (event, result): Promise<unknown> => {
         const session = await auth.use(event);
         await session.update({ userId: result.identity.subject });
         return { subject: result.identity.subject, redirect: result.redirect ?? null };
@@ -108,7 +106,10 @@ describe("defineSignInHandler without a session", () => {
     return { auth, handler };
   }
 
-  async function signInFlow(handler: (event: HandlerEvent) => Promise<unknown>, jar = cookieJar()) {
+  async function signInFlow(
+    handler: (event: WebRequestEvent) => Promise<unknown>,
+    jar = cookieJar(),
+  ) {
     const start = await call(handler, "/auth/fake");
     jar.update(start.headers);
     const back = fake.approve(start.headers.get("location")!);
@@ -204,7 +205,7 @@ describe("defineSignInHandler without a session", () => {
   });
 
   it("hands UnauthErrors to onError when given, the flow cookie expired on the event", async () => {
-    const onError = vi.fn((_event: HandlerEvent, error: unknown) => ({
+    const onError = vi.fn((_event: unknown, error: unknown) => ({
       failed: isUnauthError(error) && error.code,
     }));
     const { handler } = await setup({ onError });
@@ -266,12 +267,20 @@ describe("defineSignInHandler without a session", () => {
   });
 });
 
+interface AppSession {
+  userId: string;
+  provider: string;
+  subject: string;
+  name?: string;
+  signedInAt: number;
+}
+
 describe("defineSignInHandler with a session", () => {
   let fake: Awaited<ReturnType<typeof createFakeProvider>>;
-  let auth: ReturnType<typeof defineJWESession<AuthSessionData, "1h">>;
+  let auth: ReturnType<typeof defineJWESession<AppSession, "1h">>;
 
   beforeAll(() => {
-    auth = defineJWESession<AuthSessionData, "1h">({
+    auth = defineJWESession<AppSession, "1h">({
       key,
       name: "unauth",
       maxAge: "1h",
@@ -279,10 +288,26 @@ describe("defineSignInHandler with a session", () => {
     });
   });
 
-  const useAuthSession = (event: HandlerEvent) => auth.use(event);
+  const useAuthSession = (event: WebRequestEvent) => auth.use(event);
+
+  /** The application's sign-in: replace the session with the proven identity's. */
+  const signIn = async (
+    event: WebRequestEvent,
+    { identity }: { identity: { provider: string; subject: string; name?: string } },
+  ): Promise<void> => {
+    const session = await useAuthSession(event);
+    await session.clear();
+    await session.update({
+      userId: `user:${identity.subject}`,
+      provider: identity.provider,
+      subject: identity.subject,
+      ...(identity.name ? { name: identity.name } : {}),
+      signedInAt: NOW,
+    });
+  };
 
   async function signInFlow(
-    handler: (event: HandlerEvent) => Promise<unknown>,
+    handler: (event: WebRequestEvent) => Promise<unknown>,
     path = "/auth/fake",
   ) {
     const jar = cookieJar();
@@ -311,8 +336,11 @@ describe("defineSignInHandler with a session", () => {
     fake = await createFakeProvider();
   });
 
-  it("writes the identity's AuthSessionData and lands on / without caching", async () => {
-    const handler = defineSignInHandler(fakeProvider(), { ...base(), session: useAuthSession });
+  it("answers nothing from onSuccess with a 302 to / without caching, the flow cookie expired", async () => {
+    const handler = defineSignInHandler(fakeProvider(), {
+      ...base(),
+      onSuccess: signIn,
+    });
     const { done, session } = await signInFlow(handler);
 
     expect(done.status).toBe(302);
@@ -321,25 +349,27 @@ describe("defineSignInHandler with a session", () => {
     const cookies = done.headers.getSetCookie();
     expect(cookies.some((line) => /^unauth-flow=[^;]*;.*Max-Age=0/i.test(line))).toBe(true);
     expect(session.data).toEqual({
+      userId: "user:user-1",
       provider: "fake",
       subject: "user-1",
       name: "Ada",
-      email: "ada@idp.test",
-      emailVerified: true,
       signedInAt: NOW,
     });
   });
 
-  it("replaces the session another user left behind, id included", async () => {
-    const handler = defineSignInHandler(fakeProvider(), { ...base(), session: useAuthSession });
+  it("lets onSuccess replace the session another user left behind, id included", async () => {
+    const handler = defineSignInHandler(fakeProvider(), {
+      ...base(),
+      onSuccess: signIn,
+    });
     const jar = cookieJar();
     const seeded = eventFor(new Request(APP));
     const before = await auth.use(seeded);
     await before.update({
+      userId: "mallory",
       provider: "old",
       subject: "mallory",
       name: "Mallory",
-      avatar: "https://idp.test/mallory.png",
       signedInAt: 1,
     });
     jar.update(seeded.res.headers);
@@ -357,125 +387,79 @@ describe("defineSignInHandler with a session", () => {
 
     expect(after.id).not.toBe(before.id);
     expect(after.data).toEqual({
+      userId: "user:user-1",
       provider: "fake",
       subject: "user-1",
       name: "Ada",
-      email: "ada@idp.test",
-      emailVerified: true,
       signedInAt: NOW,
     });
-    expect(Object.hasOwn(after.data, "avatar")).toBe(false);
   });
 
-  it("lands on `redirect`, unless the flow carries a same-origin one", async () => {
+  it("lands on the flow's redirect, then `redirect`, then /", async () => {
     const plain = defineSignInHandler(fakeProvider(), {
       ...base(),
-      session: useAuthSession,
       redirect: "/home",
+      onSuccess: signIn,
     });
     expect((await signInFlow(plain)).done.headers.get("location")).toBe("/home");
 
     const intent = defineSignInHandler(fakeProvider(), {
       ...base(),
-      session: useAuthSession,
       redirect: "/home",
       onStart: () => ({ redirect: "/after" }),
+      onSuccess: signIn,
     });
     expect((await signInFlow(intent)).done.headers.get("location")).toBe("/after");
 
     const open = defineSignInHandler(fakeProvider(), {
       ...base(),
-      session: useAuthSession,
       redirect: "/home",
       onStart: () => ({ redirect: "//evil.test/" }),
+      onSuccess: signIn,
     });
     expect((await signInFlow(open)).done.headers.get("location")).toBe("/home");
+
+    const bare = defineSignInHandler(fakeProvider(), { ...base(), onSuccess: () => {} });
+    expect((await signInFlow(bare)).done.headers.get("location")).toBe("/");
   });
 
-  it("writes what an async toSession returns", async () => {
-    interface AppData extends AuthSessionData {
-      role: string;
-    }
-    const app = defineJWESession<AppData, "1h">({
-      key,
-      name: "unauth",
-      maxAge: "1h",
-      cookie: { secure: false },
-    });
-    const handler = defineSignInHandler(fakeProvider(), {
+  it("answers with what onSuccess returns: a Response as it is, a value for the framework", async () => {
+    const created = defineSignInHandler(fakeProvider(), {
       ...base(),
-      session: (event: HandlerEvent) => app.use(event),
-      toSession: async (identity, { now }) => {
-        await Promise.resolve();
-        return { ...toSessionData(identity, { now }), role: "member" };
+      onSuccess: async (event, result) => {
+        await signIn(event, result);
+        return new Response("welcome", { status: 201 });
       },
     });
-    const { session } = await signInFlow(handler);
+    const first = await signInFlow(created);
+    expect(first.done.status).toBe(201);
+    expect(await first.done.text()).toBe("welcome");
+    expect(first.done.headers.getSetCookie().join("\n")).toMatch(/unauth-flow=/);
+    expect(first.session.data.subject).toBe("user-1");
 
-    expect(session.data).toMatchObject({ subject: "user-1", role: "member", signedInAt: NOW });
-  });
-
-  it("runs onSuccess after the write and answers with its value", async () => {
-    const handler = defineSignInHandler(fakeProvider(), {
+    const valued = defineSignInHandler(fakeProvider(), {
       ...base(),
-      session: useAuthSession,
-      onSuccess: async (event) => {
-        const current = await useAuthSession(event);
-        return { written: current.data.subject };
+      onSuccess: async (event, result) => {
+        await signIn(event, result);
+        const session = await useAuthSession(event);
+        return { written: session.data.subject };
       },
     });
-    const { done, session } = await signInFlow(handler);
-
-    expect(done.status).toBe(200);
-    expect(await done.json()).toEqual({ written: "user-1" });
-    expect(session.data.subject).toBe("user-1");
+    const second = await signInFlow(valued);
+    expect(second.done.status).toBe(200);
+    expect(await second.done.json()).toEqual({ written: "user-1" });
   });
 
-  it("hands the refusal of a link intent to onError at the start leg", async () => {
-    const errors: UnauthError[] = [];
-    const reported = defineSignInHandler(fakeProvider(), {
-      ...base(),
-      session: useAuthSession,
-      onStart: () => ({ link: { userId: "u1" } }),
-      onError: (_event, error) => {
-        errors.push(error);
-        return new Response(null, { status: 409 });
-      },
-    });
-
-    const start = await call(reported, "/auth/fake");
-
-    expect(start.status).toBe(409);
-    expect(errors.map((error) => error.code)).toEqual(["ERR_UNAUTH_CONFIG_INVALID"]);
-    expect(errors[0]!.message).toMatch(/`link` intent needs `onSuccess`/);
-  });
-
-  it("refuses a link intent at the start leg, before any redirect or flow cookie", async () => {
+  it("hands a link intent to onSuccess as result.link, the session untouched by the sign-in", async () => {
     const handler = defineSignInHandler(fakeProvider(), {
       ...base(),
-      session: useAuthSession,
-      onStart: () => ({ link: { userId: "u1" } }),
-    });
-    const served = fake.requests.length;
-
-    const start = await call(handler, "/auth/fake");
-
-    expect(start.status).toBe(500);
-    expect(start.headers.get("location")).toBeNull();
-    expect(start.headers.getSetCookie()).toEqual([]);
-    expect(fake.requests).toHaveLength(served);
-  });
-
-  it("hands a link intent to onSuccess without touching the session", async () => {
-    const handler = defineSignInHandler(fakeProvider(), {
-      ...base(),
-      session: useAuthSession,
       onStart: () => ({ link: { userId: "u1" } }),
       onSuccess: (_event, result) => ({ link: result.link }),
     });
     const { done, session } = await signInFlow(handler);
 
     expect(await done.json()).toEqual({ link: { userId: "u1" } });
+    expect(done.headers.getSetCookie().filter((line) => line.startsWith("unauth="))).toEqual([]);
     expect(session.id).toBeUndefined();
   });
 
@@ -484,7 +468,7 @@ describe("defineSignInHandler with a session", () => {
     const handler = defineSignInHandler(fakeProvider(), {
       ...base(),
       key: () => deriveKey(SECRET, { info: FLOW_INFO }),
-      session: useAuthSession,
+      onSuccess: signIn,
     });
 
     expect(vi.mocked(hkdf)).not.toHaveBeenCalled();
@@ -505,7 +489,7 @@ describe("defineSignInHandler with a session", () => {
     const handler = defineSignInHandler(fakeProvider(), {
       ...base(),
       key: stringKey,
-      session: useAuthSession,
+      onSuccess: signIn,
       onError: (_event, error) => {
         errors.push(error);
         return new Response(null, { status: 500 });
@@ -530,7 +514,7 @@ describe("defineSignInHandler with a session", () => {
         const privateKey = await importPEM(pem, alg, { pemType: "pkcs8" });
         return { privateKey, publicKey: toPublicJWK(privateKey) };
       },
-      session: useAuthSession,
+      onSuccess: signIn,
     });
 
     const { start, session } = await signInFlow(handler);
@@ -555,7 +539,7 @@ describe("defineSignInHandler with a session", () => {
       ...base(),
       redirectUri: undefined,
       origin: APP,
-      session: useAuthSession,
+      onSuccess: signIn,
       onError: (_event, error) => {
         errors.push(error);
         return new Response(null, { status: 500 });
@@ -584,7 +568,11 @@ describe("defineSignInHandler with a session", () => {
       }
       return false;
     };
-    const rest = { cookie: { secure: false as const }, fetch: fake.fetch, session: useAuthSession };
+    const rest = {
+      cookie: { secure: false as const },
+      fetch: fake.fetch,
+      onSuccess: signIn,
+    };
 
     // @ts-expect-error a string is not a key
     expect(refusal(() => defineSignInHandler(fakeProvider(), { ...rest, key: SECRET }))).toBe(true);
@@ -616,65 +604,87 @@ describe("defineSignInHandler with a session", () => {
     ).toBe(false);
   });
 
-  it("refuses a sign-in with neither a session nor onSuccess", () => {
+  it("refuses a sign-in without onSuccess", () => {
     expect(() =>
-      // @ts-expect-error `onSuccess` is required without `session`
-      defineSignInHandler(fakeProvider(), { key: flowKey, redirectUri: REDIRECT_URI }),
+      // @ts-expect-error `onSuccess` is required
+      defineSignInHandler(fakeProvider(), {
+        key: flowKey,
+        redirectUri: REDIRECT_URI,
+      }),
     ).toThrow(expect.objectContaining({ code: "ERR_UNAUTH_CONFIG_INVALID" }));
   });
 });
 
 describe("defineSignInHandler types", () => {
-  interface AppData extends AuthSessionData {
-    role: string;
-  }
+  const useAppSession = (event: WebRequestEvent) =>
+    defineJWESession<AppSession, "1h">({ key: flowKey, maxAge: "1h" }).use(event);
 
-  it("takes a session util on data extending AuthSessionData, and answers with a Response", () => {
-    const definition = defineJWESession<AppData, "1h">({ key: flowKey, maxAge: "1h" });
-    const useAppSession = (event: HandlerEvent) => definition.use(event);
-    const handler = defineSignInHandler(fakeProvider(), { key: flowKey, session: useAppSession });
-
-    expectTypeOf(handler).toEqualTypeOf<(event: HandlerEvent) => Promise<Response>>();
-  });
-
-  it("infers the session data from toSession and checks the util against it", () => {
-    const definition = defineJWESession<AppData, "1h">({ key: flowKey, maxAge: "1h" });
-    const useAppSession = (event: HandlerEvent) => definition.use(event);
-    const handler = defineSignInHandler(fakeProvider(), {
-      key: flowKey,
-      session: useAppSession,
-      toSession: (identity, context) => {
-        expectTypeOf(context).toEqualTypeOf<{ event: HandlerEvent; now: number }>();
-        return { ...toSessionData(identity, context), role: "member" };
-      },
-      onSuccess: () => ({ ok: true }),
-    });
-    expectTypeOf(handler).returns.resolves.toEqualTypeOf<Response | { ok: boolean }>();
-
-    const mismatched = { key: flowKey, session: useAppSession, toSession: () => ({ other: 1 }) };
-    // @ts-expect-error the util does not take what toSession returns
-    defineSignInHandler(fakeProvider(), mismatched);
-  });
-
-  it("requires onSuccess without a session, and refuses toSession and redirect there", () => {
-    const onSuccess = () => "ok";
-    defineSignInHandler(fakeProvider(), {
-      key: flowKey,
-      onSuccess,
-      // @ts-expect-error toSession needs a session to write
-      toSession: () => ({}),
-    });
-    defineSignInHandler(fakeProvider(), {
-      key: flowKey,
-      onSuccess,
-      // @ts-expect-error redirect is the default completion's, which needs a session
-      redirect: "/home",
-    });
+  it("infers TResult from onSuccess, nothing adding no member, onError answering within it", () => {
     expectTypeOf(
       defineSignInHandler(fakeProvider(), {
         key: () => deriveKey(SECRET, { info: FLOW_INFO }),
-        onSuccess,
+        onSuccess: () => "ok",
       }),
     ).returns.resolves.toEqualTypeOf<Response | string>();
+    expectTypeOf(
+      defineSignInHandler(fakeProvider(), {
+        key: flowKey,
+        onSuccess: async (_event, result) => (result.link === undefined ? undefined : { ok: true }),
+        onError: () => ({ ok: false }),
+      }),
+    ).returns.resolves.toEqualTypeOf<Response | { ok: boolean }>();
+    defineSignInHandler(fakeProvider(), {
+      key: flowKey,
+      onSuccess: () => {},
+      // @ts-expect-error onError answers a Response or one of onSuccess's values
+      onError: () => ({ ok: false }),
+    });
+    expectTypeOf(
+      defineSignInHandler(fakeProvider(), { key: flowKey, onSuccess: async () => {} }),
+    ).returns.resolves.toEqualTypeOf<Response>();
+  });
+
+  it("requires onSuccess", () => {
+    // @ts-expect-error `onSuccess` is required
+    const missing = () => defineSignInHandler(fakeProvider(), { key: flowKey });
+    expectTypeOf(missing).toBeFunction();
+  });
+
+  it("types result.link as the payload onStart returns", () => {
+    defineSignInHandler(fakeProvider(), {
+      key: flowKey,
+      onStart: (event) => (event.req.url ? { link: { userId: "u1", from: "settings" } } : {}),
+      onSuccess: (_event, result) => {
+        expectTypeOf(result.link).toEqualTypeOf<{ userId: string; from: string } | undefined>();
+        return result.link?.from;
+      },
+    });
+    defineSignInHandler(fakeProvider(), {
+      key: flowKey,
+      onStart: async (event) => {
+        const session = await useAppSession(event);
+        return session.id ? { link: { userId: session.data.userId } } : undefined;
+      },
+      onSuccess: (_event, result) => {
+        expectTypeOf(result.link).toEqualTypeOf<{ userId: string } | undefined>();
+      },
+    });
+  });
+
+  it("leaves result.link never without a link from onStart", () => {
+    defineSignInHandler(fakeProvider(), {
+      key: flowKey,
+      onStart: () => ({ redirect: "/home" }),
+      onSuccess: (_event, result) => {
+        expectTypeOf(result.link).toEqualTypeOf<undefined>();
+        expectTypeOf<NonNullable<typeof result.link>>().toBeNever();
+      },
+    });
+    defineSignInHandler(fakeProvider(), {
+      key: flowKey,
+      onSuccess: (_event, result) => {
+        expectTypeOf<NonNullable<typeof result.link>>().toBeNever();
+      },
+    });
   });
 });

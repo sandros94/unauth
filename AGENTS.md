@@ -26,7 +26,7 @@
 - `pnpm typecheck` — type-check the library and its tests.
 - `pnpm typecheck:playgrounds` — type-check the three playgrounds (h3 and nitro with the root TypeScript, nuxt with its own `nuxt typecheck`).
 
-Each script is independent — `test` does **not** run lint or type-check. **Always run** `pnpm fmt` and `pnpm typecheck` after making changes.
+Each script is independent — `test` does **not** run lint or type-check. **Always run** `pnpm fmt` and `pnpm typecheck` after making changes. After adding or renaming a Nuxt server util, run `pnpm dev:prepare` (it runs `nuxt prepare`) before `pnpm lint`, or the type-aware lint cannot see the auto-import.
 
 ## Repository Structure
 
@@ -34,7 +34,7 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 - `src/` — Library source code.
 - `test/` — Tests (unit, nuxt environment, e2e).
 - `playground/` — App for manual testing and development of the library.
-- `docs/` — Documentation site.
+- `docs/` — Documentation site (planned, not started: the API still shifts).
 
 ## Testing Strategy
 

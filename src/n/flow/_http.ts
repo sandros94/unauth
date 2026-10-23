@@ -69,8 +69,8 @@ export function stringField(
 }
 
 /**
- * Refuses an endpoint that is not `https:` or longer than {@link MAX_URL_LENGTH}; plain `http:`
- * passes on a loopback host, for a provider running next to the app in development, or on a host
+ * `value` as a URL; `ERR_UNAUTH_CONFIG_INVALID` unless it is an absolute `https:` URL of at most
+ * {@link MAX_URL_LENGTH} characters. Plain `http:` passes on a loopback host or a host
  * `insecureHosts` lists.
  */
 export function assertSecureUrl(

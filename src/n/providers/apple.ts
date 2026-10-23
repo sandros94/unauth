@@ -3,8 +3,7 @@ import { safeJsonParse } from "unsecure/sanitize";
 import { isRecord, profileError } from "../flow/_http.ts";
 import { defineProvider } from "../flow/provider.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -48,18 +47,18 @@ export interface AppleProviderConfig extends PresetConfig {
 }
 
 const APPLE = "https://appleid.apple.com";
-/** Apple accepts client secrets valid for up to six months, mint short-lived ones instead. */
+/** Seconds a minted client secret is valid; Apple accepts up to six months. */
 const SECRET_LIFETIME = 300;
 
 /**
- * Sign in with Apple: an id_token over `form_post`, with the client secret minted as an ES256 JWT
- * per token request. Apple's scopes are `name` and `email` only (no `openid`, though it always
- * returns an id_token, verified with its nonce as usual), `response_mode=form_post` is required
- * whenever scopes are requested, and there is no PKCE: `state` and `nonce` protect the flow.
- * Sources: https://developer.apple.com/forums/thread/690585,
- * https://www.scottbrady.io/openid-connect/implementing-sign-in-with-apple-in-aspnet-core.
- * The name arrives only on the first sign-in, in the posted `user` field (a quirk nuxt-auth-utils
- * handles too). @default scopes `["name", "email"]`
+ * Sign in with Apple, OpenID Connect on `https://appleid.apple.com`: authorization
+ * `/auth/authorize`, token `/auth/token`, keys `/auth/keys`. The callback is a `form_post`, which
+ * Apple requires whenever scopes are requested. No PKCE: `state` and the id_token's `nonce` protect
+ * the flow. The client secret, sent in the request body, is an ES256 JWT minted per token request
+ * and valid five minutes. Apple's scopes are `name` and `email`, without `openid`; the id_token
+ * comes all the same. The name arrives only on the first sign-in, in the posted `user` field.
+ *
+ * @default scopes `["name", "email"]`
  */
 export function defineAppleProvider(options: AppleProviderConfig): OAuthProvider<AppleProfile> {
   return defineProvider({
@@ -83,13 +82,13 @@ export function defineAppleProvider(options: AppleProviderConfig): OAuthProvider
 
 /** Options of {@link defineAppleHandler}: {@link AppleProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type AppleHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<AppleProviderConfig, AppleProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<AppleProviderConfig, AppleProfile, TResult, TEvent, TLink>;
 
 /**
- * Both legs of a Apple sign-in on one route: `defineSignInHandler` on {@link defineAppleProvider}, the
+ * Both legs of an Apple sign-in on one route: `defineSignInHandler` on {@link defineAppleProvider}, the
  * options split between them by the provider's keys.
  */
 export const defineAppleHandler: PresetHandler<AppleProviderConfig, AppleProfile> =

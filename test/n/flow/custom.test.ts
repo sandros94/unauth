@@ -119,7 +119,8 @@ describe("a custom provider", () => {
     const { result } = await run(provider);
 
     expect(result.tokens?.access_token).toBe("at-1");
-    expect(result.identity.tokens?.token_type).toBe("Custom");
+    expect(result.tokens?.token_type).toBe("Custom");
+    expect(Object.hasOwn(result.identity, "tokens")).toBe(false);
   });
 
   it("carries redirect and link through the record", async () => {
@@ -225,7 +226,8 @@ describe("a custom provider", () => {
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("https://ip.test/auth/custom");
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe("https://ip.test/auth/custom");
     expect(response.headers.getSetCookie()).toEqual([]);
   });
 

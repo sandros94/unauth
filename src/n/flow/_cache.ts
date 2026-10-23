@@ -16,33 +16,31 @@ export const JWKS_REFRESH_COOLDOWN: number = 30_000;
 const GLOBAL_SCOPE = {};
 
 /**
- * A store of the application's keeping provider documents (discovery, JWK Sets), shared across
- * instances and by every `fetch`. A miss is `null` (or `undefined`); `ttl` is in seconds.
+ * The application's store for provider documents (discovery, JWK Sets), shared across instances
+ * and by every `fetch`. Member for member ocache's `StorageInterface`, so an ocache storage is a
+ * `CacheDriver` as is.
  *
- * The shape is deliberately ocache's `StorageInterface`, member for member: any ocache storage,
- * Nitro's cache storage among them (the one Nitro hands its cached functions), is a `CacheDriver`
- * as is, and a `CacheDriver` is an ocache storage. An unstorage instance, `useStorage()` included,
- * names its methods `getItem`/`setItem` and takes the two-line shim below.
+ * - `get(key)` returns the stored value; `null` or `undefined` is a miss.
+ * - `set(key, value, { ttl })` stores it; `ttl` is in seconds and advisory.
  *
- * unauth stores `{ v: 1, loadedAt, value }` under `unauth:<cache>:<sha256 hex>` and re-validates
- * every hit (shape, age, issuer), so a driver that drops `ttl` or answers junk costs a refetch,
- * never trust. A driver that throws fails the call. An entry whose JSON exceeds `maxEntryBytes` is
- * not set; it stays in this instance's memory. `binary` is accepted for parity and ignored: unauth
- * stores JSON.
+ * unauth stores the envelope `{ v: 1, loadedAt, value }` under `unauth:<cache>:<sha256 hex>` and
+ * re-validates every hit (shape, age, issuer): a driver that drops `ttl` or returns junk costs a
+ * refetch, never trust. A driver that throws fails the call.
+ *
+ * An entry whose JSON exceeds `maxEntryBytes` is not set and stays in this instance's memory.
+ * `binary` is ignored: entries are JSON.
  *
  * @example
- * // ocache or Nitro cache storage, no adapter
- * discover(issuer, { cache: nitroStorage });
- *
- * // unstorage, `useStorage()` included
+ * // a storage whose methods are named differently
  * const cache: CacheDriver = {
  *   get: (key) => storage.getItem(key),
  *   set: (key, value, options) => storage.setItem(key, value, options),
  * };
+ * discover(issuer, { cache });
  */
 export interface CacheDriver {
   get<T = unknown>(key: string): T | null | Promise<T | null>;
-  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- ocache's signature, kept 1:1
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `T` types the stored value at the call site, as in `get`
   set<T = unknown>(key: string, value: T, opts?: { ttl?: number }): void | Promise<void>;
   maxEntryBytes?: number;
   binary?: boolean;
@@ -61,8 +59,8 @@ export interface LoadOptions {
 }
 
 /**
- * Pending loads kept apart per `fetch` (so a caller never gets a document another transport
- * fetched): concurrent callers share one load, a failure is rethrown for
+ * Loads kept apart per `fetch`, so a caller never gets a document another transport fetched:
+ * concurrent callers share one load, a failure is rethrown for
  * {@link LOAD_FAILURE_COOLDOWN} without a load, expired entries are swept on insert and the least
  * recently used goes once a scope holds `max`. With a driver, memory holds only pending loads,
  * failures and values the driver could not take.
@@ -100,7 +98,6 @@ export function loadCache<T>(options: {
       const entries = entriesOf(gate.scope);
       const held = recall(entries, key, gate);
       if (held) return held;
-      // TODO: a second layer would sit here; tiered caches (a small memory tier, then a network KV) are worth studying.
       const name = driver && (await driverKey(options.name, key));
       if (driver && name && usable(0, gate)) {
         const raw = await driver.get(name);
@@ -160,7 +157,7 @@ function recall<T>(
 
 /** Whether a value `age` ms old answers the call: fresh, and inside any `force` cooldown. */
 function usable(age: number, { force, cooldown }: LoadOptions): boolean {
-  // Stale-while-revalidate is intentionally never implemented: a security hole, it serves revoked keys.
+  // Never stale-while-revalidate: a stale JWK Set keeps serving revoked keys.
   return age <= PROVIDER_CACHE_TTL && (!force || (cooldown !== undefined && age < cooldown));
 }
 

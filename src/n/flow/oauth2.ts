@@ -34,8 +34,10 @@ export interface OAuth2ProviderConfig extends Pick<
 export type OAuthClientSecret = string | (() => string | Promise<string>);
 
 /**
- * A generic OAuth 2.0 provider (authorization code with PKCE). Without `profile`, the account is
- * the userinfo payload read through its standard claims (`sub` or `id`, `name`, `email`…).
+ * A generic OAuth 2.0 provider (authorization code with PKCE `S256` unless `pkce` says otherwise).
+ * Without `profile`, the account is the userinfo payload read through its standard claims (`sub`
+ * or `id`, `name`, `email`…). Throws `ERR_UNAUTH_CONFIG_INVALID` without `userinfo` or `profile`,
+ * or for a descriptor {@link defineProvider} refuses.
  */
 export function defineOAuth2Provider(
   options: OAuth2ProviderConfig & { userinfo: string },

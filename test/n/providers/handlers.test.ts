@@ -1,12 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { type JWK_oct, defineJWESession, generateJWK } from "unjwt/session";
 
-import {
-  type AuthSessionData,
-  type HandlerEvent,
-  deriveKey,
-  toSessionData,
-} from "../../../src/n/index.ts";
+import { type WebRequestEvent, deriveKey } from "../../../src/n/index.ts";
 import { defineSignInHandler } from "../../../src/n/sign-in.ts";
 import { presetHandler } from "../../../src/n/providers/_shared.ts";
 import { defineAppleHandler, defineAppleProvider } from "../../../src/n/providers/apple.ts";
@@ -49,6 +44,10 @@ const SECRET = "a-flow-secret-of-at-least-32-characters";
 const FLOW_INFO = "unauth:flow";
 
 let flowKey: JWK_oct<"A256GCM">;
+
+interface AppSession {
+  userId: string;
+}
 
 beforeAll(async () => {
   flowKey = await generateJWK("A256GCM");
@@ -103,14 +102,13 @@ describe("defineGitHubHandler", () => {
   });
 
   it("hands the provider its options only, and the sign-in the others", () => {
-    const definition = defineJWESession<AuthSessionData, "1h">({ key: flowKey, maxAge: "1h" });
-    const session = (event: HandlerEvent) => definition.use(event);
+    const onSuccess = () => {};
     const config = { clientId: "gh-client", clientSecret: "gh-secret", label: "GH" };
-    defineGitHubHandler({ ...config, key: flowKey, redirect: "/home", session });
+    defineGitHubHandler({ ...config, key: flowKey, redirect: "/home", onSuccess });
 
     const [provider, signIn] = lastSignIn();
     expect(shape(provider)).toEqual(shape(defineGitHubProvider(config)));
-    expect(signIn).toEqual({ key: flowKey, redirect: "/home", session });
+    expect(signIn).toEqual({ key: flowKey, redirect: "/home", onSuccess });
   });
 });
 
@@ -195,72 +193,44 @@ describe("every preset handler", () => {
 });
 
 describe("preset handler types", () => {
-  interface AppData extends AuthSessionData {
-    role: string;
-  }
   const config = { clientId: "c", clientSecret: "s" };
+  const useAppSession = (event: WebRequestEvent) =>
+    defineJWESession<AppSession, "1h">({ key: flowKey, maxAge: "1h" }).use(event);
 
-  it("takes a session util on data extending AuthSessionData, and answers with a Response", () => {
-    const definition = defineJWESession<AppData, "1h">({ key: flowKey, maxAge: "1h" });
-    const useAppSession = (event: HandlerEvent) => definition.use(event);
-    const handler = defineGitHubHandler({ ...config, key: flowKey, session: useAppSession });
-
-    expectTypeOf(handler).toEqualTypeOf<(event: HandlerEvent) => Promise<Response>>();
-  });
-
-  it("infers the session data from toSession and checks the util against it", () => {
-    const definition = defineJWESession<AppData, "1h">({ key: flowKey, maxAge: "1h" });
-    const useAppSession = (event: HandlerEvent) => definition.use(event);
-    const handler = defineGitHubHandler({
-      ...config,
-      key: flowKey,
-      session: useAppSession,
-      toSession: (identity, context) => {
-        expectTypeOf(identity.profile.login).toEqualTypeOf<string>();
-        expectTypeOf(context).toEqualTypeOf<{ event: HandlerEvent; now: number }>();
-        return { ...toSessionData(identity, context), role: "member" };
-      },
-      onSuccess: () => ({ ok: true }),
-    });
-    expectTypeOf(handler).returns.resolves.toEqualTypeOf<Response | { ok: boolean }>();
-
-    const mismatched = {
-      ...config,
-      key: flowKey,
-      session: useAppSession,
-      toSession: () => ({ other: 1 }),
-    };
-    // @ts-expect-error the util does not take what toSession returns
-    defineGitHubHandler(mismatched);
-  });
-
-  it("requires onSuccess without a session, and refuses toSession and redirect there", () => {
-    const onSuccess = () => "ok";
-    defineGitHubHandler({
-      ...config,
-      key: flowKey,
-      onSuccess,
-      // @ts-expect-error toSession needs a session to write
-      toSession: () => ({}),
-    });
-    defineGitHubHandler({
-      ...config,
-      key: flowKey,
-      onSuccess,
-      // @ts-expect-error redirect is the default completion's, which needs a session
-      redirect: "/home",
-    });
+  it("infers TResult from onSuccess, and requires it", () => {
     expectTypeOf(
       defineGitHubHandler({
         ...config,
         key: () => deriveKey(SECRET, { info: FLOW_INFO }),
-        onSuccess,
+        onSuccess: () => "ok",
       }),
     ).returns.resolves.toEqualTypeOf<Response | string>();
     expect(() =>
-      // @ts-expect-error `onSuccess` is required without `session`
+      // @ts-expect-error `onSuccess` is required
       defineGitHubHandler({ ...config, key: flowKey }),
     ).toThrow(expect.objectContaining({ code: "ERR_UNAUTH_CONFIG_INVALID" }));
+  });
+
+  it("types result.link as the payload onStart returns", () => {
+    defineGitHubHandler({
+      ...config,
+      key: flowKey,
+      onStart: async (event) => {
+        const session = await useAppSession(event);
+        return session.id ? { link: { userId: session.data.userId, from: "settings" } } : undefined;
+      },
+      onSuccess: (_event, result) => {
+        expectTypeOf(result.link).toEqualTypeOf<{ userId: string; from: string } | undefined>();
+        expectTypeOf(result.identity.profile.login).toEqualTypeOf<string>();
+      },
+    });
+    defineGitHubHandler({
+      ...config,
+      key: flowKey,
+      onSuccess: (_event, result) => {
+        expectTypeOf<NonNullable<typeof result.link>>().toBeNever();
+      },
+    });
   });
 
   it("requires the provider's own options", () => {

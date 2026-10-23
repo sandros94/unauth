@@ -16,4 +16,9 @@ export default defineConfig({
   },
 
   features: { websocket: true },
+
+  experimental: { database: true },
+  database: {
+    default: { connector: "node-sqlite", options: { name: "accounts" } },
+  },
 });

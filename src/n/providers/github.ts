@@ -2,8 +2,7 @@ import { profileError } from "../flow/_http.ts";
 import { getJson } from "../flow/_http-json.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -57,13 +56,13 @@ const API = "https://api.github.com";
 const HEADERS = { "user-agent": "unauth", "accept": "application/vnd.github+json" };
 
 /**
- * GitHub (OAuth app or GitHub App user authorization). With the `user:email` scope granted, the
- * email is the primary verified address from `/user/emails`, since `/user` only shows a public
- * one; without it, `email` is that public address and `emailVerified` is left unset.
+ * GitHub (OAuth app or GitHub App user authorization): authorization
+ * `https://github.com/login/oauth/authorize`, token `https://github.com/login/oauth/access_token`,
+ * account from `GET https://api.github.com/user`. PKCE `S256`; the client secret in the request
+ * body. With `user:email` granted, `email` and `emailVerified` come from the primary entry of
+ * `GET /user/emails`; without it, `email` is the public profile address and `emailVerified` stays
+ * unset.
  *
- * Endpoints and the User-Agent requirement: GitHub REST docs; the email fallback follows
- * nuxt-auth-utils; PKCE S256 is supported since
- * https://github.blog/changelog/2025-07-14-pkce-support-for-oauth-and-github-app-authentication/.
  * @default scopes `["read:user", "user:email"]`
  */
 export function defineGitHubProvider(options: GitHubProviderConfig): OAuthProvider<GitHubProfile> {
@@ -85,10 +84,10 @@ export function defineGitHubProvider(options: GitHubProviderConfig): OAuthProvid
 
 /** Options of {@link defineGitHubHandler}: {@link GitHubProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type GitHubHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<GitHubProviderConfig, GitHubProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<GitHubProviderConfig, GitHubProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of a GitHub sign-in on one route: `defineSignInHandler` on {@link defineGitHubProvider}, the

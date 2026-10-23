@@ -78,7 +78,7 @@ export function parseLogin(login: string): AtprotoLogin {
 /**
  * Handle or DID → DID document → PDS, the handle verified in both directions: starting from a
  * handle, a document not claiming it is refused; starting from a DID, an unverified handle is
- * left out. `did:plc` and host-only `did:web` are the methods atproto blesses.
+ * left out. `did:plc` and host-only `did:web` are the methods atproto supports.
  */
 export async function resolveIdentity(
   input: string,

@@ -1,7 +1,6 @@
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -37,10 +36,12 @@ export interface MicrosoftProviderConfig extends PresetConfig {
 }
 
 /**
- * Microsoft Entra ID (work, school and personal accounts), reading the account from Microsoft
- * Graph. Not run as OpenID Connect: on the multi-tenant endpoints each id_token's `iss` names the
- * user's own tenant, which a fixed-issuer check refuses. `mail` is not vouched for, so
- * `emailVerified` stays unset. @default scopes `["User.Read"]`
+ * Microsoft Entra ID (work, school and personal accounts) as OAuth 2.0, without id_token
+ * verification: authorization and token `https://login.microsoftonline.com/<tenant>/oauth2/v2.0/…`,
+ * account from Microsoft Graph `GET https://graph.microsoft.com/v1.0/me`. PKCE `S256`; the client
+ * secret in the request body. `mail` is not vouched for: `emailVerified` stays unset.
+ *
+ * @default scopes `["User.Read"]`
  */
 export function defineMicrosoftProvider(
   options: MicrosoftProviderConfig,
@@ -63,10 +64,10 @@ export function defineMicrosoftProvider(
 
 /** Options of {@link defineMicrosoftHandler}: {@link MicrosoftProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type MicrosoftHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<MicrosoftProviderConfig, MicrosoftProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<MicrosoftProviderConfig, MicrosoftProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of a Microsoft sign-in on one route: `defineSignInHandler` on {@link defineMicrosoftProvider}, the

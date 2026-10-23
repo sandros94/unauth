@@ -3,8 +3,7 @@ import { type JWK_oct, generateJWK, verify } from "unjwt";
 import { defineJWESession } from "unjwt/session";
 
 import {
-  type AuthSessionData,
-  type HandlerEvent,
+  type WebRequestEvent,
   type UnauthError,
   completeFlow,
   defineSignInHandler,
@@ -17,6 +16,7 @@ import {
   defineAtprotoHandler,
   defineAtprotoProvider,
 } from "../../../src/n/providers/atproto.ts";
+import { type CookieJar, cookieJar } from "../_cookies.ts";
 import { cookieHeader, isExpired } from "../_session.ts";
 import { s256 } from "../flow/_fake-provider.ts";
 import {
@@ -116,7 +116,7 @@ describe("sign-in from a handle", () => {
       profile: { did: ALICE.did, handle: ALICE.handle, pds: PDS, authorizationServer: ISSUER },
     });
     expect(result.tokens).toBeUndefined();
-    expect(result.identity.tokens).toBeUndefined();
+    expect(Object.hasOwn(result.identity, "tokens")).toBe(false);
     const line = headers.getSetCookie().find((l) => l.startsWith("__Host-unauth-flow="))!;
     expect(isExpired(line)).toBe(true);
   });
@@ -388,7 +388,7 @@ describe("the client", () => {
   it("derives the development client from a loopback redirect URI and publishes nothing", () => {
     const atproto = defineAtprotoProvider({ redirectUri: "http://127.0.0.1:3000/auth/atproto" });
 
-    expect(atproto.client.loopback).toBe(true);
+    expect(atproto.client.development).toBe(true);
     expect(atproto.client.id).toBe(
       "http://localhost?redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fauth%2Fatproto&scope=atproto",
     );
@@ -402,7 +402,7 @@ describe("the client", () => {
       devHosts: ["localhost"],
     });
 
-    expect(atproto.client.loopback).toBe(true);
+    expect(atproto.client.development).toBe(true);
     expect(atproto.client.redirectUri).toBe("http://127.0.0.1:3000/auth/atproto");
     expect(atproto.redirectUri).toBe("http://127.0.0.1:3000/auth/atproto");
     expect(atproto.client.id).toBe(
@@ -453,8 +453,11 @@ describe("the client", () => {
       { key, fetch: fake.fetch, login: "x" },
     );
     expect(moved.status).toBe(302);
-    expect(moved.headers.get("location")).toBe(
-      "http://127.0.0.1:3987/auth/atproto?login=x&unauth_from=localhost",
+    const movedTo = new URL(moved.headers.get("location")!);
+    const intent = movedTo.searchParams.get("unauth_intent")!;
+    expect(intent).toMatch(/^eyJ/);
+    expect(movedTo.href).toBe(
+      `http://127.0.0.1:3987/auth/atproto?login=x&unauth_intent=${encodeURIComponent(intent)}`,
     );
     expect(moved.headers.getSetCookie()).toEqual([]);
     expect(fake.requests).toHaveLength(0);
@@ -531,7 +534,7 @@ describe("a devHosts round trip through defineSignInHandler", () => {
     const handler = defineSignInHandler(atproto, {
       key,
       fetch: fake.fetch,
-      onStart: (event: HandlerEvent) => ({
+      onStart: (event) => ({
         login: new URL(event.req.url).searchParams.get("login") ?? undefined,
       }),
       onSuccess: (event, result) => {
@@ -551,8 +554,10 @@ describe("a devHosts round trip through defineSignInHandler", () => {
     // 1. Start on localhost: moved to 127.0.0.1, nothing set.
     const moved = await call(`http://localhost:3000/auth/atproto?login=${ALICE.handle}`);
     const movedTo = new URL((moved.answer as Response).headers.get("location")!);
-    expect(movedTo.origin).toBe("http://127.0.0.1:3000");
-    expect(movedTo.searchParams.get("unauth_from")).toBe("localhost");
+    const intent = movedTo.searchParams.get("unauth_intent")!;
+    expect(movedTo.href).toBe(
+      `http://127.0.0.1:3000/auth/atproto?login=${ALICE.handle}&unauth_intent=${encodeURIComponent(intent)}`,
+    );
     expect(moved.res.headers.getSetCookie()).toEqual([]);
 
     // 2. Start on 127.0.0.1: the real first leg, flow cookie set there.
@@ -585,25 +590,152 @@ describe("a devHosts round trip through defineSignInHandler", () => {
     expect(seen).toHaveLength(1);
   });
 
-  it("ignores an unauth_from host that is not in devHosts", async () => {
-    const atproto = defineAtprotoProvider({
-      redirectUri: "http://127.0.0.1:3000/auth/atproto",
+  describe("keeps the intent made on localhost", () => {
+    const LOCAL = "http://localhost:3987";
+    interface Session {
+      userId: string;
+      provider: string;
+      subject: string;
+      name?: string;
+      signedInAt: number;
+    }
+    const userSession = () =>
+      defineJWESession<Session, "1h">({
+        key,
+        name: "app",
+        maxAge: "1h",
+        cookie: { secure: false },
+      });
+
+    /** A browser on the dev server: one cookie jar per host, as cookies are kept. */
+    function browser(handler: (event: WebRequestEvent) => Promise<unknown>) {
+      const jars = new Map<string, CookieJar>();
+      const jarOf = (url: URL): CookieJar => {
+        const jar = jars.get(url.hostname) ?? cookieJar();
+        jars.set(url.hostname, jar);
+        return jar;
+      };
+      return {
+        jarOf,
+        visit: async (to: string | URL) => {
+          const url = new URL(to);
+          const jar = jarOf(url);
+          const cookie = jar.toString();
+          const res = { headers: new Headers() };
+          const answer = await handler({
+            req: new Request(url, cookie ? { headers: { cookie } } : undefined),
+            res,
+          });
+          jar.update(res.headers);
+          if (answer instanceof Response) jar.update(answer.headers);
+          return { answer, res };
+        },
+      };
+    }
+
+    /** From the start on localhost to the handoff back there: the answer and the response headers of each step. */
+    async function devRoundTrip(visit: ReturnType<typeof browser>["visit"]) {
+      const moved = await visit(`${LOCAL}/auth/atproto?login=${ALICE.handle}`);
+      const movedTo = new URL((moved.answer as Response).headers.get("location")!);
+      const intent = movedTo.searchParams.get("unauth_intent")!;
+      expect(intent).toMatch(/^eyJ/);
+      expect(movedTo.href).toBe(
+        `http://127.0.0.1:3987/auth/atproto?login=${ALICE.handle}&unauth_intent=${encodeURIComponent(intent)}`,
+      );
+      const started = await visit(movedTo);
+      const back = fake.approve((started.answer as Response).headers.get("location")!);
+      const completed = await visit(back);
+      const handoff = new URL((completed.answer as Response).headers.get("location")!);
+      expect(handoff.origin).toBe(LOCAL);
+      return visit(handoff);
+    }
+
+    const devConfig = {
+      clientId: `${LOCAL}/oauth-client-metadata.json`,
+      redirectUri: `${LOCAL}/auth/atproto`,
       devHosts: ["localhost"],
       dnsResolver: DNS,
       plcDirectory: PLC,
+    };
+
+    it("links the account to the user signed in on localhost, leaving the session as it is", async () => {
+      const session = userSession();
+      const links: unknown[] = [];
+      const handler = defineAtprotoHandler({
+        ...devConfig,
+        key,
+        fetch: fake.fetch,
+        onStart: async (event) => {
+          const current = await session.use(event);
+          return current.id ? { link: { userId: current.data.userId } } : undefined;
+        },
+        onSuccess: async (event, { identity, link }) => {
+          const current = await session.use(event);
+          if (link) {
+            links.push(link);
+            return "linked";
+          }
+          await current.clear();
+          await current.update({
+            userId: "new",
+            provider: identity.provider,
+            subject: identity.subject,
+            signedInAt: 2,
+          });
+          return "signed in";
+        },
+      });
+      const { jarOf, visit } = browser(handler);
+
+      const seed = { headers: new Headers() };
+      const seeded = await session.use({ req: new Request(LOCAL), res: seed });
+      const data: Session = { userId: "u1", provider: "password", subject: "u1", signedInAt: 1 };
+      await seeded.update(data);
+      jarOf(new URL(LOCAL)).update(seed.headers);
+      const before = jarOf(new URL(LOCAL)).toString();
+
+      const home = await devRoundTrip(visit);
+      expect(home.answer).toBe("linked");
+      expect(links).toEqual([{ userId: "u1" }]);
+      expect(home.res.headers.getSetCookie().filter((l) => l.startsWith("app="))).toEqual([]);
+      expect(jarOf(new URL(LOCAL)).toString()).toBe(before);
+      const after = await session.use({
+        req: new Request(LOCAL, { headers: { cookie: before } }),
+        res: { headers: new Headers() },
+      });
+      expect(after.id).toBe(seeded.id);
+      expect(after.data).toMatchObject(data);
     });
-    const started = await startFlow(
-      atproto,
-      new Request(`http://127.0.0.1:3000/auth/atproto?unauth_from=evil.test&login=${ALICE.handle}`),
-      { key, fetch: fake.fetch, login: ALICE.handle },
-    );
-    const back = fake.approve(started.headers.get("location")!);
-    const result = await completeFlow(
-      atproto,
-      new Request(back, { headers: { cookie: cookieHeader(started.headers) } }),
-      { key, fetch: fake.fetch, headers: new Headers() },
-    );
-    expect(result.returnHost).toBeUndefined();
+
+    it("keeps the redirect onStart asked for", async () => {
+      const session = userSession();
+      const handler = defineAtprotoHandler({
+        ...devConfig,
+        key,
+        fetch: fake.fetch,
+        onStart: (event) =>
+          new URL(event.req.url).hostname === "localhost" ? { redirect: "/after" } : {},
+        onSuccess: async (event, { identity }) => {
+          const current = await session.use(event);
+          await current.clear();
+          await current.update({
+            userId: "u2",
+            provider: identity.provider,
+            subject: identity.subject,
+            signedInAt: 2,
+          });
+        },
+      });
+      const { jarOf, visit } = browser(handler);
+
+      const home = await devRoundTrip(visit);
+      expect((home.answer as Response).headers.get("location")).toBe("/after");
+      const signedIn = await session.use({
+        req: new Request(LOCAL, { headers: { cookie: jarOf(new URL(LOCAL)).toString() } }),
+        res: { headers: new Headers() },
+      });
+      expect(signedIn.data).toMatchObject({ subject: ALICE.did, userId: "u2" });
+    });
   });
 });
 
@@ -613,7 +745,7 @@ describe("through defineSignInHandler", () => {
     const handler = defineSignInHandler(atproto, {
       key,
       fetch: fake.fetch,
-      onStart: (event: HandlerEvent) => ({
+      onStart: (event) => ({
         login: new URL(event.req.url).searchParams.get("login") ?? undefined,
       }),
       onSuccess: (_event, result) => ({ did: result.identity.subject }),
@@ -642,11 +774,30 @@ describe("through defineSignInHandler", () => {
 });
 
 describe("defineAtprotoHandler", () => {
-  const auth = () => defineJWESession<AuthSessionData, "1h">({ key, name: "unauth", maxAge: "1h" });
+  interface SignedIn {
+    provider: string;
+    subject: string;
+    name?: string;
+  }
+  const auth = () => defineJWESession<SignedIn, "1h">({ key, name: "unauth", maxAge: "1h" });
+  const replaceSession =
+    (session: ReturnType<typeof auth>) =>
+    async (
+      event: WebRequestEvent,
+      { identity }: { identity: { provider: string; subject: string; name?: string } },
+    ): Promise<void> => {
+      const current = await session.use(event);
+      await current.clear();
+      await current.update({
+        provider: identity.provider,
+        subject: identity.subject,
+        ...(identity.name ? { name: identity.name } : {}),
+      });
+    };
 
   /** Runs `handler` on `url`, the way a runtime would: the answer and the response's headers. */
   async function run(
-    handler: (event: HandlerEvent) => Promise<unknown>,
+    handler: (event: WebRequestEvent) => Promise<unknown>,
     url: string | URL,
     cookie?: string,
   ) {
@@ -660,7 +811,7 @@ describe("defineAtprotoHandler", () => {
 
   /** Both legs from `url`, then the session the browser ends up with. */
   async function roundTrip(
-    handler: (event: HandlerEvent) => Promise<unknown>,
+    handler: (event: WebRequestEvent) => Promise<unknown>,
     session: ReturnType<typeof auth>,
     url: string,
   ) {
@@ -686,7 +837,7 @@ describe("defineAtprotoHandler", () => {
       plcDirectory: PLC,
       key,
       fetch: fake.fetch,
-      session: (event: HandlerEvent) => session.use(event),
+      onSuccess: replaceSession(session),
     });
 
     const data = await roundTrip(handler, session, `${REDIRECT_URI}?login=${ALICE.handle}`);
@@ -700,7 +851,7 @@ describe("defineAtprotoHandler", () => {
       provider: provider(),
       key,
       fetch: fake.fetch,
-      session: (event: HandlerEvent) => session.use(event),
+      onSuccess: replaceSession(session),
     });
 
     const data = await roundTrip(handler, session, `${REDIRECT_URI}?login=${ALICE.handle}`);

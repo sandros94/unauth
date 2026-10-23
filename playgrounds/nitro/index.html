@@ -8,19 +8,35 @@
   <body>
     <main style="font-family: system-ui; max-width: 40rem; margin: 2rem auto">
       <h1>unauth on Nitro 3</h1>
-      <p>
-        <button data-call="POST /login">login</button>
-        <button data-call="GET /me">me</button>
-        <button data-call="POST /logout">logout</button>
-        <button data-socket>websocket</button>
-        <button data-call="GET /throw-after-clear">throw after clear</button>
-        <a href="/auth/github">sign in with GitHub</a>
-      </p>
-      <form action="/auth/atproto" method="get">
-        <input name="login" placeholder="alice.bsky.social" autocomplete="username" required />
-        <button type="submit">sign in with AT Protocol</button>
-      </form>
-      <p></p>
+      <section id="signed-out" hidden>
+        <form>
+          <input name="user" placeholder="alice" autocomplete="username" />
+          <input name="password" type="password" autocomplete="current-password" />
+          <button type="button" data-call="POST /register">register</button>
+          <button type="button" data-call="POST /login">login</button>
+        </form>
+        <p><a href="/auth/github">sign in with GitHub</a></p>
+        <form action="/auth/atproto" method="get">
+          <input name="login" placeholder="alice.bsky.social" autocomplete="username" required />
+          <button type="submit">sign in with AT Protocol</button>
+        </form>
+      </section>
+      <section id="signed-in" hidden>
+        <p>Signed in as <strong id="who"></strong> with <span id="provider"></span>.</p>
+        <p>Connected accounts:</p>
+        <ul id="identities"></ul>
+        <p><a href="/auth/github">connect GitHub</a></p>
+        <form action="/auth/atproto" method="get">
+          <input name="login" placeholder="alice.bsky.social" autocomplete="username" required />
+          <button type="submit">connect AT Protocol</button>
+        </form>
+        <p>
+          <button data-call="GET /me">me</button>
+          <button data-call="POST /logout">logout</button>
+          <button data-socket>websocket</button>
+          <button data-call="GET /throw-after-clear">throw after clear</button>
+        </p>
+      </section>
       <div id="log"></div>
     </main>
     <script type="module">
@@ -39,6 +55,32 @@
         });
         const text = await response.text();
         say(`${method} ${path} → ${response.status} ${text}`);
+        await refresh();
+      }
+
+      async function refresh() {
+        const response = await fetch("/me");
+        const session = response.status === 401 ? null : await response.json();
+        document.querySelector("#signed-out").hidden = Boolean(session);
+        document.querySelector("#signed-in").hidden = !session;
+        if (!session) return;
+        document.querySelector("#who").textContent = session.name ?? session.subject;
+        document.querySelector("#provider").textContent = session.provider;
+        const list = document.querySelector("#identities");
+        list.replaceChildren();
+        for (const entry of session.identities) {
+          const item = document.createElement("li");
+          item.textContent = `${entry.provider}: ${entry.name ?? entry.subject}`;
+          if (session.identities.length > 1) {
+            const unlink = document.createElement("button");
+            unlink.textContent = "unlink";
+            unlink.addEventListener("click", () =>
+              call("POST", "/unlink", { provider: entry.provider, subject: entry.subject }),
+            );
+            item.append(" ", unlink);
+          }
+          list.append(item);
+        }
       }
 
       function openSocket() {
@@ -51,10 +93,16 @@
 
       for (const button of document.querySelectorAll("[data-call]")) {
         const [method, path] = button.dataset.call.split(" ");
-        const body = path === "/login" ? { user: "alice" } : undefined;
-        button.addEventListener("click", () => call(method, path, body));
+        button.addEventListener("click", () =>
+          call(
+            method,
+            path,
+            button.form ? Object.fromEntries(new FormData(button.form)) : undefined,
+          ),
+        );
       }
       document.querySelector("[data-socket]").addEventListener("click", openSocket);
+      await refresh();
     </script>
   </body>
 </html>

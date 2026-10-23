@@ -28,13 +28,16 @@ export interface CompleteFlowOptions extends FlowCarrierOptions {
   cache?: CacheDriver;
 }
 
-/** A completed sign-in. What to do with it (sign in, link, redirect) is the caller's call. */
-export interface FlowResult<TProfile = Record<string, unknown>> {
+/** A completed sign-in: the proven identity and what the flow carried. */
+export interface FlowResult<TProfile = Record<string, unknown>, TLink = never> {
   identity: ProvenIdentity<TProfile>;
   /** The provider's tokens; absent when a custom provider keeps none past the sign-in. */
   tokens?: OAuthTokens;
-  /** The user who started the flow to link this account; check it is still the signed-in one. */
-  link?: { userId: string };
+  /**
+   * The link intent `startFlow` was given, untouched: the account in `identity` is proven, whether
+   * the user who asked is still the signed-in one is the application's to check.
+   */
+  link?: TLink;
   /** The same-origin path given to `startFlow`. */
   redirect?: string;
   /** The host the user started on before a relocation, which the handler sends the result back to. */
@@ -49,13 +52,14 @@ export interface FlowResult<TProfile = Record<string, unknown>> {
  * between providers is caught by the provider `id` bound into the flow record and by the RFC 9207
  * `iss` parameter: with `issuerParameter` on, `iss` must equal `provider.issuer`; otherwise a
  * missing one is accepted but one naming another issuer is not (`ERR_AUTHN_STATE_MISMATCH`, cause
- * `reason: "issuer"`).
+ * `reason: "issuer"`). `TLink` names the link intent the flow was started with; the record does
+ * not carry its type.
  */
-export async function completeFlow<TProfile>(
+export async function completeFlow<TProfile, TLink = unknown>(
   provider: Provider<TProfile>,
   request: Request,
   options: CompleteFlowOptions,
-): Promise<FlowResult<TProfile>> {
+): Promise<FlowResult<TProfile, TLink>> {
   const taken = await takeFlow({ request, headers: options.headers, provider, options });
   const params = await callbackParams(request);
 
@@ -95,9 +99,10 @@ export async function completeFlow<TProfile>(
     provider.kind === "custom"
       ? await completeCustom(provider, request, { params, record, options })
       : await completeOAuth(provider, { params, record, options });
-  const result: FlowResult<TProfile> = { identity };
+  const result: FlowResult<TProfile, TLink> = { identity };
   if (tokens) result.tokens = tokens;
-  if (record.link) result.link = record.link;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the record came back under the flow key (sealed, or by a sealed store reference), so `link` is what this application's `startFlow` put there
+  if (record.link !== undefined) result.link = record.link as TLink;
   if (record.redirect !== undefined) result.redirect = record.redirect;
   if (record.returnHost !== undefined) result.returnHost = record.returnHost;
   return result;
@@ -180,9 +185,7 @@ async function completeCustom<TProfile>(
     });
   }
   const profile = assertProfile<TProfile>(completed.identity);
-  const identity: ProvenIdentity<TProfile> = { ...profile, provider: provider.id };
-  if (completed.tokens) identity.tokens = completed.tokens;
-  return { identity, tokens: completed.tokens };
+  return { identity: { ...profile, provider: provider.id }, tokens: completed.tokens };
 }
 
 async function idTokenClaims(
@@ -236,7 +239,7 @@ async function mapProfile<TProfile>(
     if (isUnauthError(error)) throw error;
     throw profileError("The provider's account data could not be read.", error);
   }
-  return { ...assertProfile(profile), provider: provider.id, tokens: context.tokens };
+  return { ...assertProfile(profile), provider: provider.id };
 }
 
 /** `profile` once it names a subject; `ERR_AUTHN_PROFILE_INVALID` otherwise. */

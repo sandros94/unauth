@@ -9,6 +9,9 @@ export interface FlowCarrierOptions {
   key: SessionConfigJWE["key"];
   /** Keep records here; the cookie then carries only their id. */
   store?: FlowStore;
+  /** The framework's per-request state, as the event carries it; handed to the flow session as is. */
+  context?: Record<string, unknown>;
+  /** Flow cookie attributes; `secure: false` names the cookie `unauth-flow`, without the `__Host-` prefix. */
   cookie?: { /** @default true */ secure?: boolean };
   /**
    * How long a sign-in may take between `startFlow` and `completeFlow` (seconds, or `"10m"`…): the
@@ -41,7 +44,7 @@ export async function saveFlow(
     await options.store.put(ref, record, { ttl: flowMaxAge(options) });
     cookie = { ref };
   }
-  const session = await flowSession(context).use({ req: request, res: { headers } });
+  const session = await flowSession(context).use(eventOf(request, headers, options));
   if (session.id !== undefined) await session.clear();
   await session.update(cookie);
 }
@@ -62,7 +65,7 @@ export async function takeFlow(context: {
 }): Promise<{ record: FlowRecord } | { record?: undefined; reason: MissingFlowReason }> {
   const { request, headers, options } = context;
   const definition = flowSession(context);
-  const event = { req: request, res: { headers } };
+  const event = eventOf(request, headers, options);
   const present = definition.token(event) !== undefined;
   if (!present) return { reason: "missing" };
   const session = await definition.use(event);
@@ -96,4 +99,18 @@ const FLOW_TYP = "unauth-flow+jwt";
 
 function flowMaxAge(options: FlowCarrierOptions): number {
   return durationSeconds(options.maxAge ?? "10m", { label: "A sign-in flow" });
+}
+
+/** The event the flow session reads: the request, the response headers, and the framework's context when there is one. */
+function eventOf(
+  request: Request,
+  headers: Headers,
+  options: FlowCarrierOptions,
+): { req: Request; res: { headers: Headers }; context?: Record<string, unknown> } {
+  const event: { req: Request; res: { headers: Headers }; context?: Record<string, unknown> } = {
+    req: request,
+    res: { headers },
+  };
+  if (options.context !== undefined) event.context = options.context;
+  return event;
 }

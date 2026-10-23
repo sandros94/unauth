@@ -10,18 +10,16 @@ const origin = process.env.ORIGIN ?? "http://localhost:3000";
 
 interface SessionData {
   user: string;
-  /** The provider the user signed in with; absent for a password login. */
   provider?: string;
+  signedInAt?: number;
 }
 
-/** One key seals the session cookie, another the sign-in flow cookie. */
 const [sessionKey, flowKey] = await Promise.all(
   ["unauth-playground-h3:session", "unauth-playground-h3:flow"].map((salt) =>
     deriveJWKFromPassword(password, { alg: "PBES2-HS256+A128KW", salt, iterations: 600_000 }),
   ),
 );
 
-// The third generic narrows `use()` to the h3 event.
 const definition = defineJWESession<SessionData, "1h", H3Event>({
   key: sessionKey,
   name: "unauth-playground",
@@ -44,10 +42,6 @@ const github = defineGitHubProvider({
   clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "set GITHUB_CLIENT_SECRET",
 });
 
-// The app's identity is its client metadata document. In development that URL is on localhost,
-// which no server can fetch, so the provider uses the spec's development client instead; its
-// callback must be a loopback IP, which `devHosts` maps `localhost` to, moving a start on
-// localhost there first.
 const atproto = defineAtprotoProvider({
   redirectUri: `${origin}/auth/atproto`,
   devHosts: process.env.NODE_ENV === "production" ? undefined : ["localhost"],
@@ -56,17 +50,19 @@ const atproto = defineAtprotoProvider({
   clientUri: origin,
 });
 
-// One route, both legs: `?login=<handle, DID or server>` starts, the callback completes.
 const signInWithAtproto = defineSignInHandler(atproto, {
   key: flowKey,
   onStart: (event: H3Event) => ({
     login: new URL(event.req.url).searchParams.get("login") ?? undefined,
   }),
-  onSuccess: async (event: H3Event, { identity }) => {
+  onSuccess: async (event, { identity }) => {
     const session = await useAuthSession(event);
-    await session.update({ user: identity.name ?? identity.subject, provider: "atproto" });
-
-    return new Response(null, { status: 302, headers: { location: "/" } });
+    await session.clear();
+    await session.update({
+      user: identity.name ?? identity.subject,
+      provider: identity.provider,
+      signedInAt: Date.now(),
+    });
   },
 });
 
@@ -77,7 +73,8 @@ const app = new H3()
       throw new HTTPError({ status: 400, message: "user required" });
 
     const session = await useAuthSession(event);
-    await session.update({ user: body.user });
+    await session.clear();
+    await session.update({ user: body.user, signedInAt: Date.now() });
 
     return { id: session.id, user: session.data.user, expiresAt: session.expiresAt };
   })
@@ -101,7 +98,6 @@ const app = new H3()
       message: "Session cleared; this response should drop the cookie",
     });
   })
-  // One route, both legs: the redirect to GitHub, then the callback GitHub sends the browser to.
   .get(
     "/auth/github",
     defineSignInHandler(github, {
@@ -109,9 +105,12 @@ const app = new H3()
       redirectUri: `${origin}/auth/github`,
       onSuccess: async (event: H3Event, { identity }) => {
         const session = await useAuthSession(event);
-        await session.update({ user: identity.name ?? identity.subject, provider: "github" });
-
-        return new Response(null, { status: 302, headers: { location: "/" } });
+        await session.clear();
+        await session.update({
+          user: identity.name ?? identity.subject,
+          provider: identity.provider,
+          signedInAt: Date.now(),
+        });
       },
     }),
   )

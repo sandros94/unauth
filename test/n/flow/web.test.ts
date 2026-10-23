@@ -1,11 +1,13 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { type JWK_oct, defineJWESession, generateJWK } from "unjwt/session";
 
 import {
   type CacheDriver,
   type FlowRecord,
+  type FlowResult,
   type OAuthProvider,
   type FlowStore,
+  type ProvenIdentity,
   startFlow,
   completeFlow,
   defineProvider,
@@ -104,6 +106,25 @@ describe("startFlow", () => {
     expect(line).not.toContain(location.searchParams.get("state")!);
   });
 
+  it("hands the framework's context to the flow session as given, and creates none without one", async () => {
+    const fake = await createFakeProvider();
+    const context: Record<string, unknown> = {};
+    await startFlow(fakeOAuth2(), new Request(REDIRECT_URI), {
+      key,
+      redirectUri: REDIRECT_URI,
+      fetch: fake.fetch,
+      context,
+    });
+    expect(Object.keys(context)).toEqual(["sessions"]);
+
+    const bare = await startFlow(fakeOAuth2(), new Request(REDIRECT_URI), {
+      key,
+      redirectUri: REDIRECT_URI,
+      fetch: fake.fetch,
+    });
+    expect(bare.status).toBe(302);
+  });
+
   it("adds a nonce for OIDC and resolves endpoints through discovery", async () => {
     const { fake, provider } = await oidcSetup();
     const { location } = await beginSignIn(provider, fake);
@@ -175,11 +196,31 @@ describe("completeFlow", () => {
       emailVerified: true,
       profile: fake.userinfo,
     });
-    expect(result.identity.tokens).toBe(result.tokens);
+    expect(Object.hasOwn(result.identity, "tokens")).toBe(false);
     expect(result.tokens?.access_token).toMatch(/^at-/);
     expect(result.redirect).toBe("/dashboard?tab=1");
     expect(result.link).toEqual({ userId: "u-42" });
     expect(flowCookieCleared(headers)).toBe(true);
+  });
+
+  it("types the tokens on the result only, the identity a plain record", () => {
+    expectTypeOf<ProvenIdentity>().not.toHaveProperty("tokens");
+    expectTypeOf<FlowResult>().toHaveProperty("tokens");
+  });
+
+  it("carries a nested link payload sealed in the flow cookie and hands it back untouched", async () => {
+    const fake = await createFakeProvider();
+    const link = { account: { provider: "github", subject: "42" }, scopes: ["repo"], at: 1 };
+    const { response, request } = await beginSignIn(fakeOAuth2(), fake, { link });
+
+    const cookie = response.headers.getSetCookie().join("\n");
+    expect(cookie).not.toMatch(/github|repo/);
+    const result = await completeFlow<unknown, typeof link>(fakeOAuth2(), request, {
+      key,
+      headers: new Headers(),
+      fetch: fake.fetch,
+    });
+    expect(result.link).toEqual(link);
   });
 
   it("fetches the discovery document once across both legs", async () => {
@@ -692,6 +733,23 @@ describe("FlowStore", () => {
     });
     expect(result.redirect).toBe("/x");
     expect(records.size).toBe(0);
+  });
+
+  it("carries a nested link payload through the store", async () => {
+    const fake = await createFakeProvider();
+    const { store, records } = memoryStore();
+    const link = { account: { provider: "github", subject: "42" }, scopes: ["repo"] };
+    const { request } = await beginSignIn(fakeOAuth2(), fake, { store, link });
+
+    const [entry] = records.values();
+    expect(entry!.record.link).toEqual(link);
+    const result = await completeFlow(fakeOAuth2(), request, {
+      key,
+      store,
+      headers: new Headers(),
+      fetch: fake.fetch,
+    });
+    expect(result.link).toEqual(link);
   });
 
   it("throws ERR_AUTHN_FLOW_EXPIRED when the store no longer has the record", async () => {

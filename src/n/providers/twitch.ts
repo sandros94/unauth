@@ -1,8 +1,7 @@
 import { isRecord } from "../flow/_http.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -34,11 +33,14 @@ export interface TwitchProviderConfig extends PresetConfig {
 }
 
 /**
- * Twitch, reading the account from Helix, which wants the `Client-Id` header and answers
- * `{ data: [user] }`. Twitch documents `email` as the verified address, so `emailVerified` is
- * `true` when it is present. No PKCE: Twitch's authorization-code flow documents none
- * (https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/). @default scopes
- * `["user:read:email"]`
+ * Twitch: authorization `https://id.twitch.tv/oauth2/authorize`, token
+ * `https://id.twitch.tv/oauth2/token`, account from Helix `GET https://api.twitch.tv/helix/users`
+ * with the `Client-Id` header. No PKCE, absent from Twitch's authorization-code flow
+ * (https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/); the client secret in the
+ * request body. Twitch documents `email` as the verified address: `emailVerified` is `true` when
+ * it is present.
+ *
+ * @default scopes `["user:read:email"]`
  */
 export function defineTwitchProvider(options: TwitchProviderConfig): OAuthProvider<TwitchProfile> {
   return defineOAuth2Provider({
@@ -51,7 +53,6 @@ export function defineTwitchProvider(options: TwitchProviderConfig): OAuthProvid
     userinfo: "https://api.twitch.tv/helix/users",
     userinfoHeaders: { "client-id": options.clientId },
     tokenAuth: "body",
-    // Twitch documents no PKCE parameters; `state` and the confidential client protect the flow.
     pkce: false,
     scopes: options.scopes ?? ["user:read:email"],
     authorizationParams: options.authorizationParams,
@@ -61,10 +62,10 @@ export function defineTwitchProvider(options: TwitchProviderConfig): OAuthProvid
 
 /** Options of {@link defineTwitchHandler}: {@link TwitchProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type TwitchHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<TwitchProviderConfig, TwitchProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<TwitchProviderConfig, TwitchProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of a Twitch sign-in on one route: `defineSignInHandler` on {@link defineTwitchProvider}, the

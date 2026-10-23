@@ -1,4 +1,10 @@
-import { defineEventHandler, deriveSecret, useRuntimeConfig } from "nuxt/server";
+import {
+  type RequestEvent,
+  createError,
+  defineEventHandler,
+  deriveSecret,
+  useRuntimeConfig,
+} from "nuxt/server";
 import { base64UrlStringify } from "unjwt/utils";
 import { defineGitHubHandler } from "unauth/n/providers/github";
 
@@ -12,6 +18,28 @@ export default defineEventHandler(
       return { kty: "oct", k: base64UrlStringify(bytes), alg: "A256GCM" } as const;
     },
     origin: useRuntimeConfig().public.origin,
-    session: useAuthSession,
+    onStart: async (event: RequestEvent) => {
+      const session = await useAuthSession(event);
+      return session.id ? { link: { userId: session.data.userId } } : undefined;
+    },
+    onSuccess: async (event, { identity, link }) => {
+      const session = await useAuthSession(event);
+      if (link) {
+        if (session.data.userId !== link.userId) {
+          throw createError({ statusCode: 401, message: "The session changed during the link" });
+        }
+        await linkIdentity(link.userId, identity);
+        return;
+      }
+      const user = await findOrCreateUser(identity);
+      await session.clear();
+      await session.update({
+        userId: user.id,
+        provider: identity.provider,
+        subject: identity.subject,
+        ...(identity.name ? { name: identity.name } : {}),
+        signedInAt: Date.now(),
+      });
+    },
   }),
 );

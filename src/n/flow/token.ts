@@ -45,8 +45,9 @@ export interface RefreshTokensOptions {
 }
 
 /**
- * Trades a refresh token for new tokens (RFC 6749 §6). The old refresh token is kept when the
- * provider does not rotate it. Failures throw `ERR_AUTHN_TOKEN_EXCHANGE`.
+ * Trades a refresh token for new tokens (RFC 6749 §6); the old refresh token is kept when the
+ * provider does not rotate it. A refusal or an unusable body throws `ERR_AUTHN_TOKEN_EXCHANGE`
+ * (401); an endpoint that gives no answer throws `ERR_AUTHN_PROVIDER_ERROR` (502).
  */
 export async function refreshTokens(
   provider: OAuthProvider<unknown>,

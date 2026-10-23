@@ -24,7 +24,11 @@ export default defineBuildConfig({
   entries: [
     {
       type: "bundle",
-      input: ["./src/n/index.ts", ...PROVIDERS.map((id) => `./src/n/providers/${id}.ts`)],
+      input: [
+        "./src/n/index.ts",
+        "./src/argon2.ts",
+        ...PROVIDERS.map((id) => `./src/n/providers/${id}.ts`),
+      ],
       rolldown: { platform: "neutral" },
     },
   ],

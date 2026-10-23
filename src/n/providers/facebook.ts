@@ -1,8 +1,7 @@
 import { isRecord } from "../flow/_http.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import type { AuthSessionData } from "../_session-data.ts";
-import type { HandlerEvent } from "../handler.ts";
+import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,
   type PresetHandler,
@@ -27,19 +26,20 @@ export interface FacebookProfile {
 /** Options of {@link defineFacebookProvider}. */
 export interface FacebookProviderConfig extends PresetConfig {
   clientSecret: string;
-  /**
-   * Graph API version; versions expire about two years after release. @default "v26.0"
-   * (https://developers.facebook.com/blog/post/2026/07/29/introducing-graph-api-v26-and-marketing-api-v26/)
-   */
+  /** Graph API version; versions expire about two years after release. @default "v26.0" */
   version?: string;
   /** `GET /me` fields. @default ["id", "name", "email", "picture"] */
   fields?: string[];
 }
 
 /**
- * Facebook Login, reading the account from the Graph API with the token in the `Authorization`
- * header (never in the URL). Facebook does not say whether `email` is verified, so
- * `emailVerified` stays unset. @default scopes `["email", "public_profile"]`
+ * Facebook Login: authorization `https://www.facebook.com/<version>/dialog/oauth`, token
+ * `https://graph.facebook.com/<version>/oauth/access_token`, account from Graph API `GET /me` with
+ * the token in the `Authorization` header, never in the URL. PKCE `S256`; the client secret in the
+ * request body; scopes comma-separated. Facebook does not say whether `email` is verified:
+ * `emailVerified` stays unset.
+ *
+ * @default scopes `["email", "public_profile"]`
  */
 export function defineFacebookProvider(
   options: FacebookProviderConfig,
@@ -64,10 +64,10 @@ export function defineFacebookProvider(
 
 /** Options of {@link defineFacebookHandler}: {@link FacebookProviderConfig} and `defineSignInHandler`'s, in one object. */
 export type FacebookHandlerConfig<
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = PresetHandlerConfig<FacebookProviderConfig, FacebookProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = PresetHandlerConfig<FacebookProviderConfig, FacebookProfile, TResult, TEvent, TLink>;
 
 /**
  * Both legs of a Facebook sign-in on one route: `defineSignInHandler` on {@link defineFacebookProvider}, the

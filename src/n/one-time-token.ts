@@ -18,6 +18,7 @@ export interface OneTimeTokenUse {
 export interface OneTimeTokenConfig {
   /** Signing key (a JWS session key). */
   key: SessionConfigJWS["key"];
+  /** How long a token stays valid: seconds, or a duration such as `"15m"`. */
   maxAge: ExpiresIn;
   /** Names what the token is for; a token of another purpose never opens. */
   purpose: string;
@@ -36,7 +37,11 @@ export interface OneTimeToken<TData extends object> {
   open: (token: string) => Promise<TData>;
 }
 
-/** Defines a kind of signed, single-use, expiring token over the `consume` driver. */
+/**
+ * A kind of signed, single-use, expiring token; `consume` records each use.
+ *
+ * @throws `ERR_UNAUTH_CONFIG_INVALID` for a `maxAge` that is not a positive duration.
+ */
 export function defineOneTimeToken<TData extends object>(
   config: OneTimeTokenConfig,
 ): OneTimeToken<TData> {
@@ -47,7 +52,7 @@ export function defineOneTimeToken<TData extends object>(
     maxAge: config.maxAge,
     cookie: false,
     sessionHeader: false,
-    // Its own `typ`, so a session token signed with the same key never opens here.
+    // Own `typ`: a session token signed with the same key never opens here.
     jws: { signOptions: { protectedHeader: { typ: ONE_TIME_TOKEN_TYP } } },
   });
 
@@ -73,7 +78,12 @@ export function defineOneTimeToken<TData extends object>(
   };
 }
 
-/** An opaque random token for apps that store tokens: hand out `token`, keep only `hash`. */
+/**
+ * A random base64url token and its {@link hashOpaqueToken} hash: hand out `token`, store only
+ * `hash`.
+ *
+ * @throws `ERR_UNAUTH_CONFIG_INVALID` for `bytes` below 16 or not an integer.
+ */
 export async function createOpaqueToken(options?: {
   /** Random bytes, at least 16. @default 32 */
   bytes?: number;

@@ -1,16 +1,7 @@
-import type { AuthSessionData } from "../_session-data.ts";
 import { isRecord, profileError } from "../flow/_http.ts";
 import type { ProfileContext, Provider } from "../flow/types.ts";
-import type { SignInKey } from "../_flow-key.ts";
-import type { FlowIntent, HandlerEvent } from "../handler.ts";
-import {
-  type ResponseEnding,
-  type SessionEnding,
-  type SignInFlowOptions,
-  type SignInHandlerOptions,
-  type ToSession,
-  defineSignInHandler,
-} from "../sign-in.ts";
+import type { FlowIntent, WebRequestEvent } from "../request-event.ts";
+import { type SignInAnswer, type SignInHandlerOptions, defineSignInHandler } from "../sign-in.ts";
 
 /** What every preset accepts besides its own options. */
 export interface PresetConfig {
@@ -28,33 +19,16 @@ export interface PresetConfig {
 export type PresetHandlerConfig<
   TConfig,
   TProfile,
-  TSession extends object = AuthSessionData,
   TResult = never,
-  TEvent extends HandlerEvent = HandlerEvent,
-> = TConfig & SignInHandlerOptions<TProfile, TSession, TResult, TEvent>;
+  TEvent extends WebRequestEvent = WebRequestEvent,
+  TLink = never,
+> = TConfig & SignInHandlerOptions<TProfile, TResult, TEvent, TLink>;
 
-/** A preset's sign-in route: {@link defineSignInHandler}, with its overloads, on the provider its own options define. */
+/** A preset's sign-in route: {@link defineSignInHandler} on the provider its own options define. */
 export interface PresetHandler<TConfig, TProfile> {
-  <TResult = never, TEvent extends HandlerEvent = HandlerEvent>(
-    options: TConfig &
-      SignInFlowOptions<TResult, TEvent> &
-      SignInKey &
-      SessionEnding<TProfile, AuthSessionData, TResult, TEvent> & { toSession?: never },
-  ): (event: TEvent) => Promise<Response | TResult>;
-  <TSession extends object, TResult = never, TEvent extends HandlerEvent = HandlerEvent>(
-    options: TConfig &
-      SignInFlowOptions<TResult, TEvent> &
-      SignInKey &
-      SessionEnding<TProfile, TSession, TResult, TEvent> & {
-        toSession: ToSession<TSession, TEvent, TProfile>;
-      },
-  ): (event: TEvent) => Promise<Response | TResult>;
-  <TResult, TEvent extends HandlerEvent = HandlerEvent>(
-    options: TConfig &
-      SignInFlowOptions<TResult, TEvent> &
-      SignInKey &
-      ResponseEnding<TProfile, TResult, TEvent>,
-  ): (event: TEvent) => Promise<Response | TResult>;
+  <TResult = never, TEvent extends WebRequestEvent = WebRequestEvent, TLink = never>(
+    options: PresetHandlerConfig<TConfig, TProfile, TResult, TEvent, TLink>,
+  ): (event: TEvent) => Promise<Response | SignInAnswer<TResult>>;
 }
 
 /**
@@ -71,13 +45,15 @@ export function presetHandler<
   options: {
     keys: TKeys & CoveringKeys<TConfig, TKeys>;
     shared?: readonly TKeys[number][];
-    login?: (event: HandlerEvent) => string | undefined;
+    login?: (event: WebRequestEvent) => string | undefined;
   },
 ): PresetHandler<TConfig, TProfile> {
   const keys = new Set<PropertyKey>(options.keys);
   const shared = new Set<PropertyKey>(options.shared);
   const { login } = options;
-  const handler = (all: PresetHandlerConfig<TConfig, TProfile, object, unknown>) => {
+  return <TResult, TEvent extends WebRequestEvent, TLink>(
+    all: PresetHandlerConfig<TConfig, TProfile, TResult, TEvent, TLink>,
+  ): ((event: TEvent) => Promise<Response | SignInAnswer<TResult>>) => {
     const config: Record<string, unknown> = {};
     const signIn: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(all)) {
@@ -86,15 +62,16 @@ export function presetHandler<
     }
     if (login) {
       const { onStart } = all;
-      signIn.onStart = async (event: HandlerEvent): Promise<FlowIntent> => {
+      signIn.onStart = async (event: TEvent): Promise<FlowIntent<TLink>> => {
         const intent = (await onStart?.(event)) ?? {};
         return intent.login === undefined ? { ...intent, login: login(event) } : intent;
       };
     }
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `all` is checked whole by `PresetHandler`, then split by name: each half is what its callee declares
-    return (defineSignInHandler as SplitSignIn<TProfile>)(define(config as TConfig), signIn);
+    const provider = define(config as TConfig);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the sign-in's half of the same split
+    return (defineSignInHandler as SplitSignIn<TProfile, TResult, TEvent>)(provider, signIn);
   };
-  return handler;
 }
 
 /** The userinfo payload when `guard` accepts it, else `ERR_AUTHN_PROFILE_INVALID`. */
@@ -139,7 +116,7 @@ type CoveringKeys<TConfig, TKeys extends readonly PropertyKey[]> = [
   : { missing: Exclude<keyof TConfig, TKeys[number]> };
 
 /** {@link defineSignInHandler} on options split at run time, after their type was checked whole. */
-type SplitSignIn<TProfile> = (
+type SplitSignIn<TProfile, TResult, TEvent> = (
   provider: Provider<TProfile>,
   options: object,
-) => (event: HandlerEvent) => Promise<unknown>;
+) => (event: TEvent) => Promise<Response | SignInAnswer<TResult>>;

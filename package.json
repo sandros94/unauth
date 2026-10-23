@@ -21,6 +21,10 @@
     "./n/providers/*": {
       "types": "./dist/n/providers/*.d.mts",
       "default": "./dist/n/providers/*.mjs"
+    },
+    "./argon2": {
+      "types": "./dist/argon2.d.mts",
+      "default": "./dist/argon2.mjs"
     }
   },
   "scripts": {

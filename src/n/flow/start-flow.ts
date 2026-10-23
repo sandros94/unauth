@@ -1,6 +1,7 @@
 import type { CacheDriver } from "./_cache.ts";
 import { type Fetch, fetchOf, nowOf } from "./_http.ts";
 import { resolveRedirectUri, safeRedirect } from "./_redirect.ts";
+import { resumeIntent, withSealedIntent } from "./_intent.ts";
 import { type FlowCarrierOptions, saveFlow } from "./_transient.ts";
 import { buildAuthorizationUrl } from "./authorization-url.ts";
 import { resolveProvider } from "./discovery.ts";
@@ -8,15 +9,20 @@ import { createNonce, createPkce, createState } from "./random.ts";
 import type { CustomProvider, FlowRecord, OAuthProvider, Provider } from "./types.ts";
 
 /** Options of {@link startFlow}. */
-export interface StartFlowOptions extends FlowCarrierOptions {
+export interface StartFlowOptions<TLink = never> extends FlowCarrierOptions {
   /** The callback URL registered at the provider. */
   redirectUri?: string;
   /** Origins whose requests may derive `redirectUri` from their own URL, when it is not set. */
   trustedOrigins?: string[];
   /** Where to go after sign-in; kept only when it is a same-origin path. */
   redirect?: string;
-  /** Link the provider account to this signed-in user instead of signing in. */
-  link?: { userId: string };
+  /**
+   * A link intent: whatever the application needs to recognise, at the callback, the signed-in
+   * user who asked to link this provider account. It is sealed in the flow record, out of the
+   * browser's reach, and handed back untouched as `FlowResult.link`; it must survive a JSON round
+   * trip.
+   */
+  link?: TLink;
   /**
    * Which account signs in, as the user typed it: the `login_hint` of an OAuth provider, and
    * what a custom provider resolves the account from (an ATProto handle). Some custom providers
@@ -39,35 +45,49 @@ export interface StartFlowOptions extends FlowCarrierOptions {
  * `options.store`). A custom provider builds the URL itself and seals its own `data` beside the
  * engine's. A browser holds one flow at a time: a second sign-in started before the first
  * completes replaces it.
+ *
+ * A custom provider's relocation records nothing: the request's intent (`redirect`, `link`,
+ * `login`, `scopes`, `params`) and its host are sealed into the relocation URL as `unauth_intent`,
+ * and the relocated start reads them back, the intent's members winning over the options it was
+ * given and the host, when it is another, recorded as `returnHost`. That token opens once, within
+ * a minute; one that does not is `ERR_AUTHN_FLOW_EXPIRED`.
  */
-export async function startFlow(
+export async function startFlow<TLink = never>(
   provider: Provider<unknown>,
   request: Request,
-  options: StartFlowOptions,
+  options: StartFlowOptions<TLink>,
 ): Promise<Response> {
+  const resumed = provider.kind === "custom" ? await resumeIntent(request, options) : { options };
+  options = resumed.options;
   const redirectUri = resolveRedirectUri(request, {
     redirectUri:
       options.redirectUri ?? (provider.kind === "custom" ? provider.redirectUri : undefined),
     trustedOrigins: options.trustedOrigins,
   });
   const redirect = safeRedirect(options.redirect);
-  const record: FlowRecord = { provider: provider.id, state: createState(), redirectUri };
+  const record: FlowRecord<TLink> = { provider: provider.id, state: createState(), redirectUri };
   if (redirect !== undefined) record.redirect = redirect;
-  if (options.link) record.link = { userId: options.link.userId };
+  if (options.link !== undefined) record.link = options.link;
+  if (resumed.returnHost !== undefined && resumed.returnHost !== new URL(request.url).hostname) {
+    record.returnHost = resumed.returnHost;
+  }
 
   const started =
     provider.kind === "custom"
       ? await startCustom(provider, request, { record, redirectUri, options })
       : { url: await startOAuth(provider, { record, redirectUri, options }), relocate: false };
 
-  const headers = new Headers({ "location": started.url.href, "cache-control": "no-store" });
+  const location = started.relocate
+    ? await withSealedIntent(started.url, { request, options })
+    : started.url;
+  const headers = new Headers({ "location": location.href, "cache-control": "no-store" });
   if (!started.relocate) await saveFlow(record, { request, headers, provider, options });
   return new Response(null, { status: 302, headers });
 }
 
 async function startOAuth(
   provider: OAuthProvider<unknown>,
-  context: { record: FlowRecord; redirectUri: string; options: StartFlowOptions },
+  context: { record: FlowRecord; redirectUri: string; options: StartFlowOptions<unknown> },
 ): Promise<URL> {
   const { record, redirectUri, options } = context;
   const resolved = await resolveProvider(provider, {
@@ -100,7 +120,7 @@ async function startOAuth(
 async function startCustom(
   provider: CustomProvider<unknown>,
   request: Request,
-  context: { record: FlowRecord; redirectUri: string; options: StartFlowOptions },
+  context: { record: FlowRecord; redirectUri: string; options: StartFlowOptions<unknown> },
 ): Promise<{ url: URL; relocate: boolean }> {
   const { record, redirectUri, options } = context;
   const started = await provider.start({
@@ -116,6 +136,5 @@ async function startCustom(
   });
   if (started.relocate !== undefined) return { url: new URL(started.relocate), relocate: true };
   if (started.data) record.data = started.data;
-  if (started.returnHost !== undefined) record.returnHost = started.returnHost;
   return { url: new URL(started.url), relocate: false };
 }
