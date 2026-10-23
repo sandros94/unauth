@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const log = ref<string[]>([]);
+const login = ref("");
 const say = (line: string) => log.value.unshift(line);
 
 async function call(path: string, method: "GET" | "POST" = "GET", body?: Record<string, unknown>) {
@@ -34,6 +35,16 @@ function openSocket() {
       <button @click="call('/throw-after-clear')">throw after clear</button>
       <a href="/auth/github">sign in with GitHub</a>
     </p>
+    <form action="/auth/atproto" method="get">
+      <input
+        v-model="login"
+        name="login"
+        placeholder="alice.bsky.social"
+        autocomplete="username"
+        required
+      />
+      <button type="submit">sign in with AT Protocol</button>
+    </form>
     <pre v-for="(line, i) in log" :key="i">{{ line }}</pre>
   </main>
 </template>

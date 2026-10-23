@@ -1,7 +1,17 @@
 import { isRecord } from "../flow/_http.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
-import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
+import type { AuthSessionData } from "../_session-data.ts";
+import type { HandlerEvent } from "../handler.ts";
+import {
+  type PresetConfig,
+  type PresetHandler,
+  type PresetHandlerConfig,
+  presetHandler,
+  hasMember,
+  nonEmpty,
+  userinfoAs,
+} from "./_shared.ts";
 
 /** `GET /2/users/me` `data` (https://docs.x.com/x-api/users/user-lookup-me). */
 export interface XProfile {
@@ -26,7 +36,7 @@ export interface XProviderOptions extends PresetConfig {
  * `email` stays unset. @default scopes `["users.read", "tweet.read"]` (X requires `tweet.read`
  * alongside `users.read`)
  */
-export function defineXProvider(options: XProviderOptions): Provider<XProfile> {
+export function defineXProvider(options: XProviderOptions): OAuthProvider<XProfile> {
   const fields = "profile_image_url,description,verified,verified_type,created_at";
   return defineOAuth2Provider({
     id: options.id ?? "x",
@@ -42,6 +52,22 @@ export function defineXProvider(options: XProviderOptions): Provider<XProfile> {
     profile: xProfile,
   });
 }
+
+/** Options of {@link defineXHandler}: {@link XProviderOptions} and `defineSignInHandler`'s, in one object. */
+export type XHandlerConfig<
+  TSession extends object = AuthSessionData,
+  TResult = never,
+  TEvent extends HandlerEvent = HandlerEvent,
+> = PresetHandlerConfig<XProviderOptions, XProfile, TSession, TResult, TEvent>;
+
+/**
+ * Both legs of a X sign-in on one route: `defineSignInHandler` on {@link defineXProvider}, the
+ * options split between them by the provider's keys.
+ */
+export const defineXHandler: PresetHandler<XProviderOptions, XProfile> =
+  /* @__PURE__ */ presetHandler(defineXProvider, {
+    keys: ["clientId", "clientSecret", "scopes", "authorizationParams", "id", "label"],
+  });
 
 function xProfile(context: ProfileContext): ProfileResult<XProfile> {
   const { data } = userinfoAs(context, isUsersMe, { provider: "X" });

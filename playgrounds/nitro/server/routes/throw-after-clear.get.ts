@@ -1,9 +1,9 @@
 import { HTTPError, defineHandler } from "nitro";
 
-import { requireAppSession } from "../utils/session.ts";
+import { requireAuthSession } from "../utils/session.ts";
 
 export default defineHandler(async (event) => {
-  const session = await requireAppSession(event);
+  const session = await requireAuthSession(event);
   await session.clear();
 
   throw new HTTPError({

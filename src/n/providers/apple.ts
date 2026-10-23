@@ -1,9 +1,18 @@
 import { type JWSSignJWK, importPEM, sign } from "unjwt";
-import { safeJsonParse } from "unsecure";
+import { safeJsonParse } from "unsecure/sanitize";
 import { isRecord, profileError } from "../flow/_http.ts";
 import { defineProvider } from "../flow/provider.ts";
-import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetConfig, booleanClaim, nonEmpty } from "./_shared.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
+import type { AuthSessionData } from "../_session-data.ts";
+import type { HandlerEvent } from "../handler.ts";
+import {
+  type PresetConfig,
+  type PresetHandler,
+  type PresetHandlerConfig,
+  presetHandler,
+  booleanClaim,
+  nonEmpty,
+} from "./_shared.ts";
 
 /** What Apple posts as `user` on the first authorization only. */
 export interface AppleUser {
@@ -52,7 +61,7 @@ const SECRET_LIFETIME = 300;
  * The name arrives only on the first sign-in, in the posted `user` field (a quirk nuxt-auth-utils
  * handles too). @default scopes `["name", "email"]`
  */
-export function defineAppleProvider(options: AppleProviderConfig): Provider<AppleProfile> {
+export function defineAppleProvider(options: AppleProviderConfig): OAuthProvider<AppleProfile> {
   return defineProvider({
     id: options.id ?? "apple",
     label: options.label ?? "Apple",
@@ -71,6 +80,31 @@ export function defineAppleProvider(options: AppleProviderConfig): Provider<Appl
     profile: appleProfile,
   });
 }
+
+/** Options of {@link defineAppleHandler}: {@link AppleProviderConfig} and `defineSignInHandler`'s, in one object. */
+export type AppleHandlerConfig<
+  TSession extends object = AuthSessionData,
+  TResult = never,
+  TEvent extends HandlerEvent = HandlerEvent,
+> = PresetHandlerConfig<AppleProviderConfig, AppleProfile, TSession, TResult, TEvent>;
+
+/**
+ * Both legs of a Apple sign-in on one route: `defineSignInHandler` on {@link defineAppleProvider}, the
+ * options split between them by the provider's keys.
+ */
+export const defineAppleHandler: PresetHandler<AppleProviderConfig, AppleProfile> =
+  /* @__PURE__ */ presetHandler(defineAppleProvider, {
+    keys: [
+      "clientId",
+      "teamId",
+      "keyId",
+      "privateKey",
+      "scopes",
+      "authorizationParams",
+      "id",
+      "label",
+    ],
+  });
 
 /** Mints Apple's client secret: an ES256 JWT from the team to `appleid.apple.com`. */
 export function appleClientSecret(

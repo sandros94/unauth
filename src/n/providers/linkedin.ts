@@ -1,7 +1,14 @@
 import { profileError } from "../flow/_http.ts";
 import { type OidcProfile, claimsProfile, defineOidcProvider } from "../flow/oidc.ts";
-import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import type { PresetConfig } from "./_shared.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
+import type { AuthSessionData } from "../_session-data.ts";
+import type { HandlerEvent } from "../handler.ts";
+import {
+  type PresetConfig,
+  type PresetHandler,
+  type PresetHandlerConfig,
+  presetHandler,
+} from "./_shared.ts";
 
 /** LinkedIn's OpenID Connect claims (https://learn.microsoft.com/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2). */
 export interface LinkedInProfile extends Omit<OidcProfile, "locale"> {
@@ -29,7 +36,9 @@ export interface LinkedInProviderConfig extends PresetConfig {
  * (https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow-native);
  * set `pkce: true` once your app has it. @default scopes `["openid", "profile", "email"]`
  */
-export function defineLinkedInProvider(options: LinkedInProviderConfig): Provider<LinkedInProfile> {
+export function defineLinkedInProvider(
+  options: LinkedInProviderConfig,
+): OAuthProvider<LinkedInProfile> {
   return defineOidcProvider({
     id: options.id ?? "linkedin",
     label: options.label ?? "LinkedIn",
@@ -43,6 +52,22 @@ export function defineLinkedInProvider(options: LinkedInProviderConfig): Provide
     profile: linkedinProfile,
   });
 }
+
+/** Options of {@link defineLinkedInHandler}: {@link LinkedInProviderConfig} and `defineSignInHandler`'s, in one object. */
+export type LinkedInHandlerConfig<
+  TSession extends object = AuthSessionData,
+  TResult = never,
+  TEvent extends HandlerEvent = HandlerEvent,
+> = PresetHandlerConfig<LinkedInProviderConfig, LinkedInProfile, TSession, TResult, TEvent>;
+
+/**
+ * Both legs of a LinkedIn sign-in on one route: `defineSignInHandler` on {@link defineLinkedInProvider}, the
+ * options split between them by the provider's keys.
+ */
+export const defineLinkedInHandler: PresetHandler<LinkedInProviderConfig, LinkedInProfile> =
+  /* @__PURE__ */ presetHandler(defineLinkedInProvider, {
+    keys: ["clientId", "clientSecret", "pkce", "scopes", "authorizationParams", "id", "label"],
+  });
 
 function linkedinProfile(context: ProfileContext): ProfileResult<LinkedInProfile> {
   const result = claimsProfile(context);

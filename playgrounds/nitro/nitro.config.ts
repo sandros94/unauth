@@ -4,6 +4,8 @@ export default defineConfig({
   serverDir: "./server",
 
   runtimeConfig: {
+    /** Seals the sign-in flow cookie; set `NITRO_AUTH_SECRET` outside development. */
+    authSecret: "dev-only-placeholder-auth-secret-change-me",
     github: {
       clientId: "",
       clientSecret: "",

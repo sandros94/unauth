@@ -3,6 +3,7 @@ import { defineBuildConfig } from "obuild/config";
 /** One entry per provider preset (`unauth/n/providers/<id>`), so an app bundles only the ones it imports. */
 const PROVIDERS = [
   "apple",
+  "atproto",
   "discord",
   "facebook",
   "github",

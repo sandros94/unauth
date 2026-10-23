@@ -1,7 +1,7 @@
 import { HTTPError, defineHandler } from "nitro";
 import { readBody } from "nitro/h3";
 
-import { useAppSession } from "../utils/session.ts";
+import { useAuthSession } from "../utils/session.ts";
 
 export default defineHandler(async (event) => {
   const body: { user?: unknown } | undefined = await readBody(event);
@@ -9,8 +9,10 @@ export default defineHandler(async (event) => {
   if (typeof body?.user !== "string")
     throw new HTTPError({ status: 400, message: "user required" });
 
-  const session = await useAppSession(event);
-  await session.authenticate({ user: body.user });
+  // Replace, then write: nothing of whoever was signed in before carries over.
+  const session = await useAuthSession(event);
+  await session.clear();
+  await session.update({ provider: "password", subject: body.user, signedInAt: Date.now() });
 
-  return { id: session.id, user: session.data.user, expiresAt: session.expiresAt };
+  return { id: session.id, subject: session.data.subject, expiresAt: session.expiresAt };
 });

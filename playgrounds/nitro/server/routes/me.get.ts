@@ -1,13 +1,9 @@
 import { defineHandler } from "nitro";
 
-import { auth, requireAppSession } from "../utils/session.ts";
-import { defineSessionGuard } from "unauth/n";
+import { requireAuthSession } from "../utils/session.ts";
 
-export default defineHandler({
-  middleware: [defineSessionGuard(auth)],
-  async handler(event) {
-    const session = await requireAppSession(event);
+export default defineHandler(async (event) => {
+  const session = await requireAuthSession(event);
 
-    return { id: session.id, ...session.data, expiresAt: session.expiresAt };
-  },
+  return { id: session.id, ...session.data, expiresAt: session.expiresAt };
 });

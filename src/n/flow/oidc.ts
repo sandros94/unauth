@@ -6,7 +6,7 @@ import type {
   IdTokenClaims,
   ProfileContext,
   ProfileResult,
-  Provider,
+  OAuthProvider,
   ProviderConfig,
 } from "./types.ts";
 
@@ -50,13 +50,13 @@ export interface OidcProviderConfig extends Pick<
  * userinfo endpoint when the issuer has one. Without `profile`, the account is the id_token claims
  * merged over userinfo.
  */
-export function defineOidcProvider(options: OidcProviderConfig): Provider<OidcProfile>;
+export function defineOidcProvider(options: OidcProviderConfig): OAuthProvider<OidcProfile>;
 export function defineOidcProvider<TProfile>(
   options: OidcProviderConfig & { profile: ProfileMapper<TProfile> },
-): Provider<TProfile>;
+): OAuthProvider<TProfile>;
 export function defineOidcProvider(
   options: OidcProviderConfig & { profile?: ProfileMapper<unknown> },
-): Provider<unknown> {
+): OAuthProvider<unknown> {
   const {
     clientId,
     clientSecret,

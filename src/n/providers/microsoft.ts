@@ -1,6 +1,16 @@
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
-import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
+import type { AuthSessionData } from "../_session-data.ts";
+import type { HandlerEvent } from "../handler.ts";
+import {
+  type PresetConfig,
+  type PresetHandler,
+  type PresetHandlerConfig,
+  presetHandler,
+  hasMember,
+  nonEmpty,
+  userinfoAs,
+} from "./_shared.ts";
 
 /** Microsoft Graph `GET /me` (https://learn.microsoft.com/graph/api/user-get). */
 export interface MicrosoftProfile {
@@ -34,7 +44,7 @@ export interface MicrosoftProviderConfig extends PresetConfig {
  */
 export function defineMicrosoftProvider(
   options: MicrosoftProviderConfig,
-): Provider<MicrosoftProfile> {
+): OAuthProvider<MicrosoftProfile> {
   const base = `https://login.microsoftonline.com/${encodeURIComponent(options.tenant ?? "common")}/oauth2/v2.0`;
   return defineOAuth2Provider({
     id: options.id ?? "microsoft",
@@ -50,6 +60,22 @@ export function defineMicrosoftProvider(
     profile: microsoftProfile,
   });
 }
+
+/** Options of {@link defineMicrosoftHandler}: {@link MicrosoftProviderConfig} and `defineSignInHandler`'s, in one object. */
+export type MicrosoftHandlerConfig<
+  TSession extends object = AuthSessionData,
+  TResult = never,
+  TEvent extends HandlerEvent = HandlerEvent,
+> = PresetHandlerConfig<MicrosoftProviderConfig, MicrosoftProfile, TSession, TResult, TEvent>;
+
+/**
+ * Both legs of a Microsoft sign-in on one route: `defineSignInHandler` on {@link defineMicrosoftProvider}, the
+ * options split between them by the provider's keys.
+ */
+export const defineMicrosoftHandler: PresetHandler<MicrosoftProviderConfig, MicrosoftProfile> =
+  /* @__PURE__ */ presetHandler(defineMicrosoftProvider, {
+    keys: ["clientId", "clientSecret", "tenant", "scopes", "authorizationParams", "id", "label"],
+  });
 
 function microsoftProfile(context: ProfileContext): ProfileResult<MicrosoftProfile> {
   const user = userinfoAs(context, isMicrosoftProfile, { provider: "Microsoft" });

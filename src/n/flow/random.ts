@@ -1,4 +1,6 @@
-import { base64Stringify, hash, secureRandomBytes } from "unsecure";
+import { secureRandomBytes } from "unsecure/random";
+import { base64Stringify } from "unsecure/utils";
+import { hash } from "unsecure/hash";
 
 /** A PKCE pair (RFC 7636): keep `verifier` server-side, send `challenge` and `method`. */
 export interface Pkce {
@@ -21,6 +23,11 @@ export function createState(): string {
 
 /** A fresh 256-bit OpenID Connect `nonce`. */
 export function createNonce(): string {
+  return randomToken();
+}
+
+/** A fresh 256-bit JWT ID (RFC 7519 §4.1.7), for a client assertion or a DPoP proof. */
+export function createJti(): string {
   return randomToken();
 }
 

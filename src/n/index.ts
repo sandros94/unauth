@@ -7,26 +7,19 @@ export {
   UnauthError,
   isUnauthError,
 } from "../_internal/error.ts";
-export {
-  type AuthSessionConfigJWE,
-  type AuthSessionConfigJWS,
-  type AuthSessionConfigOf,
-  type AuthSessionBaseConfig,
-  type AuthSessionData,
-  type AuthSessionDefinition,
-  type AuthSessionHooks,
-  type AuthSessionManager,
-  type AuthSessionRecord,
-  type AuthSessionSnapshot,
-  type AuthenticatedData,
-  type AuthenticatedSessionManager,
-  defineAuthSession,
-  isAuthenticated,
-} from "./session.ts";
 export type {
+  CustomCompleteContext,
+  CustomFlowContext,
+  CustomFlowResult,
+  CustomProvider,
+  CustomProviderConfig,
+  CustomStart,
+  CustomStartContext,
   FlowRecord,
+  FlowStore,
   IdTokenClaims,
   OAuthClient,
+  OAuthProvider,
   OAuthTokens,
   ProfileContext,
   ProfileResult,
@@ -34,7 +27,6 @@ export type {
   Provider,
   ProviderConfig,
   TokenAuthMethod,
-  FlowStore,
 } from "./flow/types.ts";
 export type { Fetch } from "./flow/_http.ts";
 export type { CacheDriver } from "./flow/_cache.ts";
@@ -65,22 +57,17 @@ export {
   defineOAuth2Provider,
 } from "./flow/oauth2.ts";
 export { type OidcProfile, type OidcProviderConfig, defineOidcProvider } from "./flow/oidc.ts";
+export { type FlowIntent, type HandlerEvent, isCallback } from "./handler.ts";
 export {
-  type IdentityRef,
-  type IdentityStore,
-  type SignInOptions,
-  type SignInResult,
-  signIn,
-} from "./sign-in.ts";
-export {
-  type FlowIntent,
-  type HandlerEvent,
-  type SignInHandlerConfig,
-  type AuthSessionGuardConfig,
-  defineSessionGuard,
+  type SessionAccess,
+  type SessionWriter,
+  type SignInHandlerOptions,
+  type ToSession,
   defineSignInHandler,
-  isCallback,
-} from "./handler.ts";
+} from "./sign-in.ts";
+export type { FlowKey, FlowKeyInput, SignInKey } from "./_flow-key.ts";
+export { deriveKey } from "./derive-key.ts";
+export { type AuthSessionData, toSessionData } from "./_session-data.ts";
 export {
   type OneTimeToken,
   type OneTimeTokenConfig,

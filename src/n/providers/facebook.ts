@@ -1,7 +1,17 @@
 import { isRecord } from "../flow/_http.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
-import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
+import type { AuthSessionData } from "../_session-data.ts";
+import type { HandlerEvent } from "../handler.ts";
+import {
+  type PresetConfig,
+  type PresetHandler,
+  type PresetHandlerConfig,
+  presetHandler,
+  hasMember,
+  nonEmpty,
+  userinfoAs,
+} from "./_shared.ts";
 
 /** Graph API `GET /me` with the requested `fields` (https://developers.facebook.com/docs/graph-api/reference/user). */
 export interface FacebookProfile {
@@ -31,7 +41,9 @@ export interface FacebookProviderConfig extends PresetConfig {
  * header (never in the URL). Facebook does not say whether `email` is verified, so
  * `emailVerified` stays unset. @default scopes `["email", "public_profile"]`
  */
-export function defineFacebookProvider(options: FacebookProviderConfig): Provider<FacebookProfile> {
+export function defineFacebookProvider(
+  options: FacebookProviderConfig,
+): OAuthProvider<FacebookProfile> {
   const version = options.version ?? "v26.0";
   const fields = (options.fields ?? ["id", "name", "email", "picture"]).join(",");
   return defineOAuth2Provider({
@@ -49,6 +61,31 @@ export function defineFacebookProvider(options: FacebookProviderConfig): Provide
     profile: facebookProfile,
   });
 }
+
+/** Options of {@link defineFacebookHandler}: {@link FacebookProviderConfig} and `defineSignInHandler`'s, in one object. */
+export type FacebookHandlerConfig<
+  TSession extends object = AuthSessionData,
+  TResult = never,
+  TEvent extends HandlerEvent = HandlerEvent,
+> = PresetHandlerConfig<FacebookProviderConfig, FacebookProfile, TSession, TResult, TEvent>;
+
+/**
+ * Both legs of a Facebook sign-in on one route: `defineSignInHandler` on {@link defineFacebookProvider}, the
+ * options split between them by the provider's keys.
+ */
+export const defineFacebookHandler: PresetHandler<FacebookProviderConfig, FacebookProfile> =
+  /* @__PURE__ */ presetHandler(defineFacebookProvider, {
+    keys: [
+      "clientId",
+      "clientSecret",
+      "version",
+      "fields",
+      "scopes",
+      "authorizationParams",
+      "id",
+      "label",
+    ],
+  });
 
 function facebookProfile(context: ProfileContext): ProfileResult<FacebookProfile> {
   const user = userinfoAs(context, isFacebookProfile, { provider: "Facebook" });

@@ -1,7 +1,7 @@
 import { defineEventHandler, createError } from "nuxt/server";
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAppSession(event);
+  const session = await requireAuthSession(event);
   await session.clear();
 
   throw createError({

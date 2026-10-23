@@ -1,16 +1,33 @@
 import { assertSecureUrl, configError } from "./_http.ts";
-import type { Provider, ProviderConfig, TokenAuthMethod } from "./types.ts";
+import type {
+  CustomProvider,
+  CustomProviderConfig,
+  OAuthProvider,
+  ProviderConfig,
+  TokenAuthMethod,
+} from "./types.ts";
 
 /**
  * A provider from its descriptor, with secure defaults filled in: PKCE `S256`, a nonce for
  * OpenID Connect, `query` response mode, and the client authentication its credentials allow.
- * Throws `ERR_UNAUTH_CONFIG_INVALID` for a descriptor that cannot work; performs no I/O.
+ * A `custom` descriptor is checked for its two legs. Throws `ERR_UNAUTH_CONFIG_INVALID` for a
+ * descriptor that cannot work; performs no I/O.
  */
 export function defineProvider<TProfile = Record<string, unknown>>(
   descriptor: ProviderConfig<TProfile>,
-): Provider<TProfile> {
+): OAuthProvider<TProfile>;
+export function defineProvider<TProfile = Record<string, unknown>>(
+  descriptor: CustomProviderConfig<TProfile>,
+): CustomProvider<TProfile>;
+export function defineProvider<TProfile>(
+  descriptor: ProviderConfig<TProfile> | CustomProviderConfig<TProfile>,
+): OAuthProvider<TProfile> | CustomProvider<TProfile> {
+  if (descriptor.kind === "custom") {
+    assertCustomProvider(descriptor);
+    return { ...descriptor };
+  }
   const { pkce = "S256", profile, ...rest } = descriptor;
-  const provider: Provider<TProfile> = {
+  const provider: OAuthProvider<TProfile> = {
     ...rest,
     discovery: descriptor.discovery ?? false,
     scopes: descriptor.scopes ?? [],
@@ -29,7 +46,7 @@ export function defineProvider<TProfile = Record<string, unknown>>(
 }
 
 /** Throws `ERR_UNAUTH_CONFIG_INVALID` unless `provider` can run a flow. */
-export function assertProvider(provider: Provider<unknown>): void {
+export function assertProvider(provider: OAuthProvider<unknown>): void {
   const label = `Provider ${JSON.stringify(provider.id)}`;
   if (!provider.id) throw configError(`A provider needs a non-empty "id".`);
   if (!provider.client.id) throw configError(`${label} needs "client.id".`);
@@ -74,6 +91,20 @@ export function assertProvider(provider: Provider<unknown>): void {
     throw configError(
       `${label} authenticates with "private_key_jwt" and needs "client.privateKey".`,
     );
+  }
+}
+
+function assertCustomProvider(provider: CustomProvider<unknown>): void {
+  if (!provider.id) throw configError(`A provider needs a non-empty "id".`);
+  const label = `Provider ${JSON.stringify(provider.id)}`;
+  if (typeof provider.start !== "function" || typeof provider.complete !== "function") {
+    throw configError(`${label} is custom and needs "start" and "complete".`);
+  }
+  if (
+    provider.responseMode !== undefined &&
+    !["query", "form_post"].includes(provider.responseMode)
+  ) {
+    throw configError(`${label} has an unknown "responseMode".`);
   }
 }
 

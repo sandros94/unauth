@@ -1,7 +1,17 @@
 import { isRecord } from "../flow/_http.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
-import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetConfig, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
+import type { AuthSessionData } from "../_session-data.ts";
+import type { HandlerEvent } from "../handler.ts";
+import {
+  type PresetConfig,
+  type PresetHandler,
+  type PresetHandlerConfig,
+  presetHandler,
+  hasMember,
+  nonEmpty,
+  userinfoAs,
+} from "./_shared.ts";
 
 /** An entry of Helix `GET /users` (https://dev.twitch.tv/docs/api/reference/#get-users). */
 export interface TwitchProfile {
@@ -30,7 +40,7 @@ export interface TwitchProviderConfig extends PresetConfig {
  * (https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/). @default scopes
  * `["user:read:email"]`
  */
-export function defineTwitchProvider(options: TwitchProviderConfig): Provider<TwitchProfile> {
+export function defineTwitchProvider(options: TwitchProviderConfig): OAuthProvider<TwitchProfile> {
   return defineOAuth2Provider({
     id: options.id ?? "twitch",
     label: options.label ?? "Twitch",
@@ -48,6 +58,22 @@ export function defineTwitchProvider(options: TwitchProviderConfig): Provider<Tw
     profile: twitchProfile,
   });
 }
+
+/** Options of {@link defineTwitchHandler}: {@link TwitchProviderConfig} and `defineSignInHandler`'s, in one object. */
+export type TwitchHandlerConfig<
+  TSession extends object = AuthSessionData,
+  TResult = never,
+  TEvent extends HandlerEvent = HandlerEvent,
+> = PresetHandlerConfig<TwitchProviderConfig, TwitchProfile, TSession, TResult, TEvent>;
+
+/**
+ * Both legs of a Twitch sign-in on one route: `defineSignInHandler` on {@link defineTwitchProvider}, the
+ * options split between them by the provider's keys.
+ */
+export const defineTwitchHandler: PresetHandler<TwitchProviderConfig, TwitchProfile> =
+  /* @__PURE__ */ presetHandler(defineTwitchProvider, {
+    keys: ["clientId", "clientSecret", "scopes", "authorizationParams", "id", "label"],
+  });
 
 function twitchProfile(context: ProfileContext): ProfileResult<TwitchProfile> {
   const { data } = userinfoAs(context, isHelixUsers, { provider: "Twitch" });

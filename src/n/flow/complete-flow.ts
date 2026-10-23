@@ -1,12 +1,21 @@
-import { secureCompare } from "unsecure";
+import { secureCompare } from "unsecure/compare";
 import { UnauthError, isUnauthError } from "../../_internal/error.ts";
-import { type Fetch, fetchOf, formObject, nowOf, profileError } from "./_http.ts";
+import { type Fetch, fetchOf, formObject, nowOf, profileError, providerError } from "./_http.ts";
 import type { CacheDriver } from "./_cache.ts";
 import { type FlowCarrierOptions, takeFlow } from "./_transient.ts";
 import { resolveProvider } from "./discovery.ts";
 import { verifyIdToken } from "./id-token.ts";
 import { exchangeCode } from "./token.ts";
-import type { IdTokenClaims, OAuthTokens, Provider, ProvenIdentity } from "./types.ts";
+import type {
+  CustomProvider,
+  FlowRecord,
+  IdTokenClaims,
+  OAuthProvider,
+  OAuthTokens,
+  ProfileResult,
+  Provider,
+  ProvenIdentity,
+} from "./types.ts";
 import { fetchProfile } from "./userinfo.ts";
 
 /** Options of {@link completeFlow}. */
@@ -22,11 +31,14 @@ export interface CompleteFlowOptions extends FlowCarrierOptions {
 /** A completed sign-in. What to do with it (sign in, link, redirect) is the caller's call. */
 export interface FlowResult<TProfile = Record<string, unknown>> {
   identity: ProvenIdentity<TProfile>;
-  tokens: OAuthTokens;
+  /** The provider's tokens; absent when a custom provider keeps none past the sign-in. */
+  tokens?: OAuthTokens;
   /** The user who started the flow to link this account; check it is still the signed-in one. */
   link?: { userId: string };
   /** The same-origin path given to `startFlow`. */
   redirect?: string;
+  /** The host the user started on before a relocation, which the handler sends the result back to. */
+  returnHost?: string;
 }
 
 /**
@@ -44,7 +56,7 @@ export async function completeFlow<TProfile>(
   request: Request,
   options: CompleteFlowOptions,
 ): Promise<FlowResult<TProfile>> {
-  const record = await takeFlow({ request, headers: options.headers, provider, options });
+  const taken = await takeFlow({ request, headers: options.headers, provider, options });
   const params = await callbackParams(request);
 
   const error = params.error;
@@ -58,15 +70,16 @@ export async function completeFlow<TProfile>(
       },
     );
   }
-  if (!record) {
+  if (!taken.record) {
     throw new UnauthError(
-      "[unauth/n] No sign-in in progress: it expired or was already completed.",
+      taken.reason === "missing"
+        ? "[unauth/n] No sign-in cookie came back with the callback: the sign-in must start on the host the callback URL names, with cookies on."
+        : "[unauth/n] No sign-in in progress: it expired or was already completed.",
       "ERR_AUTHN_FLOW_EXPIRED",
-      {
-        status: 401,
-      },
+      { status: 401, cause: { reason: taken.reason } },
     );
   }
+  const { record } = taken;
   if (record.provider !== provider.id || !secureCompare(record.state, params.state)) {
     throw new UnauthError(
       "[unauth/n] The callback does not belong to this sign-in.",
@@ -77,6 +90,24 @@ export async function completeFlow<TProfile>(
       },
     );
   }
+
+  const { identity, tokens } =
+    provider.kind === "custom"
+      ? await completeCustom(provider, request, { params, record, options })
+      : await completeOAuth(provider, { params, record, options });
+  const result: FlowResult<TProfile> = { identity };
+  if (tokens) result.tokens = tokens;
+  if (record.link) result.link = record.link;
+  if (record.redirect !== undefined) result.redirect = record.redirect;
+  if (record.returnHost !== undefined) result.returnHost = record.returnHost;
+  return result;
+}
+
+async function completeOAuth<TProfile>(
+  provider: OAuthProvider<TProfile>,
+  context: { params: Record<string, string>; record: FlowRecord; options: CompleteFlowOptions },
+): Promise<{ identity: ProvenIdentity<TProfile>; tokens: OAuthTokens }> {
+  const { params, record, options } = context;
   if (params.code === undefined) {
     throw new UnauthError(
       "[unauth/n] The provider returned no authorization code.",
@@ -121,14 +152,41 @@ export async function completeFlow<TProfile>(
   }
 
   const identity = await mapProfile(resolved, { tokens, claims, userinfo, params, fetch });
-  const result: FlowResult<TProfile> = { identity, tokens };
-  if (record.link) result.link = record.link;
-  if (record.redirect !== undefined) result.redirect = record.redirect;
-  return result;
+  return { identity, tokens };
+}
+
+/** The custom provider's second leg; its failures pass through, anything else is `ERR_AUTHN_PROVIDER_ERROR`. */
+async function completeCustom<TProfile>(
+  provider: CustomProvider<TProfile>,
+  request: Request,
+  context: { params: Record<string, string>; record: FlowRecord; options: CompleteFlowOptions },
+): Promise<{ identity: ProvenIdentity<TProfile>; tokens: OAuthTokens | undefined }> {
+  const { params, record, options } = context;
+  let completed: Awaited<ReturnType<CustomProvider<TProfile>["complete"]>>;
+  try {
+    completed = await provider.complete({
+      request,
+      params,
+      record,
+      fetch: fetchOf(options),
+      now: nowOf(options),
+      cache: options.cache,
+    });
+  } catch (error) {
+    if (isUnauthError(error)) throw error;
+    throw providerError("The provider could not complete the sign-in.", {
+      reason: "failed",
+      cause: error,
+    });
+  }
+  const profile = assertProfile<TProfile>(completed.identity);
+  const identity: ProvenIdentity<TProfile> = { ...profile, provider: provider.id };
+  if (completed.tokens) identity.tokens = completed.tokens;
+  return { identity, tokens: completed.tokens };
 }
 
 async function idTokenClaims(
-  provider: Provider<unknown>,
+  provider: OAuthProvider<unknown>,
   options: {
     tokens: OAuthTokens;
     nonce?: string;
@@ -162,26 +220,33 @@ async function idTokenClaims(
  * RFC 9207 §2.4: a required `iss` equals the issuer exactly. One sent unasked is compared too
  * when the issuer is known; a provider without one cannot be told apart by it.
  */
-function issuerMatches(provider: Provider<unknown>, iss: string | undefined): boolean {
+function issuerMatches(provider: OAuthProvider<unknown>, iss: string | undefined): boolean {
   if (iss === undefined || provider.issuer === undefined) return !provider.issuerParameter;
   return iss === provider.issuer;
 }
 
 async function mapProfile<TProfile>(
-  provider: Provider<TProfile>,
-  context: Parameters<Provider<TProfile>["profile"]>[0],
+  provider: OAuthProvider<TProfile>,
+  context: Parameters<OAuthProvider<TProfile>["profile"]>[0],
 ): Promise<ProvenIdentity<TProfile>> {
-  let profile: Awaited<ReturnType<Provider<TProfile>["profile"]>>;
+  let profile: Awaited<ReturnType<OAuthProvider<TProfile>["profile"]>>;
   try {
     profile = await provider.profile(context);
   } catch (error) {
     if (isUnauthError(error)) throw error;
     throw profileError("The provider's account data could not be read.", error);
   }
+  return { ...assertProfile(profile), provider: provider.id, tokens: context.tokens };
+}
+
+/** `profile` once it names a subject; `ERR_AUTHN_PROFILE_INVALID` otherwise. */
+function assertProfile<TProfile>(
+  profile: ProfileResult<TProfile> | undefined,
+): ProfileResult<TProfile> {
   if (typeof profile?.subject !== "string" || profile.subject === "") {
     throw profileError("The provider's account data names no subject.");
   }
-  return { ...profile, provider: provider.id, tokens: context.tokens };
+  return profile;
 }
 
 /** The redirect's parameters: the query, or a `form_post` body (OAuth 2.0 Form Post Response Mode). */

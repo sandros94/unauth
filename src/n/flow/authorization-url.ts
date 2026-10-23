@@ -1,5 +1,5 @@
 import { configError } from "./_http.ts";
-import type { Provider } from "./types.ts";
+import type { OAuthProvider } from "./types.ts";
 
 /** Parameters the flow owns; extra parameters naming them are dropped. */
 const RESERVED = new Set([
@@ -29,17 +29,17 @@ export interface AuthorizationParams {
 
 /** The authorization-code request URL (RFC 6749 §4.1.1) for a provider with resolved endpoints. */
 export function buildAuthorizationUrl(
-  provider: Provider<unknown>,
+  provider: OAuthProvider<unknown>,
   params: AuthorizationParams,
 ): URL {
   if (!provider.authorization) {
     throw configError(
-      `Provider ${JSON.stringify(provider.id)} has no "authorization" endpoint yet; pass it through resolveProvider() first.`,
+      `OAuthProvider ${JSON.stringify(provider.id)} has no "authorization" endpoint yet; pass it through resolveProvider() first.`,
     );
   }
   if (provider.pkce && !params.pkce) {
     throw configError(
-      `Provider ${JSON.stringify(provider.id)} uses PKCE; pass "pkce" from createPkce().`,
+      `OAuthProvider ${JSON.stringify(provider.id)} uses PKCE; pass "pkce" from createPkce().`,
     );
   }
   const url = new URL(provider.authorization);

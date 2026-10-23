@@ -4,7 +4,7 @@ import { generateJWK, verify } from "unjwt";
 import {
   type IdTokenClaims,
   type ProfileContext,
-  type Provider,
+  type OAuthProvider,
   buildAuthorizationUrl,
   isUnauthError,
 } from "../../../src/n/index.ts";
@@ -53,7 +53,7 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
   );
 }
 
-function authorizationQuery(provider: Provider<unknown>): Record<string, string> {
+function authorizationQuery(provider: OAuthProvider<unknown>): Record<string, string> {
   const url = buildAuthorizationUrl(provider, {
     redirectUri: "https://app.test/cb",
     state: "s",
@@ -67,7 +67,7 @@ describe("GitHub", () => {
   const provider = defineGitHubProvider(secret);
 
   it("is configured for GitHub's endpoints", () => {
-    expectTypeOf(provider).toEqualTypeOf<Provider<GitHubProfile>>();
+    expectTypeOf(provider).toEqualTypeOf<OAuthProvider<GitHubProfile>>();
     expect(provider).toMatchObject({
       id: "github",
       kind: "oauth2",
@@ -133,7 +133,7 @@ describe("Google", () => {
   const provider = defineGoogleProvider(secret);
 
   it("is a discovered OpenID Connect provider", () => {
-    expectTypeOf(provider).toEqualTypeOf<Provider<GoogleProfile>>();
+    expectTypeOf(provider).toEqualTypeOf<OAuthProvider<GoogleProfile>>();
     expect(provider).toMatchObject({
       id: "google",
       kind: "oidc",
@@ -177,7 +177,7 @@ describe("Discord", () => {
   });
 
   it("is configured for Discord's endpoints", () => {
-    expectTypeOf(provider).toEqualTypeOf<Provider<DiscordProfile>>();
+    expectTypeOf(provider).toEqualTypeOf<OAuthProvider<DiscordProfile>>();
     expect(authorizationQuery(provider)).toMatchObject({
       scope: "identify email",
       code_challenge_method: "S256",
@@ -214,7 +214,7 @@ describe("Discord", () => {
 describe("Microsoft", () => {
   it("defaults to the common tenant and reads Microsoft Graph", () => {
     const provider = defineMicrosoftProvider(secret);
-    expectTypeOf(provider).toEqualTypeOf<Provider<MicrosoftProfile>>();
+    expectTypeOf(provider).toEqualTypeOf<OAuthProvider<MicrosoftProfile>>();
     expect(provider).toMatchObject({
       id: "microsoft",
       kind: "oauth2",
@@ -251,7 +251,7 @@ describe("Apple", () => {
       keyId: "KEY",
       privateKey: keys.privateKey,
     });
-    expectTypeOf(provider).toEqualTypeOf<Provider<AppleProfile>>();
+    expectTypeOf(provider).toEqualTypeOf<OAuthProvider<AppleProfile>>();
     expect(provider).toMatchObject({
       kind: "oidc",
       issuer: "https://appleid.apple.com",
@@ -335,7 +335,7 @@ describe("Apple", () => {
 
 describe("GitLab", () => {
   it("serves GitLab.com or a self-managed base URL", () => {
-    expectTypeOf(defineGitLabProvider(secret)).toEqualTypeOf<Provider<GitLabProfile>>();
+    expectTypeOf(defineGitLabProvider(secret)).toEqualTypeOf<OAuthProvider<GitLabProfile>>();
     expect(defineGitLabProvider(secret).userinfo).toBe("https://gitlab.com/api/v4/user");
     expect(defineGitLabProvider({ ...secret, baseUrl: "https://git.example.com/" })).toMatchObject({
       authorization: "https://git.example.com/oauth/authorize",
@@ -358,7 +358,7 @@ describe("Twitch", () => {
   const provider = defineTwitchProvider(secret);
 
   it("sends the Client-Id header to Helix", () => {
-    expectTypeOf(provider).toEqualTypeOf<Provider<TwitchProfile>>();
+    expectTypeOf(provider).toEqualTypeOf<OAuthProvider<TwitchProfile>>();
     expect(provider.userinfoHeaders).toEqual({ "client-id": "client-1" });
     expect(provider.scopes).toEqual(["user:read:email"]);
     expect(provider.pkce).toBe(false);
@@ -386,7 +386,7 @@ describe("LinkedIn", () => {
   const provider = defineLinkedInProvider(secret);
 
   it("is a discovered OpenID Connect provider with body client auth", () => {
-    expectTypeOf(provider).toEqualTypeOf<Provider<LinkedInProfile>>();
+    expectTypeOf(provider).toEqualTypeOf<OAuthProvider<LinkedInProfile>>();
     expect(provider).toMatchObject({
       kind: "oidc",
       issuer: "https://www.linkedin.com/oauth",
@@ -413,7 +413,7 @@ describe("LinkedIn", () => {
 describe("Facebook", () => {
   it("reads the Graph API with comma-separated scopes and the token in a header", () => {
     const provider = defineFacebookProvider(secret);
-    expectTypeOf(provider).toEqualTypeOf<Provider<FacebookProfile>>();
+    expectTypeOf(provider).toEqualTypeOf<OAuthProvider<FacebookProfile>>();
     expect(provider.userinfo).toBe(
       "https://graph.facebook.com/v26.0/me?fields=id%2Cname%2Cemail%2Cpicture",
     );
@@ -437,7 +437,7 @@ describe("Facebook", () => {
 describe("X", () => {
   it("uses PKCE, Basic auth for confidential clients and none for public ones", () => {
     const confidential = defineXProvider(secret);
-    expectTypeOf(confidential).toEqualTypeOf<Provider<XProfile>>();
+    expectTypeOf(confidential).toEqualTypeOf<OAuthProvider<XProfile>>();
     expect(confidential).toMatchObject({
       pkce: "S256",
       tokenAuth: "basic",

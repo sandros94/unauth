@@ -1,7 +1,7 @@
 import { configError } from "./_http.ts";
 import { standardProfile } from "./_profile.ts";
 import { defineProvider } from "./provider.ts";
-import type { ProfileContext, ProfileResult, Provider, ProviderConfig } from "./types.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider, ProviderConfig } from "./types.ts";
 
 /** Maps a provider's account data to an identity. */
 export type ProfileMapper<TProfile> = (
@@ -39,17 +39,17 @@ export type OAuthClientSecret = string | (() => string | Promise<string>);
  */
 export function defineOAuth2Provider(
   options: OAuth2ProviderConfig & { userinfo: string },
-): Provider;
+): OAuthProvider;
 export function defineOAuth2Provider<TProfile>(
   options: OAuth2ProviderConfig & { profile: ProfileMapper<TProfile> },
-): Provider<TProfile>;
+): OAuthProvider<TProfile>;
 export function defineOAuth2Provider(
   options: OAuth2ProviderConfig & { profile?: ProfileMapper<unknown> },
-): Provider<unknown> {
+): OAuthProvider<unknown> {
   const { clientId, clientSecret, profile, ...rest } = options;
   if (!profile && !options.userinfo) {
     throw configError(
-      `Provider ${JSON.stringify(options.id)} needs "userinfo" or "profile" to know who signed in.`,
+      `OAuthProvider ${JSON.stringify(options.id)} needs "userinfo" or "profile" to know who signed in.`,
     );
   }
   return defineProvider<unknown>({

@@ -1,5 +1,7 @@
 import { type JWKSet, type JWSAlgorithm, type JWSVerifyResult, verify } from "unjwt";
-import { type DigestAlgorithm, base64Stringify, hash, secureCompare } from "unsecure";
+import { type DigestAlgorithm, hash } from "unsecure/hash";
+import { base64Stringify } from "unsecure/utils";
+import { secureCompare } from "unsecure/compare";
 import { UnauthError, isUnauthError } from "../../_internal/error.ts";
 import { type Fetch, nowOf } from "./_http.ts";
 import type { CacheDriver } from "./_cache.ts";
@@ -42,7 +44,7 @@ export interface VerifyIdTokenOptions {
   now?: () => number;
   /** Keep the fetched JWK Set here instead of in memory. */
   cache?: CacheDriver;
-  /** Development only: hosts whose JWKS URL may use plain `http:` (see `Provider.insecureHosts`). */
+  /** Development only: hosts whose JWKS URL may use plain `http:` (see `OAuthProvider.insecureHosts`). */
   insecureHosts?: string[];
 }
 

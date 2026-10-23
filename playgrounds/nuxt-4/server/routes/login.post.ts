@@ -6,8 +6,10 @@ export default defineEventHandler(async (event) => {
   if (typeof body?.user !== "string")
     throw createError({ statusCode: 400, message: "user required" });
 
-  const session = await useAppSession(event);
-  await session.authenticate({ user: body.user });
+  // Replace, then write: nothing of whoever was signed in before carries over.
+  const session = await useAuthSession(event);
+  await session.clear();
+  await session.update({ provider: "password", subject: body.user, signedInAt: Date.now() });
 
-  return { id: session.id, user: session.data.user, expiresAt: session.expiresAt };
+  return { id: session.id, subject: session.data.subject, expiresAt: session.expiresAt };
 });

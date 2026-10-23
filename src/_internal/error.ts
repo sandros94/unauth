@@ -10,8 +10,9 @@
 export type KnownUnauthErrorCode =
   | "ERR_UNAUTH_CONFIG_INVALID" // a configuration that cannot work
   // authn (`unauth/n`)
-  | "ERR_AUTHN_UNAUTHENTICATED" // no authenticated session
-  | "ERR_AUTHN_REAUTH_REQUIRED" // the session authenticated longer ago than allowed
+  | "ERR_AUTHN_UNAUTHENTICATED" // reserved for the `unauth/session` guard: no signed-in session
+  | "ERR_AUTHN_LOGIN_REQUIRED" // the provider needs to know which account signs in (`login`)
+  | "ERR_AUTHN_LOGIN_INVALID" // `login` names no usable account at the provider
   | "ERR_AUTHN_FLOW_EXPIRED" // no sign-in flow to complete: never started, expired or already used
   | "ERR_AUTHN_STATE_MISMATCH" // the callback does not belong to the flow this browser started
   | "ERR_AUTHN_PROVIDER_REFUSED" // the provider answered the authorization request with an error
@@ -19,8 +20,6 @@ export type KnownUnauthErrorCode =
   | "ERR_AUTHN_ID_TOKEN_INVALID" // an id_token failed verification
   | "ERR_AUTHN_PROFILE_INVALID" // the provider's account data does not name a usable identity
   | "ERR_AUTHN_PROVIDER_ERROR" // a provider endpoint failed or answered unusably
-  | "ERR_AUTHN_LINK_CONFLICT" // the provider account already belongs to another user
-  | "ERR_AUTHN_LINK_CHANGED" // the user who asked to link is not the one signed in now
   | "ERR_AUTHN_TOKEN_INVALID" // a one-time token is malformed, forged or expired
   | "ERR_AUTHN_TOKEN_PURPOSE" // a one-time token was issued for another purpose
   | "ERR_AUTHN_TOKEN_USED"; // a one-time token was already used
@@ -36,15 +35,36 @@ export type UnauthErrorCode = KnownUnauthErrorCode | (string & {});
  * usually the error underneath.
  */
 export interface UnauthErrorCauseMap {
-  /** When the session last authenticated, in ms; `undefined` when it never did. */
-  ERR_AUTHN_REAUTH_REQUIRED: { authenticatedAt: number | undefined };
-  /** The error the provider sent back to the redirect URI (RFC 6749 §4.1.2.1). */
+  /**
+   * Why the callback carries no flow: `missing`, no flow cookie came back at all (the sign-in
+   * started on another host, or cookies are off); `unreadable`, the cookie expired or does not
+   * open; `consumed`, the flow store no longer has the record.
+   */
+  ERR_AUTHN_FLOW_EXPIRED: { reason: "missing" | "unreadable" | "consumed" };
+  /**
+   * The error the provider answered the authorization request with: at the redirect URI (RFC 6749
+   * §4.1.2.1) or at the pushed authorization request endpoint (RFC 9126 §2.3).
+   */
   ERR_AUTHN_PROVIDER_REFUSED: OAuthErrorResponse;
-  /** The token endpoint's error (RFC 6749 §5.2), its HTTP status, or the failure underneath. */
+  /** The token endpoint's error (RFC 6749 §5.2), its HTTP status, or the detail of an unusable answer. */
   ERR_AUTHN_TOKEN_EXCHANGE: Partial<OAuthErrorResponse> & {
     status?: number;
-    /** The token type the endpoint issued, when it was not Bearer. */
+    /** The token type the endpoint issued, when it was not the expected one. */
     token_type?: string;
+    /** The scopes the endpoint granted, when they lack a required one. */
+    scope?: string;
+    cause?: unknown;
+  };
+  /**
+   * Why a provider endpoint gave no usable answer: `unreachable`, no connection; `timeout`, nothing
+   * within the deadline; `too-large`, a body over the cap; `status`, a failed HTTP status;
+   * `malformed`, an answer that is not what its protocol says; `failed`, a custom provider's own
+   * leg threw something that is not an `UnauthError`. `status` is the HTTP status once one
+   * arrived, `cause` the failure underneath when there is one.
+   */
+  ERR_AUTHN_PROVIDER_ERROR: {
+    reason: "unreachable" | "timeout" | "too-large" | "status" | "malformed" | "failed";
+    status?: number;
     cause?: unknown;
   };
 }
@@ -60,7 +80,7 @@ export interface OAuthErrorResponse {
 export interface UnauthErrorOptions {
   /** The failure underneath, or the structured context listed in {@link UnauthErrorCauseMap}. */
   cause?: unknown;
-  /** HTTP status a framework glue answers with (400, 401, 403, 409, 500); a hint, never the mechanism. */
+  /** HTTP status a framework glue answers with (400, 401, 403, 409, 500, 502); a hint, never the mechanism. */
   status?: number;
 }
 
@@ -70,9 +90,9 @@ export interface UnauthErrorOptions {
  *
  * @example
  * try {
- *   requireSession(session);
+ *   return await completeFlow(provider, request, options);
  * } catch (error) {
- *   if (isUnauthError(error, "ERR_AUTHN_UNAUTHENTICATED")) return redirect("/login");
+ *   if (isUnauthError(error, "ERR_AUTHN_FLOW_EXPIRED")) return redirect("/login");
  *   throw error;
  * }
  */

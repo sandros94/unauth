@@ -1,18 +1,18 @@
 import { defineWebSocketHandler } from "nitro";
-import type { AuthSessionManager } from "unauth/n";
+import type { SessionManager } from "unjwt/session";
 
-import { type SessionData, auth } from "../utils/session.ts";
+import { type SessionData, useAuthSession } from "../utils/session.ts";
 
 export default defineWebSocketHandler({
   async upgrade(request) {
     // Named, not spread: on Nitro 3 the request is a `Request`, and a spread loses its `headers`.
     const headers = new Headers();
-    const session = await auth.use({
+    const session = await useAuthSession({
       headers: request.headers,
       context: request.context,
       res: { headers },
     });
-    if (!session.data.authenticatedAt) throw new Response("Sign in first", { status: 401 });
+    if (!session.id) throw new Response("Sign in first", { status: 401 });
 
     // `headers` ride on the 101 upgrade (a roll or a drop made during the read); `context` is
     // what every later hook gets as `peer.context`: a snapshot of the session, read once here.
@@ -21,7 +21,7 @@ export default defineWebSocketHandler({
 
   open(peer) {
     const { data } = getContext(peer);
-    peer.send(`hello ${data.user}`);
+    peer.send(`hello ${data.name ?? data.subject}`);
   },
 
   message(peer, message) {
@@ -35,10 +35,10 @@ export default defineWebSocketHandler({
 
   close(peer, details) {
     const { data } = getContext(peer);
-    console.log(`[ws] ${data.user} left (${details.code ?? "no code"})`);
+    console.log(`[ws] ${data.subject} left (${details.code ?? "no code"})`);
   },
 });
 
-function getContext(peer: { context: Record<string, unknown> }): AuthSessionManager<SessionData> {
-  return peer.context as unknown as AuthSessionManager<SessionData>;
+function getContext(peer: { context: Record<string, unknown> }): SessionManager<SessionData, "1h"> {
+  return peer.context as unknown as SessionManager<SessionData, "1h">;
 }

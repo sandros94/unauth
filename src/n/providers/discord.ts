@@ -1,7 +1,16 @@
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
-import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
 import { isRecord } from "../flow/_http.ts";
-import { type PresetConfig, nonEmpty, userinfoAs } from "./_shared.ts";
+import type { AuthSessionData } from "../_session-data.ts";
+import type { HandlerEvent } from "../handler.ts";
+import {
+  type PresetConfig,
+  type PresetHandler,
+  type PresetHandlerConfig,
+  presetHandler,
+  nonEmpty,
+  userinfoAs,
+} from "./_shared.ts";
 
 /** `GET /users/@me` (https://discord.com/developers/docs/resources/user#user-object). */
 export interface DiscordProfile {
@@ -36,7 +45,9 @@ export interface DiscordProviderConfig extends PresetConfig {
  * (https://discord.com/developers/docs/reference#image-formatting).
  * @default scopes `["identify", "email"]`
  */
-export function defineDiscordProvider(options: DiscordProviderConfig): Provider<DiscordProfile> {
+export function defineDiscordProvider(
+  options: DiscordProviderConfig,
+): OAuthProvider<DiscordProfile> {
   return defineOAuth2Provider({
     id: options.id ?? "discord",
     label: options.label ?? "Discord",
@@ -51,6 +62,22 @@ export function defineDiscordProvider(options: DiscordProviderConfig): Provider<
     profile: discordProfile,
   });
 }
+
+/** Options of {@link defineDiscordHandler}: {@link DiscordProviderConfig} and `defineSignInHandler`'s, in one object. */
+export type DiscordHandlerConfig<
+  TSession extends object = AuthSessionData,
+  TResult = never,
+  TEvent extends HandlerEvent = HandlerEvent,
+> = PresetHandlerConfig<DiscordProviderConfig, DiscordProfile, TSession, TResult, TEvent>;
+
+/**
+ * Both legs of a Discord sign-in on one route: `defineSignInHandler` on {@link defineDiscordProvider}, the
+ * options split between them by the provider's keys.
+ */
+export const defineDiscordHandler: PresetHandler<DiscordProviderConfig, DiscordProfile> =
+  /* @__PURE__ */ presetHandler(defineDiscordProvider, {
+    keys: ["clientId", "clientSecret", "scopes", "authorizationParams", "id", "label"],
+  });
 
 function discordProfile(context: ProfileContext): ProfileResult<DiscordProfile> {
   const user = userinfoAs(context, isDiscordProfile, { provider: "Discord" });

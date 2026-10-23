@@ -1,9 +1,15 @@
 import type { JWKSet } from "unjwt";
 import { type Fetch, assertSecureUrl, fetchOf, isRecord, nowOf, providerError } from "./_http.ts";
-import { getObject } from "./_http-json.ts";
-import { type CacheDriver, JWKS_REFRESH_COOLDOWN, loadCache } from "./_cache.ts";
+import { type CacheDriver, JWKS_REFRESH_COOLDOWN } from "./_cache.ts";
+import { defineMetadataLoader } from "./_metadata.ts";
 
-const cache = /* @__PURE__ */ loadCache<JWKSet>({ name: "jwks", check: parseJwks });
+const load = /* @__PURE__ */ defineMetadataLoader<JWKSet>({
+  name: "jwks",
+  label: "JWK Set",
+  url: (url) => url,
+  parse: parseJwks,
+  cooldown: JWKS_REFRESH_COOLDOWN,
+});
 
 /** Options of {@link fetchJwks}. */
 export interface FetchJwksOptions {
@@ -16,7 +22,7 @@ export interface FetchJwksOptions {
   force?: boolean;
   /** Keep the set here instead of in memory. */
   cache?: CacheDriver;
-  /** Development only: hosts whose JWKS URL may use plain `http:` (see `Provider.insecureHosts`). */
+  /** Development only: hosts whose JWKS URL may use plain `http:` (see `OAuthProvider.insecureHosts`). */
   insecureHosts?: string[];
 }
 
@@ -30,22 +36,18 @@ export interface FetchJwksOptions {
  */
 export async function fetchJwks(url: string, options?: FetchJwksOptions): Promise<JWKSet> {
   assertSecureUrl(url, { label: "The JWKS URL", insecureHosts: options?.insecureHosts });
-  return cache.get(url, () => loadJwks(url, fetchOf(options)), {
+  return load(url, {
+    fetch: fetchOf(options),
     now: nowOf(options),
+    cache: options?.cache,
     force: options?.force,
-    cooldown: JWKS_REFRESH_COOLDOWN,
-    scope: options?.fetch,
-    driver: options?.cache,
   });
-}
-
-async function loadJwks(url: string, fetch: Fetch): Promise<JWKSet> {
-  return parseJwks(await getObject(url, { fetch, label: "JWK Set" }), url);
 }
 
 /** The key set `body` holds, dropping members that are not objects. */
 function parseJwks(body: unknown, url: string): JWKSet {
   const keys = isRecord(body) ? body.keys : undefined;
-  if (!Array.isArray(keys)) throw providerError(`The JWK Set at ${url} has no "keys" array.`);
+  if (!Array.isArray(keys))
+    throw providerError(`The JWK Set at ${url} has no "keys" array.`, { reason: "malformed" });
   return { keys: keys.filter((key) => typeof key === "object" && key !== null) };
 }

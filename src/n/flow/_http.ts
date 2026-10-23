@@ -1,7 +1,7 @@
 import type { ExpiresIn } from "unjwt/session";
 import { computeDurationInSeconds } from "unjwt/utils";
-import { safeJsonParse } from "unsecure";
-import { UnauthError } from "../../_internal/error.ts";
+import { safeJsonParse } from "unsecure/sanitize";
+import { UnauthError, type UnauthErrorCauseMap } from "../../_internal/error.ts";
 import { PROVIDER_DOCUMENT_MAX_BYTES, readText } from "./_http-body.ts";
 
 /** The longest endpoint URL accepted; it also bounds the cache keys built from one. */
@@ -29,9 +29,12 @@ export type ObjectBody = { object: Record<string, unknown> | undefined } | { too
  * A JSON or form-encoded object body, without prototype-polluting keys; a body longer than
  * {@link PROVIDER_DOCUMENT_MAX_BYTES} is reported as `tooLarge`, unread.
  */
-export async function readObject(response: Response): Promise<ObjectBody> {
+export async function readObject(
+  response: Response,
+  options: { signal?: AbortSignal } = {},
+): Promise<ObjectBody> {
   const maxBytes = PROVIDER_DOCUMENT_MAX_BYTES;
-  const text = await readText(response, { maxBytes }).catch(() => "");
+  const text = await readText(response, { maxBytes, signal: options.signal }).catch(() => "");
   if (text === undefined) return { tooLarge: maxBytes };
   const type = response.headers.get("content-type") ?? "";
   if (type.includes("application/x-www-form-urlencoded"))
@@ -118,13 +121,16 @@ export function configError(
   });
 }
 
-/** `ERR_AUTHN_PROVIDER_ERROR` (500): a provider endpoint failed or answered unusably. */
+/** The declared `cause` of `ERR_AUTHN_PROVIDER_ERROR`. */
+export type ProviderFailure = UnauthErrorCauseMap["ERR_AUTHN_PROVIDER_ERROR"];
+
+/** `ERR_AUTHN_PROVIDER_ERROR` (502): a provider endpoint gave no usable answer, `cause` saying why. */
 export function providerError(
   message: string,
-  cause?: unknown,
+  cause: ProviderFailure,
 ): UnauthError<"ERR_AUTHN_PROVIDER_ERROR"> {
   return new UnauthError(`[unauth/n] ${message}`, "ERR_AUTHN_PROVIDER_ERROR", {
-    status: 500,
+    status: 502,
     cause,
   });
 }

@@ -1,13 +1,12 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
-import { H3, type H3Event } from "h3";
-import { type JWK_oct, generateJWK } from "unjwt/session";
+import { beforeAll, describe, expect, expectTypeOf, it } from "vitest";
+import { H3, type H3Event, HTTPError } from "h3";
+import { type JWK_oct, defineJWESession, generateJWK } from "unjwt/session";
 
 import {
+  type AuthSessionData,
   type Provider,
-  defineAuthSession,
   defineSignInHandler,
   defineOAuth2Provider,
-  defineSessionGuard,
 } from "../../../src/n/index.ts";
 import { cookieJar } from "../_cookies.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "../flow/_fake-provider.ts";
@@ -44,7 +43,7 @@ describe("h3 v2", () => {
 
   async function setup() {
     fake = await createFakeProvider();
-    const auth = defineAuthSession<User, H3Event>({ key });
+    const auth = defineJWESession<User, undefined, H3Event>({ key, name: "__Host-unauth" });
     app = new H3();
     app.get(
       "/auth/fake",
@@ -54,15 +53,16 @@ describe("h3 v2", () => {
         fetch: fake.fetch,
         onSuccess: async (event: H3Event, result) => {
           const session = await auth.use(event);
-          await session.authenticate({ userId: result.identity.subject });
+          await session.update({ userId: result.identity.subject });
           return { subject: result.identity.subject, redirect: result.redirect ?? null };
         },
       }),
     );
-    app.get("/me", async (event) => (await auth.require(event)).data, {
-      middleware: [defineSessionGuard(auth)],
+    app.get("/me", async (event) => {
+      const session = await auth.use(event);
+      if (!session.id) throw new HTTPError({ status: 401 });
+      return session.data;
     });
-    return auth;
   }
 
   async function signInFlow(jar = cookieJar()) {
@@ -92,10 +92,7 @@ describe("h3 v2", () => {
 
     const me = await app.request("/me", { headers: { cookie: jar.toString() } });
     expect(me.status).toBe(200);
-    expect(await me.json()).toMatchObject({
-      userId: "user-1",
-      authenticatedAt: expect.any(Number),
-    });
+    expect(await me.json()).toMatchObject({ userId: "user-1" });
   });
 
   it("answers a failed callback with the error's status, the flow cookie expired", async () => {
@@ -114,41 +111,35 @@ describe("h3 v2", () => {
     expect(res.headers.getSetCookie().join("\n")).toMatch(/__Host-unauth-flow=/);
   });
 
-  it("defineSessionGuard answers 401 without an authenticated session", async () => {
-    await setup();
-    expect((await app.request("/me")).status).toBe(401);
-  });
-
-  it("defineSessionGuard runs onAuthenticated with the h3 event as context", async () => {
-    const auth = await setup();
-    const onAuthenticated = vi.fn((_args: { context: H3Event }) => undefined);
-    app.get("/feed", () => "feed", {
-      middleware: [defineSessionGuard(auth, { onAuthenticated })],
+  it("writes the session through a util typed on the h3 event", async () => {
+    fake = await createFakeProvider();
+    const auth = defineJWESession<AuthSessionData, "1h", H3Event>({
+      key,
+      name: "__Host-unauth",
+      maxAge: "1h",
+    });
+    const useAuthSession = (event: H3Event) => auth.use(event);
+    const handler = defineSignInHandler(fakeProvider(), {
+      key: flowKey,
+      redirectUri: REDIRECT_URI,
+      fetch: fake.fetch,
+      session: useAuthSession,
+    });
+    expectTypeOf(handler).toEqualTypeOf<(event: H3Event) => Promise<Response>>();
+    app = new H3().get("/auth/fake", handler).get("/me", async (event) => {
+      const session = await useAuthSession(event);
+      if (!session.id) throw new HTTPError({ status: 401 });
+      return session.data;
     });
 
-    expect((await app.request("/feed")).status).toBe(401);
-    expect(onAuthenticated).not.toHaveBeenCalled();
+    const { done, jar } = await signInFlow();
+    expect(done.status).toBe(302);
+    expect(done.headers.get("location")).toBe("/");
+    const cookies = done.headers.getSetCookie();
+    expect(cookies.some((line) => /^__Host-unauth-flow=[^;]*;.*Max-Age=0/i.test(line))).toBe(true);
+    expect(cookies.some((line) => line.startsWith("__Host-unauth="))).toBe(true);
 
-    const { jar } = await signInFlow();
-    expect((await app.request("/feed", { headers: { cookie: jar.toString() } })).status).toBe(200);
-    expect(onAuthenticated).toHaveBeenCalledOnce();
-    expect(onAuthenticated.mock.calls[0]![0].context.req).toBeInstanceOf(Request);
-  });
-
-  it("hooks receive the h3 event as context", async () => {
-    const isRevoked = vi.fn((_args: { context: H3Event }) => false);
-    const auth = defineAuthSession<User, H3Event>({ key, hooks: { isRevoked } });
-    const signed = new H3();
-    signed.get("/in", async (event) => {
-      await (await auth.use(event)).authenticate({ userId: "u1" });
-      return "in";
-    });
-    signed.get("/read", async (event) => (await auth.use(event)).data.userId ?? null);
-    const jar = cookieJar();
-    jar.update((await signed.request("/in")).headers);
-
-    const read = await signed.request("/read", { headers: { cookie: jar.toString() } });
-    expect(await read.text()).toBe("u1");
-    expect(isRevoked.mock.calls[0]![0].context.req).toBeInstanceOf(Request);
+    const me = await app.request("/me", { headers: { cookie: jar.toString() } });
+    expect(await me.json()).toMatchObject({ provider: "fake", subject: "user-1" });
   });
 });

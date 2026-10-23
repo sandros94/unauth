@@ -1,5 +1,3 @@
-export interface SessionData {
-  user: string;
-  /** The provider the user signed in with; absent for a password login. */
-  provider?: string;
-}
+import type { AuthSessionData } from "unauth/n";
+
+export interface SessionData extends AuthSessionData {}

@@ -1,9 +1,9 @@
 import { defineHandler } from "nitro";
 
-import { useAppSession } from "../utils/session.ts";
+import { useAuthSession } from "../utils/session.ts";
 
 export default defineHandler(async (event) => {
-  const session = await useAppSession(event);
+  const session = await useAuthSession(event);
   await session.clear();
 
   return { ok: true };

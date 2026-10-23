@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { generateJWK, verify } from "unjwt";
 
 import {
-  type Provider,
+  type OAuthProvider,
   type ProviderConfig,
   buildAuthorizationUrl,
   createNonce,
@@ -18,7 +18,7 @@ import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider, s256 } from "./_f
 
 const BASE64URL = /^[\w-]+$/;
 
-function github(overrides: Partial<ProviderConfig> = {}): Provider {
+function github(overrides: Partial<ProviderConfig> = {}): OAuthProvider {
   return defineProvider({
     id: "fake",
     kind: "oauth2",
@@ -34,7 +34,10 @@ function github(overrides: Partial<ProviderConfig> = {}): Provider {
 }
 
 /** Runs the authorization leg against the fake; returns the code and its PKCE verifier. */
-async function codeFor(fake: Awaited<ReturnType<typeof createFakeProvider>>, provider: Provider) {
+async function codeFor(
+  fake: Awaited<ReturnType<typeof createFakeProvider>>,
+  provider: OAuthProvider,
+) {
   const pkce = await createPkce();
   const url = buildAuthorizationUrl(provider, {
     redirectUri: "https://app.test/auth/fake",
@@ -378,15 +381,24 @@ describe("exchangeCode", () => {
     },
   );
 
+  it("throws ERR_AUTHN_PROVIDER_ERROR, not a token-exchange error, when the endpoint cannot be reached", async () => {
+    const boom = new TypeError("fetch failed");
+    const error = await exchangeCode(github(), {
+      code: "c1",
+      redirectUri: "https://app.test/cb",
+      fetch: async () => {
+        throw boom;
+      },
+    }).catch((error_: unknown) => error_);
+
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
+    expect(isUnauthError(error) && error.status).toBe(502);
+    expect(isUnauthError(error) && error.cause).toEqual({ reason: "unreachable", cause: boom });
+  });
+
   it.each([
     ["a 500 page", async () => new Response("<html>oops</html>", { status: 500 })],
     ["a response without access_token", async () => Response.json({ token_type: "Bearer" })],
-    [
-      "a network failure",
-      async (): Promise<Response> => {
-        throw new TypeError("fetch failed");
-      },
-    ],
   ])("throws ERR_AUTHN_TOKEN_EXCHANGE on %s", async (_label, respond) => {
     const error = await exchangeCode(github(), {
       code: "c1",
@@ -439,6 +451,25 @@ describe("exchangeCode", () => {
     });
 
     expect(tokens).toMatchObject({ access_token: "at-9", token_type: "bearer", scope: "a,b" });
+  });
+});
+
+describe("the token request", () => {
+  it("sends an abort signal, refuses redirects and posts the form", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const fetch = async (_input: unknown, init?: RequestInit) => {
+      inits.push(init);
+      return Response.json({ access_token: "at-1", token_type: "Bearer" });
+    };
+
+    await exchangeCode(github(), { code: "c1", redirectUri: "https://app.test/cb", fetch });
+
+    expect(inits[0]?.method).toBe("POST");
+    expect(inits[0]?.redirect).toBe("error");
+    expect(inits[0]?.signal).toBeInstanceOf(AbortSignal);
+    expect(new Headers(inits[0]?.headers).get("content-type")).toBe(
+      "application/x-www-form-urlencoded",
+    );
   });
 });
 

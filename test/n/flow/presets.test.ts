@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   type OidcProfile,
-  type Provider,
+  type OAuthProvider,
   defineOAuth2Provider,
   defineOidcProvider,
 } from "../../../src/n/index.ts";
@@ -18,8 +18,8 @@ describe("oauth2 / oidc typing", () => {
     });
     const generic = defineOidcProvider({ issuer: "https://idp.test", clientId: "c" });
 
-    expectTypeOf(plain).toEqualTypeOf<Provider>();
-    expectTypeOf(generic).toEqualTypeOf<Provider<OidcProfile>>();
+    expectTypeOf(plain).toEqualTypeOf<OAuthProvider>();
+    expectTypeOf(generic).toEqualTypeOf<OAuthProvider<OidcProfile>>();
   });
 
   it("takes the profile type from a mapper", () => {
@@ -34,7 +34,7 @@ describe("oauth2 / oidc typing", () => {
       profile: () => ({ subject: "1", profile: { login: "x" } }),
     });
 
-    expectTypeOf(custom).toEqualTypeOf<Provider<Custom>>();
+    expectTypeOf(custom).toEqualTypeOf<OAuthProvider<Custom>>();
     expect(custom.id).toBe("p");
   });
 

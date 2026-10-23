@@ -1,4 +1,5 @@
 import type { JWSSignJWK } from "unjwt";
+import type { CacheDriver } from "./_cache.ts";
 import type { Fetch } from "./_http.ts";
 
 /** The application's registration at a provider. */
@@ -52,7 +53,8 @@ export interface ProvenIdentity<TProfile = Record<string, unknown>> {
   /** Whether the provider vouches for `email`; absent when it does not say. */
   emailVerified?: boolean;
   avatar?: string;
-  tokens: OAuthTokens;
+  /** The provider's tokens; absent when a custom provider keeps none past the sign-in. */
+  tokens?: OAuthTokens;
 }
 
 /** What a provider's `profile()` returns; the flow adds `provider` and `tokens`. */
@@ -77,8 +79,13 @@ export interface ProfileContext {
 /** How the client authenticates at the token endpoint. Closed. */
 export type TokenAuthMethod = "body" | "basic" | "private_key_jwt" | "none";
 
-/** A provider: plain data plus the function mapping its account data to an identity. */
-export interface Provider<TProfile = Record<string, unknown>> {
+/** A provider the flow engine runs itself (OAuth 2.0 or OpenID Connect), or one running its own legs. */
+export type Provider<TProfile = Record<string, unknown>> =
+  | OAuthProvider<TProfile>
+  | CustomProvider<TProfile>;
+
+/** An OAuth 2.0 / OpenID Connect provider: plain data plus the function mapping its account data to an identity. */
+export interface OAuthProvider<TProfile = Record<string, unknown>> {
   id: string;
   kind: "oauth2" | "oidc";
   label?: string;
@@ -128,9 +135,87 @@ export interface Provider<TProfile = Record<string, unknown>> {
   profile: (context: ProfileContext) => Promise<ProfileResult<TProfile>>;
 }
 
-/** The input of `defineProvider`: a {@link Provider} whose defaulted members may be left out. */
+/**
+ * A provider that runs its own two legs over the engine's flow: the engine keeps `state`, the
+ * return path, the link intent and the sealed record, parses the callback and checks `state` and
+ * the provider's `error`; the provider builds the URL the user is sent to and turns the callback
+ * into an identity, keeping what it needs between the legs in the record's `data`.
+ */
+export interface CustomProvider<TProfile = Record<string, unknown>> {
+  id: string;
+  kind: "custom";
+  label?: string;
+  /** The callback URL the provider registered, used when the start options name none. */
+  redirectUri?: string;
+  /** How the provider sends the user back; a `form_post` callback is a `POST` to the same route. @default "query" */
+  responseMode?: "query" | "form_post";
+  /** The first leg: where to send the user, and what to seal in the record for `complete`. */
+  start: (context: CustomStartContext) => Promise<CustomStart>;
+  /** The second leg: the callback, with the record `start` sealed, into the proven identity. */
+  complete: (context: CustomCompleteContext) => Promise<CustomFlowResult<TProfile>>;
+}
+
+/** What both legs of a custom provider receive. */
+export interface CustomFlowContext {
+  request: Request;
+  /** The flow record as the engine keeps it; `data` is the provider's own. */
+  record: FlowRecord;
+  fetch: Fetch;
+  now: () => number;
+  cache?: CacheDriver;
+}
+
+/** What `CustomProvider.start` receives. */
+export interface CustomStartContext extends CustomFlowContext {
+  /** The callback URL, replayed by the engine as `record.redirectUri`. */
+  redirectUri: string;
+  /** Which account signs in (a handle, an email, a username), when the request named one. */
+  login?: string;
+  /** Replaces the provider's scopes. */
+  scopes?: string[];
+  /** Extra authorization parameters the request asked for. */
+  params?: Record<string, string>;
+}
+
+/**
+ * What `CustomProvider.start` returns: the flow started, with where the user is sent and what to
+ * seal; or a relocation, where the user is sent to start over elsewhere and nothing is sealed (a
+ * sign-in that must start on another host, so its cookie comes back).
+ */
+export type CustomStart =
+  | {
+      /** Where the user is sent. */
+      url: URL | string;
+      /** Sealed into the record as `data`, for `complete`. */
+      data?: Record<string, unknown>;
+      /**
+       * The host the user started on before a relocation, to be sent back to once the sign-in
+       * completed: the handler hands the result over in a sealed token. Only a host the provider
+       * vouches for (a `devHosts` entry), never one read from the request as is.
+       */
+      returnHost?: string;
+      relocate?: undefined;
+    }
+  | {
+      /** Where the user starts over; no flow is recorded. */
+      relocate: URL | string;
+    };
+
+/** What `CustomProvider.complete` receives. */
+export interface CustomCompleteContext extends CustomFlowContext {
+  /** The callback's query or form parameters, `state` already checked. Untrusted beyond that. */
+  params: Record<string, string>;
+}
+
+/** What `CustomProvider.complete` returns; `tokens` only when the provider hands them on. */
+export interface CustomFlowResult<TProfile = Record<string, unknown>> {
+  identity: ProfileResult<TProfile>;
+  tokens?: OAuthTokens;
+}
+
+/** The input of `defineProvider`: an {@link OAuthProvider} whose defaulted members may be left out. */
 export interface ProviderConfig<TProfile = Record<string, unknown>> extends Partial<
-  Omit<Provider<TProfile>, "id" | "kind" | "client" | "pkce" | "profile">
+  Omit<OAuthProvider<TProfile>, "id" | "kind" | "client" | "pkce" | "profile">
 > {
   id: string;
   kind: "oauth2" | "oidc";
@@ -139,6 +224,9 @@ export interface ProviderConfig<TProfile = Record<string, unknown>> extends Part
   pkce?: boolean | "S256" | "plain";
   profile: (context: ProfileContext) => ProfileResult<TProfile> | Promise<ProfileResult<TProfile>>;
 }
+
+/** The input of `defineProvider` for a {@link CustomProvider}: the provider itself. */
+export type CustomProviderConfig<TProfile = Record<string, unknown>> = CustomProvider<TProfile>;
 
 /** What `startFlow` remembers for `completeFlow`. */
 export interface FlowRecord {
@@ -156,6 +244,8 @@ export interface FlowRecord {
   link?: { userId: string };
   /** Provider-private values; open to any provider. */
   data?: Record<string, unknown>;
+  /** The host the user started on before a relocation, to return to after the sign-in. */
+  returnHost?: string;
 }
 
 /**

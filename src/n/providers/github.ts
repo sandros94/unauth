@@ -1,8 +1,19 @@
 import { profileError } from "../flow/_http.ts";
 import { getJson } from "../flow/_http-json.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
-import type { ProfileContext, ProfileResult, Provider } from "../flow/types.ts";
-import { type PresetConfig, grantedScopes, hasMember, nonEmpty, userinfoAs } from "./_shared.ts";
+import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
+import type { AuthSessionData } from "../_session-data.ts";
+import type { HandlerEvent } from "../handler.ts";
+import {
+  type PresetConfig,
+  type PresetHandler,
+  type PresetHandlerConfig,
+  presetHandler,
+  grantedScopes,
+  hasMember,
+  nonEmpty,
+  userinfoAs,
+} from "./_shared.ts";
 
 /** `GET /user` (https://docs.github.com/en/rest/users/users#get-the-authenticated-user). */
 export interface GitHubProfile {
@@ -55,7 +66,7 @@ const HEADERS = { "user-agent": "unauth", "accept": "application/vnd.github+json
  * https://github.blog/changelog/2025-07-14-pkce-support-for-oauth-and-github-app-authentication/.
  * @default scopes `["read:user", "user:email"]`
  */
-export function defineGitHubProvider(options: GitHubProviderConfig): Provider<GitHubProfile> {
+export function defineGitHubProvider(options: GitHubProviderConfig): OAuthProvider<GitHubProfile> {
   return defineOAuth2Provider({
     id: options.id ?? "github",
     label: options.label ?? "GitHub",
@@ -71,6 +82,22 @@ export function defineGitHubProvider(options: GitHubProviderConfig): Provider<Gi
     profile: githubProfile,
   });
 }
+
+/** Options of {@link defineGitHubHandler}: {@link GitHubProviderConfig} and `defineSignInHandler`'s, in one object. */
+export type GitHubHandlerConfig<
+  TSession extends object = AuthSessionData,
+  TResult = never,
+  TEvent extends HandlerEvent = HandlerEvent,
+> = PresetHandlerConfig<GitHubProviderConfig, GitHubProfile, TSession, TResult, TEvent>;
+
+/**
+ * Both legs of a GitHub sign-in on one route: `defineSignInHandler` on {@link defineGitHubProvider}, the
+ * options split between them by the provider's keys.
+ */
+export const defineGitHubHandler: PresetHandler<GitHubProviderConfig, GitHubProfile> =
+  /* @__PURE__ */ presetHandler(defineGitHubProvider, {
+    keys: ["clientId", "clientSecret", "scopes", "authorizationParams", "id", "label"],
+  });
 
 async function githubProfile(context: ProfileContext): Promise<ProfileResult<GitHubProfile>> {
   const user = userinfoAs(context, isGitHubProfile, { provider: "GitHub" });

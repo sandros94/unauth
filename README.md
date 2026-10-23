@@ -9,9 +9,8 @@ A collection of low-level and high-level, server-agnostic, Authentication and Au
 
 ## Features
 
-- **Authentication session** — an encrypted (JWE) or signed (JWS) cookie session from [`unjwt/session`](https://unjwt.s94.dev/frameworks/session), plus `authenticate()`, `authenticatedAt`, revocation, refresh on roll and sign-in/sign-out events
 - **OAuth 2.1 and OpenID Connect** — `startFlow` / `completeFlow` over the Web `Request`, one handler for both legs, presets for GitHub, Google, Apple, Microsoft, Discord, GitLab, LinkedIn, Facebook, Twitch and X
-- **Sign-in resolution** — `signIn()` maps a proven identity to your user and identity records, linking included
+- **AT Protocol** — sign in with a Bluesky or any other PDS account: handle resolution, PAR, PKCE and DPoP, the account verified against its PDS; and a `custom` provider kind for any protocol the engine does not run itself
 - **One-time tokens** — signed, single-use, expiring tokens for invitations, password resets and magic links
 - **Framework-free** — the event h3 v2, Nitro 3 and Nuxt's `nuxt/server` hand a handler is taken as it is; a `Request` and a `Headers` serve every other runtime
 - **Authorization** — Planned
@@ -31,101 +30,139 @@ npx nypm install unauth unjwt
 
 ### Session
 
-The authentication session is an `unjwt/session` definition with authentication on top: `authenticate()` sets `authenticatedAt` and reissues the token under a new id; `require(event)` returns the session once it authenticated, typed as such, or throws `ERR_AUTHN_UNAUTHENTICATED` (401); `isAuthenticated(session)` narrows one already in hand.
+The session is the application's own [`unjwt/session`](https://unjwt.s94.dev) definition, which a sign-in writes to; its options are in the unjwt docs. Its data extends `AuthSessionData`, what a sign-in writes by default.
 
 ```ts
-import { H3 } from "h3";
-import { generateJWK } from "unjwt/session";
-import { defineAuthSession, defineSessionGuard } from "unauth/n";
+import { type H3Event, HTTPError } from "h3";
+import { defineJWESession } from "unjwt/session";
+import type { AuthSessionData } from "unauth/n";
 
-const key = await generateJWK("A256GCM"); // load a persisted key in production
+interface SessionData extends AuthSessionData {
+  role?: string;
+}
 
-const auth = defineAuthSession<{ userId: string; role: string }>({
-  key,
-  maxAge: "7D",
-  hooks: {
-    // Runs once per request on a session read from its token; `true` clears it.
-    isRevoked: async ({ session }) => !(await db.users.exists(session.data.userId)),
-    onSignIn: ({ session }) => audit("sign-in", session.data.userId),
-    onSignOut: ({ oldSession, reason }) => audit("sign-out", oldSession.data.userId, reason),
-  },
-});
+const session = defineJWESession<SessionData, "1h">({ key, maxAge: "1h", rolling: "15m" });
 
-const app = new H3()
-  .post("/login", async (event) => {
-    const session = await auth.use(event);
-    await session.authenticate({ userId: "u1", role: "admin" });
-    return { ok: true };
-  })
-  .get("/me", async (event) => (await auth.require(event)).data, {
-    middleware: [defineSessionGuard(auth)],
-  })
-  .post("/logout", async (event) => {
-    await (await auth.use(event)).clear();
-    return { ok: true };
-  });
+const useAuthSession = (event: H3Event) => session.use(event);
+async function requireAuthSession(event: H3Event) {
+  const current = await useAuthSession(event);
+  if (!current.id) throw new HTTPError({ status: 401, message: "Sign in first" });
+  return current;
+}
 ```
-
-`use()` takes what `unjwt/session` takes: the `{ req, res, context }` event of h3 v2, Nitro 3 and a `nuxt/server` handler, a request by its headers (a WebSocket upgrade), or `{ token }` for a token in hand. A third generic (`defineAuthSession<Data, H3Event>`) narrows `use()` and every hook's `context` to a framework's own event.
-
-The cookie is `__Host-unauth` (secure, `httpOnly`, `SameSite=Lax`), `__Secure-unauth` when a `domain` or `path` rules the `__Host-` prefix out, `unauth` without `secure`. The session is reissued on read once the token is three quarters of `maxAge` old, so `exp` slides with activity; tune it with `rolling`: a duration is the age a token must reach, `true` reissues on every read, `false` never. A roll fires unjwt's `onUpdate` with `trigger: "rolling"` and the `refresh` hook, which can merge data into the session or clear it.
-
-Every [unjwt session hook](https://unjwt.s94.dev/frameworks/hooks) passes through: `session` is the live manager, so `onRead` can `update()` or `clear()` the session it is looking at.
 
 ### Sign in with a provider
 
-One route serves both legs of a sign-in: without `code` it answers the redirect to the provider with a sealed flow cookie (state, PKCE and, for OpenID Connect, a nonce); with one it completes the callback and hands the proven identity to `onSuccess`.
+One route serves both legs of a sign-in: without `code` it answers the redirect to the provider with a sealed flow cookie (state, PKCE and, for OpenID Connect, a nonce); with one it completes the callback, writes the proven identity to the session and sends the browser on. Each preset has a handler that takes the provider's options and the sign-in's in one object:
 
 ```ts
-import { defineSignInHandler, signIn } from "unauth/n";
-import { defineGitHubProvider } from "unauth/n/providers/github";
-
-const github = defineGitHubProvider({
-  clientId: process.env.GITHUB_CLIENT_ID!,
-  clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-});
+import { defineGitHubHandler } from "unauth/n/providers/github";
+import { deriveKey } from "unauth/n";
 
 app.get(
   "/auth/github",
-  defineSignInHandler(github, {
-    key: flowKey, // seals the flow cookie
-    redirectUri: "https://app.example/auth/github",
-    onSuccess: async (event, { identity, redirect }) => {
-      const { user } = await signIn(identity, { identities });
-      const session = await auth.use(event);
-      await session.authenticate({ userId: user.id, role: user.role });
-      return new Response(null, { status: 302, headers: { location: redirect ?? "/" } });
-    },
+  defineGitHubHandler({
+    clientId: process.env.GITHUB_CLIENT_ID!,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    key: () => deriveKey(process.env.AUTH_SECRET!, { info: "unauth:flow" }), // seals the flow cookie
+    origin: "https://app.example", // the callback is this route on this origin
+    session: useAuthSession,
   }),
 );
 ```
 
-The handler returns a `Response` for the redirect and what `onSuccess` returns for the callback, which h3 v2, Nitro 3 and `nuxt/server` send as they are. A failed flow is an `UnauthError` with a status: answered by `onError` when given, else with a plain `Response` carrying that status. `signIn()` resolves the identity against your `IdentityStore` (find by provider account, create, link) and never matches accounts by email.
+`key` takes a JWE key, or a callback returning one, called once per handler, on its first request, and its key kept from then on; an app that wants one key object across routes derives it in a util and passes it as `key`. `deriveKey(secret, { info })` turns a random secret of 32 characters or more (`openssl rand -base64 32`, never a passphrase: HKDF is not a password KDF) into an `A256GCM` key, the same for the same secret and `info` on every instance and restart; `"unauth:flow"` is the conventional `info` for the flow key. A runtime with its own purpose-bound derivation, such as Nuxt's `deriveSecret`, builds the `oct` key from that material in the callback instead of deriving again, and a PEM goes through unjwt's `importPEM(pem, alg)`.
+
+`defineSignInHandler(provider, options)` is the same handler for any provider, one you built yourself included; the preset handler above is `defineSignInHandler` on `defineGitHubProvider`:
+
+```ts
+import { defineSignInHandler, deriveKey } from "unauth/n";
+
+app.get(
+  "/auth/sso",
+  defineSignInHandler(sso, {
+    key: () => deriveKey(process.env.AUTH_SECRET!, { info: "unauth:flow" }),
+    origin: "https://app.example",
+    session: useAuthSession,
+  }),
+);
+```
+
+The session receives `toSessionData(identity)`, an `AuthSessionData` (`provider`, `subject`, `name`, `email`, `emailVerified`, `avatar` and `signedInAt`), so its data is `AuthSessionData` or an interface extending it; `toSession` maps the identity to other data instead. A sign-in replaces the session, cleared then written, so nothing of whoever was signed in before carries over and the session id is a new one. The browser then lands on `redirect` (default `/`), or on the same-origin path the request asked for. `redirectUri` names the callback outright in place of `origin`.
+
+`onSuccess` takes over the response: with `session` it runs after the write, and without `session` it is required and does the rest itself, as a link intent always needs it to:
+
+```ts
+onSuccess: async (event, { identity, redirect }) => {
+  const session = await useAuthSession(event);
+  await session.clear();
+  await session.update({ ...toSessionData(identity, { now: Date.now() }), role: "member" });
+  return new Response(null, { status: 302, headers: { location: redirect ?? "/" } });
+},
+```
+
+The handler returns a `Response`, or what `onSuccess` returns, which h3 v2, Nitro 3 and `nuxt/server` send as they are. A failed flow is an `UnauthError` with a status: answered by `onError` when given, else with a plain `Response` carrying that status.
 
 Generic providers come from `defineOAuth2Provider({ id, clientId, clientSecret, authorization, token, userinfo })` and `defineOidcProvider({ issuer, clientId, clientSecret })`, which reads the endpoints from the issuer's discovery document. The lower-level `startFlow(provider, request, options)` and `completeFlow(provider, request, options)` work on a Web `Request` on any runtime.
 
-### Guard
+### Sign in with AT Protocol
 
-`defineSessionGuard(auth)` is a middleware answering a `401` `Response` unless the request carries an authenticated session; the handler behind it reads the same session with `auth.require(event)`. `onAuthenticated` runs with the authenticated session and the context before the handler, where a throw refuses the request:
+An AT Protocol account (Bluesky, or any PDS) signs in from its handle, DID or server URL, which the handler reads from the request's `?login=` (an `onStart` that names a `login` wins). There is nothing to register: the app's identity is the URL of a client metadata document it publishes.
 
 ```ts
-import { HTTPError } from "h3";
-import { defineSessionGuard } from "unauth/n";
+import { deriveKey } from "unauth/n";
+import { defineAtprotoHandler } from "unauth/n/providers/atproto";
 
-app.delete("/admin/users/:id", handler, {
-  middleware: [
-    defineSessionGuard(auth, {
-      onAuthenticated({ session }) {
-        if (session.data.role !== "admin") throw new HTTPError({ status: 403 });
-      },
-    }),
-  ],
+app.get(
+  "/auth/atproto",
+  defineAtprotoHandler({
+    clientId: "https://app.example/oauth-client-metadata.json",
+    redirectUri: "https://app.example/auth/atproto",
+    key: () => deriveKey(process.env.AUTH_SECRET!, { info: "unauth:flow" }),
+    session: useAuthSession,
+  }),
+);
+```
+
+The provider carries the document to publish at its `clientId` as `client.metadata`, built from its config (`clientName`, `clientUri`, `logoUri`, `tosUri`, `policyUri`); it is absent for the development client, which publishes none. Two routes need the same provider, so an app defines it once with `defineAtprotoProvider` and hands it to the handler as `provider`:
+
+```ts
+import { defineAtprotoProvider } from "unauth/n/providers/atproto";
+
+const atproto = defineAtprotoProvider({ clientId, redirectUri, clientName: "My app" });
+
+app.get("/oauth-client-metadata.json", () => atproto.client.metadata);
+app.get("/auth/atproto", defineAtprotoHandler({ provider: atproto, key, session: useAuthSession }));
+```
+
+The handle is resolved through DNS-over-HTTPS and the `/.well-known/atproto-did` document, the DID through `plc.directory` or the `did:web` host (both configurable), the PDS's authorization server is discovered and checked against the atproto profile, the request is pushed (PAR) with PKCE and a DPoP proof, and after the callback the token's `sub` is checked against the account the sign-in started from. The DPoP-bound tokens are not kept: this is sign-in only. In development the same config works unchanged: a `clientId` on `http://localhost` is one no server could fetch, so the provider uses the spec's development client instead, whose callback must be a loopback IP (the atproto profile refuses `localhost`, RFC 8252 §8.3); `devHosts: ["localhost"]` registers the callback on `127.0.0.1`, moves a sign-in started on `localhost` there before any cookie is set (the way the official browser client does), and once the callback completed sends the browser back to `localhost` with the result in a sealed, one-minute, single-use token, so `onSuccess` and the session live where you started. The identity is `identity.subject`, the DID, and `identity.profile` carries the verified handle, the PDS and the authorization server.
+
+### Custom providers
+
+A `kind: "custom"` provider brings its own two legs over the same engine: it receives the request, the sealed flow record and a `fetch`, returns the URL the user is sent to (with any `data` to keep until the callback), and later turns the callback's parameters into an identity. The engine keeps `state`, the return path, the link intent and the cookie, and `defineSignInHandler` serves it like any other provider; the AT Protocol provider is built on it.
+
+```ts
+import { defineProvider } from "unauth/n";
+
+const magic = defineProvider<{ email: string }>({
+  id: "magic",
+  kind: "custom",
+  start: async ({ record, redirectUri, login }) => ({
+    url: `https://magic.example/send?email=${login}&state=${record.state}&return=${redirectUri}`,
+    data: { email: login },
+  }),
+  complete: async ({ params, record }) => ({
+    identity: {
+      subject: String(record.data?.email),
+      profile: { email: String(record.data?.email) },
+    },
+  }),
 });
 ```
 
 ### Frameworks
 
-The [`playgrounds/`](./playgrounds) directory runs the same application on h3 v2, Nitro 3 and Nuxt 4.6: a password login, the GitHub sign-in, a guarded route and a WebSocket upgrade. On Nuxt the handlers come from `nuxt/server`, whose event is the web-standard one; on Nitro everything comes from `nitro`. Neither needs `h3` as a dependency.
+The [`playgrounds/`](./playgrounds) directory runs the same application on h3 v2, Nitro 3 and Nuxt 4.6: a password login, the GitHub and AT Protocol sign-ins, a protected route and a WebSocket upgrade. On Nuxt the handlers come from `nuxt/server`, whose event is the web-standard one, and only the WebSocket handler from `h3`; on Nitro everything comes from `nitro`, without `h3` as a dependency.
 
 ## Development
 

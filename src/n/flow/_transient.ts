@@ -46,26 +46,34 @@ export async function saveFlow(
   await session.update(cookie);
 }
 
+/** Why a callback carries no flow: no cookie at all, one that is expired or does not open, or a store record already taken. */
+export type MissingFlowReason = "missing" | "unreadable" | "consumed";
+
 /**
  * The flow record the request carries, consumed: the cookie is expired on `headers` and the
- * store's record taken, whether or not the callback goes on to succeed. `undefined` when there is
- * none, it expired, or it does not open.
+ * store's record taken, whether or not the callback goes on to succeed. Without a record, the
+ * reason there is none.
  */
 export async function takeFlow(context: {
   request: Request;
   headers: Headers;
   provider: Provider<unknown>;
   options: FlowCarrierOptions;
-}): Promise<FlowRecord | undefined> {
+}): Promise<{ record: FlowRecord } | { record?: undefined; reason: MissingFlowReason }> {
   const { request, headers, options } = context;
   const definition = flowSession(context);
   const event = { req: request, res: { headers } };
   const present = definition.token(event) !== undefined;
+  if (!present) return { reason: "missing" };
   const session = await definition.use(event);
   const { record, ref } = session.id === undefined ? {} : session.data;
-  if (present) await session.clear();
-  if (record) return record;
-  return ref !== undefined && options.store ? options.store.take(ref) : undefined;
+  await session.clear();
+  if (record) return { record };
+  if (ref !== undefined && options.store) {
+    const stored = await options.store.take(ref);
+    return stored ? { record: stored } : { reason: "consumed" };
+  }
+  return { reason: "unreadable" };
 }
 
 function flowSession(context: { provider: Provider<unknown>; options: FlowCarrierOptions }) {
@@ -78,9 +86,13 @@ function flowSession(context: { provider: Provider<unknown>; options: FlowCarrie
     maxAge: flowMaxAge(context.options),
     sessionHeader: false,
     cookie: { httpOnly: true, secure, sameSite, path: "/" },
+    jwe: { encryptOptions: { protectedHeader: { typ: FLOW_TYP } } },
   };
   return defineJWESession(config);
 }
+
+/** The flow cookie's `typ`: never a session or handoff token, whatever key they share. */
+const FLOW_TYP = "unauth-flow+jwt";
 
 function flowMaxAge(options: FlowCarrierOptions): number {
   return durationSeconds(options.maxAge ?? "10m", { label: "A sign-in flow" });

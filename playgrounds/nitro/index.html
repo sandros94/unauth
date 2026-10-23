@@ -16,6 +16,11 @@
         <button data-call="GET /throw-after-clear">throw after clear</button>
         <a href="/auth/github">sign in with GitHub</a>
       </p>
+      <form action="/auth/atproto" method="get">
+        <input name="login" placeholder="alice.bsky.social" autocomplete="username" required />
+        <button type="submit">sign in with AT Protocol</button>
+      </form>
+      <p></p>
       <div id="log"></div>
     </main>
     <script type="module">

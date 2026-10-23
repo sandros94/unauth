@@ -23,7 +23,8 @@
 - `pnpm fmt` — automatically fix lint issues.
 - `pnpm test` — run all tests.
 - `pnpm test:coverage` — run tests with coverage reporting.
-- `pnpm typecheck` — type-check the library, playground, and docs.
+- `pnpm typecheck` — type-check the library and its tests.
+- `pnpm typecheck:playgrounds` — type-check the three playgrounds (h3 and nitro with the root TypeScript, nuxt with its own `nuxt typecheck`).
 
 Each script is independent — `test` does **not** run lint or type-check. **Always run** `pnpm fmt` and `pnpm typecheck` after making changes.
 
@@ -66,6 +67,7 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 - Prefer explicit errors over silent failures.
 - Use warnings for recoverable situations; throw for invalid states.
 - Include actionable context in error messages.
+- Errors are structured content for downstream application logic: a stable `code`, a `cause` whose shape `UnauthErrorCauseMap` declares (what a UI translates), and a `status` hint. The message is for logs, never the only carrier of meaning.
 
 ## Documentation Requirements
 

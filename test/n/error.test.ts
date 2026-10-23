@@ -36,9 +36,9 @@ describe("UnauthError", () => {
 });
 
 describe("isUnauthError", () => {
-  const error: unknown = new UnauthError("[unauth/n] Too old.", "ERR_AUTHN_REAUTH_REQUIRED", {
+  const error: unknown = new UnauthError("[unauth/n] No flow.", "ERR_AUTHN_FLOW_EXPIRED", {
     status: 401,
-    cause: { authenticatedAt: 1 },
+    cause: { reason: "unreadable" },
   });
 
   it("matches any UnauthError without a code", () => {
@@ -46,7 +46,7 @@ describe("isUnauthError", () => {
   });
 
   it("matches only the given code", () => {
-    expect(isUnauthError(error, "ERR_AUTHN_REAUTH_REQUIRED")).toBe(true);
+    expect(isUnauthError(error, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
     expect(isUnauthError(error, "ERR_AUTHN_UNAUTHENTICATED")).toBe(false);
   });
 
@@ -59,11 +59,13 @@ describe("isUnauthError", () => {
   });
 
   it("narrows code and the typed cause", () => {
-    expect(isUnauthError(error, "ERR_AUTHN_REAUTH_REQUIRED")).toBe(true);
-    if (!isUnauthError(error, "ERR_AUTHN_REAUTH_REQUIRED")) return;
-    expectTypeOf(error.code).toEqualTypeOf<"ERR_AUTHN_REAUTH_REQUIRED">();
-    expectTypeOf(error.cause).toEqualTypeOf<{ authenticatedAt: number | undefined }>();
-    expect(error.cause.authenticatedAt).toBe(1);
+    expect(isUnauthError(error, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
+    if (!isUnauthError(error, "ERR_AUTHN_FLOW_EXPIRED")) return;
+    expectTypeOf(error.code).toEqualTypeOf<"ERR_AUTHN_FLOW_EXPIRED">();
+    expectTypeOf(error.cause).toEqualTypeOf<{
+      reason: "missing" | "unreadable" | "consumed";
+    }>();
+    expect(error.cause.reason).toBe("unreadable");
   });
 
   it("leaves cause unknown for codes without a cause shape", () => {

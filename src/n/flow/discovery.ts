@@ -3,17 +3,16 @@ import {
   assertSecureUrl,
   configError,
   fetchOf,
-  isRecord,
   nowOf,
   providerError,
   stringField,
 } from "./_http.ts";
-import { getObject } from "./_http-json.ts";
-import { type CacheDriver, loadCache } from "./_cache.ts";
+import type { CacheDriver } from "./_cache.ts";
+import { assertIssuerDocument, defineMetadataLoader, requiredMember } from "./_metadata.ts";
 import { assertProvider } from "./provider.ts";
-import type { Provider } from "./types.ts";
+import type { OAuthProvider } from "./types.ts";
 
-/** The OpenID Provider metadata a flow uses (OpenID Connect Discovery 1.0 §3). */
+/** The OpenID OAuthProvider metadata a flow uses (OpenID Connect Discovery 1.0 §3). */
 export interface OidcMetadata {
   issuer: string;
   authorization_endpoint: string;
@@ -32,13 +31,20 @@ export interface DiscoverOptions {
   /** Keep the document here instead of in memory. */
   cache?: CacheDriver;
   /**
-   * Development only: hosts whose issuer may use plain `http:` (see `Provider.insecureHosts`).
+   * Development only: hosts whose issuer may use plain `http:` (see `OAuthProvider.insecureHosts`).
    * `resolveProvider` uses the provider's own list instead.
    */
   insecureHosts?: string[];
 }
 
-const cache = /* @__PURE__ */ loadCache<OidcMetadata>({ name: "discovery", check: parseMetadata });
+const LABEL = "discovery document";
+
+const load = /* @__PURE__ */ defineMetadataLoader<OidcMetadata>({
+  name: "discovery",
+  label: LABEL,
+  url: metadataUrl,
+  parse: parseMetadata,
+});
 
 /**
  * Reads `${issuer}/.well-known/openid-configuration`, kept for ten minutes per issuer: in memory
@@ -52,49 +58,12 @@ export async function discover(issuer: string, options?: DiscoverOptions): Promi
     label: "The OpenID Connect issuer",
     insecureHosts: options?.insecureHosts,
   });
-  return cache.get(issuer, () => loadMetadata(issuer, fetchOf(options)), {
+  return load(issuer, {
+    fetch: fetchOf(options),
     now: nowOf(options),
+    cache: options?.cache,
     force: options?.force,
-    scope: options?.fetch,
-    driver: options?.cache,
   });
-}
-
-async function loadMetadata(issuer: string, fetch: Fetch): Promise<OidcMetadata> {
-  return parseMetadata(
-    await getObject(metadataUrl(issuer), { fetch, label: "discovery document" }),
-    issuer,
-  );
-}
-
-/** The metadata `document` holds for `issuer`; `ERR_AUTHN_PROVIDER_ERROR` when it names another or lacks an endpoint. */
-function parseMetadata(document: unknown, issuer: string): OidcMetadata {
-  const url = metadataUrl(issuer);
-  if (!isRecord(document))
-    throw providerError(`The discovery document at ${url} is not a JSON object.`);
-  if (document.issuer !== issuer) {
-    throw providerError(
-      `The discovery document at ${url} names the issuer ${JSON.stringify(document.issuer)} instead of ${JSON.stringify(issuer)}.`,
-    );
-  }
-  const endpoint = (name: string): string => {
-    const value = stringField(document, name);
-    if (value === undefined)
-      throw providerError(`The discovery document at ${url} has no "${name}".`);
-    return value;
-  };
-  return {
-    ...document,
-    issuer,
-    authorization_endpoint: endpoint("authorization_endpoint"),
-    token_endpoint: endpoint("token_endpoint"),
-    jwks_uri: endpoint("jwks_uri"),
-    userinfo_endpoint: stringField(document, "userinfo_endpoint"),
-  };
-}
-
-function metadataUrl(issuer: string): string {
-  return `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
 }
 
 /**
@@ -103,17 +72,19 @@ function metadataUrl(issuer: string): string {
  * `authorization_response_iss_parameter_supported`; any other provider is returned as is.
  */
 export async function resolveProvider<TProfile>(
-  provider: Provider<TProfile>,
+  provider: OAuthProvider<TProfile>,
   options?: DiscoverOptions,
-): Promise<Provider<TProfile>> {
+): Promise<OAuthProvider<TProfile>> {
   if (!provider.discovery) return provider;
   if (!provider.issuer)
-    throw configError(`Provider ${JSON.stringify(provider.id)} needs an "issuer" for discovery.`);
+    throw configError(
+      `OAuthProvider ${JSON.stringify(provider.id)} needs an "issuer" for discovery.`,
+    );
   const metadata = await discover(provider.issuer, {
     ...options,
     insecureHosts: provider.insecureHosts,
   });
-  const resolved: Provider<TProfile> = {
+  const resolved: OAuthProvider<TProfile> = {
     ...provider,
     discovery: false,
     authorization: provider.authorization ?? metadata.authorization_endpoint,
@@ -130,10 +101,29 @@ export async function resolveProvider<TProfile>(
   try {
     assertProvider(resolved);
   } catch (error) {
-    throw providerError(
-      `The discovery document of ${provider.issuer} names unusable endpoints.`,
-      error,
-    );
+    throw providerError(`The discovery document of ${provider.issuer} names unusable endpoints.`, {
+      reason: "malformed",
+      cause: error,
+    });
   }
   return resolved;
+}
+
+/** The metadata `document` holds for `issuer`; `ERR_AUTHN_PROVIDER_ERROR` when it names another or lacks an endpoint. */
+function parseMetadata(document: unknown, issuer: string): OidcMetadata {
+  const context = { issuer, url: metadataUrl(issuer), label: LABEL };
+  const metadata = assertIssuerDocument(document, context);
+  const endpoint = (name: string): string => requiredMember(metadata, name, context);
+  return {
+    ...metadata,
+    issuer,
+    authorization_endpoint: endpoint("authorization_endpoint"),
+    token_endpoint: endpoint("token_endpoint"),
+    jwks_uri: endpoint("jwks_uri"),
+    userinfo_endpoint: stringField(metadata, "userinfo_endpoint"),
+  };
+}
+
+function metadataUrl(issuer: string): string {
+  return `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
 }

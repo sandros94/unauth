@@ -1,8 +1,9 @@
 import { type ExpiresIn, type SessionConfigJWS, defineJWSSession } from "unjwt/session";
-import { base64Stringify, hash, secureRandomBytes } from "unsecure";
+import { secureRandomBytes } from "unsecure/random";
+import { base64Stringify } from "unsecure/utils";
+import { hash } from "unsecure/hash";
 import { UnauthError } from "../_internal/error.ts";
 import { configError, durationSeconds } from "./flow/_http.ts";
-import type { AuthSessionRecord } from "./session.ts";
 
 /** What `consume` is asked to burn. */
 export interface OneTimeTokenUse {
@@ -25,7 +26,7 @@ export interface OneTimeTokenConfig {
 }
 
 /** A kind of one-time token: invitations, password resets, magic links, handoff tickets. */
-export interface OneTimeToken<TData extends AuthSessionRecord> {
+export interface OneTimeToken<TData extends object> {
   /** A signed token carrying `data` and the purpose; nothing is stored. */
   issue: (data: TData) => Promise<string>;
   /**
@@ -36,7 +37,7 @@ export interface OneTimeToken<TData extends AuthSessionRecord> {
 }
 
 /** Defines a kind of signed, single-use, expiring token over the `consume` driver. */
-export function defineOneTimeToken<TData extends AuthSessionRecord>(
+export function defineOneTimeToken<TData extends object>(
   config: OneTimeTokenConfig,
 ): OneTimeToken<TData> {
   const { purpose, consume } = config;

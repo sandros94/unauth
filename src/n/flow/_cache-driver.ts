@@ -1,4 +1,5 @@
-import { hash, sanitizeObjectCopy } from "unsecure";
+import { sanitizeObjectCopy } from "unsecure/sanitize";
+import { hash } from "unsecure/hash";
 import { isRecord } from "./_http.ts";
 
 /** How far in the future a driver entry's `loadedAt` may lie, for clocks drifting between instances. */

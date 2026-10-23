@@ -1,7 +1,8 @@
 import { H3, type H3Event, HTTPError, serve } from "h3";
-import { deriveJWKFromPassword } from "unjwt/session";
+import { defineJWESession, deriveJWKFromPassword } from "unjwt/session";
 
-import { defineAuthSession, defineSessionGuard, defineSignInHandler } from "unauth/n";
+import { defineSignInHandler } from "unauth/n";
+import { defineAtprotoProvider } from "unauth/n/providers/atproto";
 import { defineGitHubProvider } from "unauth/n/providers/github";
 
 const password = process.env.SESSION_PASSWORD ?? "playground-password-with-at-least-32-characters";
@@ -20,21 +21,53 @@ const [sessionKey, flowKey] = await Promise.all(
   ),
 );
 
-// The third generic narrows `use()` and every hook's `context` to the h3 event.
-const auth = defineAuthSession<SessionData, H3Event>({
+// The third generic narrows `use()` to the h3 event.
+const definition = defineJWESession<SessionData, "1h", H3Event>({
   key: sessionKey,
+  name: "unauth-playground",
   maxAge: "1h",
   rolling: "15m",
-  hooks: {
-    onSignIn: ({ session }) => console.log(`[auth] ${session.data.user} signed in`),
-    onSignOut: ({ oldSession, reason }) =>
-      console.log(`[auth] ${oldSession.data.user} signed out (${reason})`),
-  },
 });
+
+function useAuthSession(event: H3Event) {
+  return definition.use(event);
+}
+
+async function requireAuthSession(event: H3Event) {
+  const session = await useAuthSession(event);
+  if (!session.id) throw new HTTPError({ status: 401, message: "Sign in first" });
+  return session;
+}
 
 const github = defineGitHubProvider({
   clientId: process.env.GITHUB_CLIENT_ID ?? "set GITHUB_CLIENT_ID",
   clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "set GITHUB_CLIENT_SECRET",
+});
+
+// The app's identity is its client metadata document. In development that URL is on localhost,
+// which no server can fetch, so the provider uses the spec's development client instead; its
+// callback must be a loopback IP, which `devHosts` maps `localhost` to, moving a start on
+// localhost there first.
+const atproto = defineAtprotoProvider({
+  redirectUri: `${origin}/auth/atproto`,
+  devHosts: process.env.NODE_ENV === "production" ? undefined : ["localhost"],
+  clientId: `${origin}/oauth-client-metadata.json`,
+  clientName: "unauth playground",
+  clientUri: origin,
+});
+
+// One route, both legs: `?login=<handle, DID or server>` starts, the callback completes.
+const signInWithAtproto = defineSignInHandler(atproto, {
+  key: flowKey,
+  onStart: (event: H3Event) => ({
+    login: new URL(event.req.url).searchParams.get("login") ?? undefined,
+  }),
+  onSuccess: async (event: H3Event, { identity }) => {
+    const session = await useAuthSession(event);
+    await session.update({ user: identity.name ?? identity.subject, provider: "atproto" });
+
+    return new Response(null, { status: 302, headers: { location: "/" } });
+  },
 });
 
 const app = new H3()
@@ -43,28 +76,24 @@ const app = new H3()
     if (typeof body?.user !== "string")
       throw new HTTPError({ status: 400, message: "user required" });
 
-    const session = await auth.use(event);
-    await session.authenticate({ user: body.user });
+    const session = await useAuthSession(event);
+    await session.update({ user: body.user });
 
     return { id: session.id, user: session.data.user, expiresAt: session.expiresAt };
   })
-  .get(
-    "/me",
-    async (event) => {
-      const session = await auth.require(event);
+  .get("/me", async (event) => {
+    const session = await requireAuthSession(event);
 
-      return { id: session.id, ...session.data, expiresAt: session.expiresAt };
-    },
-    { middleware: [defineSessionGuard(auth)] },
-  )
+    return { id: session.id, ...session.data, expiresAt: session.expiresAt };
+  })
   .post("/logout", async (event) => {
-    const session = await auth.use(event);
+    const session = await useAuthSession(event);
     await session.clear();
 
     return { ok: true };
   })
   .get("/throw-after-clear", async (event) => {
-    const session = await auth.require(event);
+    const session = await requireAuthSession(event);
     await session.clear();
 
     throw new HTTPError({
@@ -79,12 +108,14 @@ const app = new H3()
       key: flowKey,
       redirectUri: `${origin}/auth/github`,
       onSuccess: async (event: H3Event, { identity }) => {
-        const session = await auth.use(event);
-        await session.authenticate({ user: identity.name ?? identity.subject, provider: "github" });
+        const session = await useAuthSession(event);
+        await session.update({ user: identity.name ?? identity.subject, provider: "github" });
 
         return new Response(null, { status: 302, headers: { location: "/" } });
       },
     }),
-  );
+  )
+  .get("/auth/atproto", signInWithAtproto)
+  .get("/oauth-client-metadata.json", () => atproto.client.metadata);
 
 serve(app);

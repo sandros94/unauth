@@ -1,10 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { type JWK_oct, generateJWK } from "unjwt/session";
+import { type JWK_oct, defineJWESession, generateJWK } from "unjwt/session";
 
 import {
   type CacheDriver,
   type FlowRecord,
-  type Provider,
+  type OAuthProvider,
   type FlowStore,
   startFlow,
   completeFlow,
@@ -30,7 +30,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function fakeOAuth2(): Provider {
+function fakeOAuth2(): OAuthProvider {
   return defineOAuth2Provider({
     id: "fake",
     clientId: CLIENT_ID,
@@ -55,7 +55,7 @@ async function oidcSetup() {
 
 /** Runs `startFlow`, the provider's consent and returns what `completeFlow` needs. */
 async function beginSignIn(
-  provider: Provider,
+  provider: OAuthProvider,
   fake: Awaited<ReturnType<typeof createFakeProvider>>,
   options: Partial<Parameters<typeof startFlow>[2]> = {},
 ) {
@@ -176,7 +176,7 @@ describe("completeFlow", () => {
       profile: fake.userinfo,
     });
     expect(result.identity.tokens).toBe(result.tokens);
-    expect(result.tokens.access_token).toMatch(/^at-/);
+    expect(result.tokens?.access_token).toMatch(/^at-/);
     expect(result.redirect).toBe("/dashboard?tab=1");
     expect(result.link).toEqual({ userId: "u-42" });
     expect(flowCookieCleared(headers)).toBe(true);
@@ -232,7 +232,7 @@ describe("completeFlow", () => {
       emailVerified: true,
       name: "Ada",
     });
-    expect(result.tokens.id_token).toBeTypeOf("string");
+    expect(result.tokens?.id_token).toBeTypeOf("string");
   });
 
   it("verifies the id_token over an http JWKS on a host the provider lists in insecureHosts", async () => {
@@ -332,12 +332,32 @@ describe("completeFlow", () => {
       }),
     );
     expect(isUnauthError(missing, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
+    expect(isUnauthError(missing) && missing.cause).toEqual({ reason: "missing" });
+    expect(isUnauthError(missing) && missing.message).toMatch(/start on the host/);
 
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 10 * 60_000 + 1000 });
     const expired = await rejection(
       completeFlow(fakeOAuth2(), request, { key, headers: new Headers(), fetch: fake.fetch }),
     );
     expect(isUnauthError(expired, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
+    expect(isUnauthError(expired) && expired.cause).toEqual({ reason: "unreadable" });
+  });
+
+  it("refuses a session token sealed under the same key as the flow cookie: the typ differs", async () => {
+    const fake = await createFakeProvider();
+    const { back } = await beginSignIn(fakeOAuth2(), fake);
+
+    const session = defineJWESession<Record<string, unknown>, "10m">({ key, maxAge: "10m" });
+    const forged = await session.issue({
+      record: { provider: "fake", state: "s", redirectUri: REDIRECT_URI },
+    });
+    const replayed = new Request(back, { headers: { cookie: `${FLOW_COOKIE}=${forged}` } });
+
+    const error = await rejection(
+      completeFlow(fakeOAuth2(), replayed, { key, headers: new Headers(), fetch: fake.fetch }),
+    );
+    expect(isUnauthError(error, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
+    expect(isUnauthError(error) && error.cause).toEqual({ reason: "unreadable" });
   });
 
   it("throws ERR_AUTHN_PROVIDER_REFUSED on ?error=, with the provider's error in cause", async () => {
@@ -690,5 +710,6 @@ describe("FlowStore", () => {
     );
 
     expect(isUnauthError(error, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
+    expect(isUnauthError(error) && error.cause).toEqual({ reason: "consumed" });
   });
 });

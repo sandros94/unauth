@@ -36,10 +36,11 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "bench": "vitest bench --run"
+    "bench": "vitest bench --run",
+    "typecheck:playgrounds": "tsc -p playgrounds/h3 && tsc -p playgrounds/nitro && pnpm --dir playgrounds/nuxt-4 typecheck"
   },
   "dependencies": {
-    "unsecure": "^0.3.2"
+    "unsecure": "^0.3.3"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -57,7 +58,7 @@
     "vitest": "^5.0.4"
   },
   "peerDependencies": {
-    "unjwt": "^0.8.1"
+    "unjwt": "^0.8.3"
   },
   "peerDependenciesMeta": {
     "unjwt": {
