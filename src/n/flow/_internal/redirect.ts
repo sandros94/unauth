@@ -1,4 +1,4 @@
-import { configError } from "./_http.ts";
+import { configError } from "./http/shared.ts";
 
 /**
  * The `redirect_uri` of a flow: the configured one, else the request's own URL (without its query)

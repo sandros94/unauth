@@ -1,4 +1,4 @@
-import { configError } from "./_http.ts";
+import { configError } from "./_internal/http/shared.ts";
 import type { OAuthProvider } from "./types.ts";
 
 /** Parameters the flow owns; extra parameters naming them are dropped. */

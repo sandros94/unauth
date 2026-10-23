@@ -1,5 +1,5 @@
-import { profileError } from "../flow/_http.ts";
-import { getJson } from "../flow/_http-json.ts";
+import { profileError } from "../flow/_internal/http/shared.ts";
+import { getJson } from "../flow/_internal/http/json.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
 import type { WebRequestEvent } from "../request-event.ts";
@@ -12,7 +12,7 @@ import {
   hasMember,
   nonEmpty,
   userinfoAs,
-} from "./_shared.ts";
+} from "./_internal/shared.ts";
 
 /** `GET /user` (https://docs.github.com/en/rest/users/users#get-the-authenticated-user). */
 export interface GitHubProfile {

@@ -1,7 +1,7 @@
-import { type Fetch, configError, fetchOf, nowOf } from "./_http.ts";
-import { postForm } from "./_http-json.ts";
-import { authenticateClient } from "./_client-auth.ts";
-import { parseTokenResponse } from "./_token-response.ts";
+import { type Fetch, configError, fetchOf, nowOf } from "./_internal/http/shared.ts";
+import { postForm } from "./_internal/http/json.ts";
+import { authenticateClient } from "./_internal/client-auth.ts";
+import { parseTokenResponse } from "./_internal/token-response.ts";
 import type { OAuthTokens, OAuthProvider } from "./types.ts";
 
 /** Options of {@link exchangeCode}. */

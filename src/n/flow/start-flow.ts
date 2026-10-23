@@ -1,8 +1,8 @@
-import type { CacheDriver } from "./_cache.ts";
-import { type Fetch, fetchOf, nowOf } from "./_http.ts";
-import { resolveRedirectUri, safeRedirect } from "./_redirect.ts";
-import { resumeIntent, withSealedIntent } from "./_intent.ts";
-import { type FlowCarrierOptions, saveFlow } from "./_transient.ts";
+import type { CacheDriver } from "./_internal/cache/load.ts";
+import { type Fetch, fetchOf, nowOf } from "./_internal/http/shared.ts";
+import { resolveRedirectUri, safeRedirect } from "./_internal/redirect.ts";
+import { resumeIntent, withSealedIntent } from "./_internal/carrier/intent.ts";
+import { type FlowCarrierOptions, saveFlow } from "./_internal/carrier/transient.ts";
 import { buildAuthorizationUrl } from "./authorization-url.ts";
 import { resolveProvider } from "./discovery.ts";
 import { createNonce, createPkce, createState } from "./random.ts";

@@ -6,9 +6,13 @@ import {
   nowOf,
   providerError,
   stringField,
-} from "./_http.ts";
-import type { CacheDriver } from "./_cache.ts";
-import { assertIssuerDocument, defineMetadataLoader, requiredMember } from "./_metadata.ts";
+} from "./_internal/http/shared.ts";
+import type { CacheDriver } from "./_internal/cache/load.ts";
+import {
+  assertIssuerDocument,
+  defineMetadataLoader,
+  requiredMember,
+} from "./_internal/cache/metadata.ts";
 import { assertProvider } from "./provider.ts";
 import type { OAuthProvider } from "./types.ts";
 

@@ -1,8 +1,12 @@
-import { UnauthError } from "../../../_internal/error.ts";
-import { isRecord, profileError, stringField } from "../../flow/_http.ts";
-import { exchangeError, parseTokenResponse } from "../../flow/_token-response.ts";
-import type { CustomCompleteContext, CustomFlowResult, ProfileResult } from "../../flow/types.ts";
-import { grantedScopes } from "../_shared.ts";
+import { UnauthError } from "../../../../error.ts";
+import { isRecord, profileError, stringField } from "../../../flow/_internal/http/shared.ts";
+import { exchangeError, parseTokenResponse } from "../../../flow/_internal/token-response.ts";
+import type {
+  CustomCompleteContext,
+  CustomFlowResult,
+  ProfileResult,
+} from "../../../flow/types.ts";
+import { grantedScopes } from "../shared.ts";
 import type { AtprotoClient } from "./client.ts";
 import { type DpopKey, dpopPost } from "./dpop.ts";
 import type { FlowData, Resolvers } from "./flow.ts";

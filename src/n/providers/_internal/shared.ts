@@ -1,7 +1,11 @@
-import { isRecord, profileError } from "../flow/_http.ts";
-import type { ProfileContext, Provider } from "../flow/types.ts";
-import type { FlowIntent, WebRequestEvent } from "../request-event.ts";
-import { type SignInAnswer, type SignInHandlerOptions, defineSignInHandler } from "../sign-in.ts";
+import { isRecord, profileError } from "../../flow/_internal/http/shared.ts";
+import type { ProfileContext, Provider } from "../../flow/types.ts";
+import type { FlowIntent, WebRequestEvent } from "../../request-event.ts";
+import {
+  type SignInAnswer,
+  type SignInHandlerOptions,
+  defineSignInHandler,
+} from "../../sign-in.ts";
 
 /** What every preset accepts besides its own options. */
 export interface PresetConfig {

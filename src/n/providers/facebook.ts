@@ -1,4 +1,4 @@
-import { isRecord } from "../flow/_http.ts";
+import { isRecord } from "../flow/_internal/http/shared.ts";
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
 import type { WebRequestEvent } from "../request-event.ts";
@@ -10,7 +10,7 @@ import {
   hasMember,
   nonEmpty,
   userinfoAs,
-} from "./_shared.ts";
+} from "./_internal/shared.ts";
 
 /** Graph API `GET /me` with the requested `fields` (https://developers.facebook.com/docs/graph-api/reference/user). */
 export interface FacebookProfile {

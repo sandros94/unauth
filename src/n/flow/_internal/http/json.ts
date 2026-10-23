@@ -1,5 +1,5 @@
 import { safeJsonParse } from "unsecure/sanitize";
-import { type Fetch, isRecord, providerError, readObject } from "./_http.ts";
+import { type Fetch, isRecord, providerError, readObject } from "./shared.ts";
 import {
   PROVIDER_DOCUMENT_MAX_BYTES,
   PROVIDER_FETCH_TIMEOUT,
@@ -7,7 +7,7 @@ import {
   isAbort,
   raced,
   readText,
-} from "./_http-body.ts";
+} from "./body.ts";
 
 /** Options of {@link getJson} and {@link getObject}. */
 export interface GetJsonOptions {

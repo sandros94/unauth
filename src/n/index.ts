@@ -6,7 +6,7 @@ export {
   type UnauthErrorOptions,
   UnauthError,
   isUnauthError,
-} from "../_internal/error.ts";
+} from "../error.ts";
 export type {
   CustomCompleteContext,
   CustomFlowContext,
@@ -16,6 +16,7 @@ export type {
   CustomStart,
   CustomStartContext,
   FlowRecord,
+  FlowResult,
   FlowStore,
   IdTokenClaims,
   OAuthClient,
@@ -28,8 +29,8 @@ export type {
   ProviderConfig,
   TokenAuthMethod,
 } from "./flow/types.ts";
-export type { Fetch } from "./flow/_http.ts";
-export type { CacheDriver } from "./flow/_cache.ts";
+export type { Fetch } from "./flow/_internal/http/shared.ts";
+export type { CacheDriver } from "./flow/_internal/cache/load.ts";
 export { defineProvider } from "./flow/provider.ts";
 export { type Pkce, createNonce, createPkce, createState } from "./flow/random.ts";
 export { type AuthorizationParams, buildAuthorizationUrl } from "./flow/authorization-url.ts";
@@ -49,7 +50,8 @@ export {
 export { type FetchJwksOptions, fetchJwks } from "./flow/jwks.ts";
 export { type VerifyIdTokenOptions, verifyIdToken } from "./flow/id-token.ts";
 export { type StartFlowOptions, startFlow } from "./flow/start-flow.ts";
-export { type CompleteFlowOptions, type FlowResult, completeFlow } from "./flow/complete-flow.ts";
+export { type CompleteFlowOptions } from "./flow/_internal/complete.ts";
+export { completeFlow } from "./flow/complete-flow.ts";
 export {
   type OAuth2ProviderConfig,
   type OAuthClientSecret,
@@ -59,7 +61,7 @@ export {
 export { type OidcProfile, type OidcProviderConfig, defineOidcProvider } from "./flow/oidc.ts";
 export { type FlowIntent, type WebRequestEvent, isCallback } from "./request-event.ts";
 export { type SignInAnswer, type SignInHandlerOptions, defineSignInHandler } from "./sign-in.ts";
-export type { FlowKey, FlowKeyInput, SignInKey } from "./_flow-key.ts";
+export type { FlowKey, FlowKeyInput, SignInKey } from "./_internal/flow-key.ts";
 export { deriveKey } from "./derive-key.ts";
 export {
   type OneTimeToken,

@@ -2,9 +2,9 @@ import { type JWKSet, type JWSAlgorithm, type JWSVerifyResult, verify } from "un
 import { type DigestAlgorithm, hash } from "unsecure/hash";
 import { base64Stringify } from "unsecure/utils";
 import { secureCompare } from "unsecure/compare";
-import { UnauthError, isUnauthError } from "../../_internal/error.ts";
-import { type Fetch, nowOf } from "./_http.ts";
-import type { CacheDriver } from "./_cache.ts";
+import { UnauthError, isUnauthError } from "../../error.ts";
+import { type Fetch, nowOf } from "./_internal/http/shared.ts";
+import type { CacheDriver } from "./_internal/cache/load.ts";
 import { fetchJwks } from "./jwks.ts";
 import type { IdTokenClaims } from "./types.ts";
 

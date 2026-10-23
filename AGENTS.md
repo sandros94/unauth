@@ -76,10 +76,10 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 ## Code Conventions
 
 - Use **ESM** and modern JavaScript.
-- Avoid barrel files (`index.ts` re-exports); import directly from specific modules.
+- Import from specific modules, never through a barrel, for anything internal and for `unjwt`/`unsecure` subpaths (TypeScript then loads only what the file uses). Public entry points (`src/n/index.ts`, `src/error.ts`, `src/argon2.ts`) are the one place that re-exports.
 - Place non-exported/internal helpers at the end of the file.
 - For multi-arg functions, use an options object as the second parameter.
-- Split logic across files; avoid long single-file modules (>200 LoC). Use `_*` prefix for internal files.
+- Split logic across files; avoid long single-file modules (>200 LoC). Internal files live in an `_internal/` folder next to the public modules they serve (`src/n/_internal/`, `src/n/flow/_internal/`, `src/n/providers/_internal/`), grouped by concern once a folder grows; no `_` prefix on the files themselves.
 - Prefer **Web APIs** over Node.js APIs where possible.
 - Do not add comments explaining what the line does unless prompted.
 - Before adding new code, study surrounding patterns, naming conventions, and architectural decisions.

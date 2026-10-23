@@ -1,5 +1,5 @@
 import type { SessionConfigJWE } from "unjwt/session";
-import { configError } from "./flow/_http.ts";
+import { configError } from "../flow/_internal/http/shared.ts";
 
 /** A key unjwt's JWE session seals with: a symmetric JWK, a `CryptoKey`, or an asymmetric pair. */
 export type FlowKey = SessionConfigJWE["key"];

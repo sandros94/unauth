@@ -26,6 +26,7 @@ export default defineBuildConfig({
       type: "bundle",
       input: [
         "./src/n/index.ts",
+        "./src/error.ts",
         "./src/argon2.ts",
         ...PROVIDERS.map((id) => `./src/n/providers/${id}.ts`),
       ],

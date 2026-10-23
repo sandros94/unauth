@@ -1,5 +1,5 @@
-import { configError } from "./_http.ts";
-import { standardProfile } from "./_profile.ts";
+import { configError } from "./_internal/http/shared.ts";
+import { standardProfile } from "./_internal/profile.ts";
 import { defineProvider } from "./provider.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider, ProviderConfig } from "./types.ts";
 

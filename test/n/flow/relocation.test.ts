@@ -1,8 +1,9 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { type JWK_oct, generateJWK } from "unjwt/session";
 
 import {
   type CustomProvider,
+  type FlowResult,
   completeFlow,
   defineOAuth2Provider,
   defineProvider,
@@ -10,9 +11,10 @@ import {
   isUnauthError,
   startFlow,
 } from "../../../src/n/index.ts";
-import { handoffCarrier } from "../../../src/n/_handoff.ts";
+import { handoffCarrier } from "../../../src/n/flow/_internal/carrier/handoff.ts";
+import { completeFlowWithReturnHost } from "../../../src/n/flow/_internal/complete.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "./_fake-provider.ts";
-import { sealedCarrier } from "../../../src/n/flow/_sealed-carrier.ts";
+import { sealedCarrier } from "../../../src/n/flow/_internal/carrier/sealed.ts";
 import { cookieHeader } from "../_session.ts";
 
 const APP = "https://app.test";
@@ -113,11 +115,12 @@ describe("a relocated start", () => {
       key,
       redirectUri: REDIRECT_URI,
     });
-    const result = await completeFlow<unknown, Link>(provider, callback(started), {
-      key,
-      headers: new Headers(),
-    });
-    expect(result.returnHost).toBe("app.test");
+    const { returnHost } = await completeFlowWithReturnHost<unknown, Link>(
+      provider,
+      callback(started),
+      { key, headers: new Headers() },
+    );
+    expect(returnHost).toBe("app.test");
   });
 
   it("records no origin host when the token names the host the start runs on", async () => {
@@ -128,11 +131,29 @@ describe("a relocated start", () => {
       new Request(`${REDIRECT_URI}?unauth_intent=${token}`),
       { key, redirectUri: REDIRECT_URI },
     );
+    const completed = await completeFlowWithReturnHost<unknown, Link>(provider, callback(started), {
+      key,
+      headers: new Headers(),
+    });
+    expect(completed).not.toHaveProperty("returnHost");
+  });
+
+  it("keeps the origin host out of the public result", async () => {
+    const { provider } = movingProvider();
+    const moved = await startFlow<Link>(provider, new Request(`${APP}/auth/custom`), {
+      key,
+      redirectUri: REDIRECT_URI,
+    });
+    const started = await startFlow<Link>(provider, new Request(moved.headers.get("location")!), {
+      key,
+      redirectUri: REDIRECT_URI,
+    });
     const result = await completeFlow<unknown, Link>(provider, callback(started), {
       key,
       headers: new Headers(),
     });
-    expect(result.returnHost).toBeUndefined();
+    expect(result).not.toHaveProperty("returnHost");
+    expectTypeOf<FlowResult>().not.toHaveProperty("returnHost");
   });
 
   it("merges the sealed intent over the relocated start's own options", async () => {
@@ -220,12 +241,13 @@ describe("a relocated start", () => {
       redirectUri: REDIRECT_URI,
       link: { userId: "u2" },
     });
-    const result = await completeFlow<unknown, Link>(provider, callback(started), {
-      key,
-      headers: new Headers(),
-    });
+    const { result, returnHost } = await completeFlowWithReturnHost<unknown, Link>(
+      provider,
+      callback(started),
+      { key, headers: new Headers() },
+    );
     expect(result.link).toEqual({ userId: "u2" });
-    expect(result.returnHost).toBeUndefined();
+    expect(returnHost).toBeUndefined();
   });
 });
 

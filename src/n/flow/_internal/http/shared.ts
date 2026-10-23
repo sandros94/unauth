@@ -1,8 +1,8 @@
 import type { ExpiresIn } from "unjwt/session";
 import { computeDurationInSeconds } from "unjwt/utils";
 import { safeJsonParse } from "unsecure/sanitize";
-import { UnauthError, type UnauthErrorCauseMap } from "../../_internal/error.ts";
-import { PROVIDER_DOCUMENT_MAX_BYTES, readText } from "./_http-body.ts";
+import { UnauthError, type UnauthErrorCauseMap } from "../../../../error.ts";
+import { PROVIDER_DOCUMENT_MAX_BYTES, readText } from "./body.ts";
 
 /** The longest endpoint URL accepted; it also bounds the cache keys built from one. */
 export const MAX_URL_LENGTH: number = 2048;

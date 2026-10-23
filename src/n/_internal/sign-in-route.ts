@@ -1,10 +1,15 @@
 import type { SessionConfigJWE } from "unjwt/session";
-import { UnauthError, isUnauthError } from "../_internal/error.ts";
-import { HANDOFF_PARAM, type HandoffCarrier, handoffCarrier } from "./_handoff.ts";
-import { type StartFlowOptions, startFlow } from "./flow/start-flow.ts";
-import { type FlowResult, completeFlow } from "./flow/complete-flow.ts";
-import type { Provider } from "./flow/types.ts";
-import { type FlowIntent, type WebRequestEvent, isCallback } from "./request-event.ts";
+import { UnauthError, isUnauthError } from "../../error.ts";
+import {
+  HANDOFF_PARAM,
+  type HandoffCarrier,
+  handoffCarrier,
+} from "../flow/_internal/carrier/handoff.ts";
+import { type StartFlowOptions, startFlow } from "../flow/start-flow.ts";
+import type { FlowResult } from "../flow/types.ts";
+import { type CompletedFlow, completeFlowWithReturnHost } from "../flow/_internal/complete.ts";
+import type { Provider } from "../flow/types.ts";
+import { type FlowIntent, type WebRequestEvent, isCallback } from "../request-event.ts";
 
 /** What {@link signInRoute} serves: the flow, its key, and the route's steps for each request. */
 export interface SignInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TLink> {
@@ -27,8 +32,8 @@ export interface SignInSteps<TProfile, TResult, TLink> {
 /**
  * One route for both legs of a sign-in: without `code`/`error` (or a `form_post` body) it answers
  * the redirect to the provider, otherwise it completes the callback and returns `complete`'s
- * value. A result whose `returnHost` is another host is redirected there in a sealed, single-use
- * handoff token, and `complete` runs on that host. The consumed flow cookie is expired on the
+ * value. A sign-in a relocation moved off its starting host is redirected back there with the
+ * result in a sealed, single-use handoff token, and `complete` runs on that host. The consumed flow cookie is expired on the
  * response, error responses included; an `UnauthError` is answered by `onError`, else by a plain
  * response.
  */
@@ -89,9 +94,9 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
     }
 
     const headers = new Headers();
-    let result: FlowResult<TProfile, TLink>;
+    let completed: CompletedFlow<TProfile, TLink>;
     try {
-      result = await completeFlow<TProfile, TLink>(provider, event.req, {
+      completed = await completeFlowWithReturnHost<TProfile, TLink>(provider, event.req, {
         ...flow,
         key,
         headers,
@@ -104,10 +109,11 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
       return onError(error);
     }
     copySetCookie(headers, event.res.headers);
+    const { result, returnHost } = completed;
     const here = new URL(event.req.url);
-    if (result.returnHost !== undefined && result.returnHost !== here.hostname) {
+    if (returnHost !== undefined && returnHost !== here.hostname) {
       const target = new URL(here);
-      target.hostname = result.returnHost;
+      target.hostname = returnHost;
       target.search = `?${HANDOFF_PARAM}=${encodeURIComponent(await handoff.issue(result))}`;
       return new Response(null, {
         status: 302,

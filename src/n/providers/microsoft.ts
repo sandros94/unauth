@@ -9,7 +9,7 @@ import {
   hasMember,
   nonEmpty,
   userinfoAs,
-} from "./_shared.ts";
+} from "./_internal/shared.ts";
 
 /** Microsoft Graph `GET /me` (https://learn.microsoft.com/graph/api/user-get). */
 export interface MicrosoftProfile {

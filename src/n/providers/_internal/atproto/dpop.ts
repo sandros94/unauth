@@ -1,9 +1,12 @@
 import { type JWK_EC_Private, digestUrl, generateJWK, sign, toPublicJWK } from "unjwt";
-import { type Fetch, providerError, stringField } from "../../flow/_http.ts";
-import { type FormAnswer, postForm } from "../../flow/_http-json.ts";
-import { createJti } from "../../flow/random.ts";
+import { type Fetch, providerError, stringField } from "../../../flow/_internal/http/shared.ts";
+import { type FormAnswer, postForm } from "../../../flow/_internal/http/json.ts";
+import { createJti } from "../../../flow/random.ts";
 
-/** The ES256 key a sign-in's DPoP proofs are signed with (RFC 9449); it binds the flow's tokens. */
+/**
+ * The ES256 key a sign-in's DPoP proofs are signed with (RFC 9449); it binds the flow's tokens.
+ * For exploration: not a stable part of the API, and may change or go without notice.
+ */
 export type DpopKey = JWK_EC_Private<"ES256">;
 
 /** A fresh ES256 key for one sign-in, unnamed: its public half travels in every proof instead. */
@@ -12,7 +15,10 @@ export async function createDpopKey(): Promise<DpopKey> {
   return privateKey;
 }
 
-/** Options of {@link createDpopProof}. */
+/**
+ * Options of {@link createDpopProof}. For exploration: not a stable part of the API, and may change
+ * or go without notice.
+ */
 export interface DpopProofOptions {
   /** The request's method. */
   htm: string;
@@ -25,7 +31,10 @@ export interface DpopProofOptions {
   now?: () => number;
 }
 
-/** An RFC 9449 proof JWT for one request, signed with `key` and carrying its public half (§4.2). */
+/**
+ * An RFC 9449 proof JWT for one request, signed with `key` and carrying its public half (§4.2).
+ * For exploration: not a stable part of the API, and may change or go without notice.
+ */
 export async function createDpopProof(key: DpopKey, options: DpopProofOptions): Promise<string> {
   const url = new URL(options.htu);
   const claims: Record<string, unknown> = {

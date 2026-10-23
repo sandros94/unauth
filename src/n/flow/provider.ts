@@ -1,4 +1,4 @@
-import { assertSecureUrl, configError } from "./_http.ts";
+import { assertSecureUrl, configError } from "./_internal/http/shared.ts";
 import type {
   CustomProvider,
   CustomProviderConfig,

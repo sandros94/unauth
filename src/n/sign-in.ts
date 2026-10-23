@@ -1,11 +1,11 @@
-import type { UnauthError } from "../_internal/error.ts";
-import { type SignInKey, flowKeyResolver } from "./_flow-key.ts";
-import { configError } from "./flow/_http.ts";
-import { safeRedirect } from "./flow/_redirect.ts";
-import type { FlowResult } from "./flow/complete-flow.ts";
+import type { UnauthError } from "../error.ts";
+import { type SignInKey, flowKeyResolver } from "./_internal/flow-key.ts";
+import { configError } from "./flow/_internal/http/shared.ts";
+import { safeRedirect } from "./flow/_internal/redirect.ts";
+import type { FlowResult } from "./flow/types.ts";
 import type { StartFlowOptions } from "./flow/start-flow.ts";
 import type { Provider } from "./flow/types.ts";
-import { signInRoute } from "./_sign-in-route.ts";
+import { signInRoute } from "./_internal/sign-in-route.ts";
 import type { FlowIntent, WebRequestEvent } from "./request-event.ts";
 
 /**

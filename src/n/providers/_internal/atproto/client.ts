@@ -1,4 +1,4 @@
-import { assertSecureUrl, configError } from "../../flow/_http.ts";
+import { assertSecureUrl, configError } from "../../../flow/_internal/http/shared.ts";
 
 /** An AT Protocol provider's client. */
 export interface AtprotoClient {

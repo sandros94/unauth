@@ -1,6 +1,6 @@
 import type { JWK_oct } from "unjwt/session";
 import { hkdf } from "unsecure/hkdf";
-import { configError } from "./flow/_http.ts";
+import { configError } from "./flow/_internal/http/shared.ts";
 
 /**
  * An `A256GCM` JWK for a JWE session (a sign-in's `key`), derived from `secret` with HKDF-SHA-256

@@ -1,4 +1,4 @@
-import type { StartIntent } from "./flow/_intent.ts";
+import type { StartIntent } from "./flow/_internal/carrier/intent.ts";
 import type { Provider } from "./flow/types.ts";
 
 /**

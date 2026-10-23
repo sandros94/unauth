@@ -9,7 +9,7 @@ import {
   hasMember,
   nonEmpty,
   userinfoAs,
-} from "./_shared.ts";
+} from "./_internal/shared.ts";
 
 /** `GET /api/v4/user` (https://docs.gitlab.com/api/users/#for-non-administrator-users). */
 export interface GitLabProfile {

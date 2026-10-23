@@ -1,7 +1,12 @@
-import { UnauthError } from "../../../_internal/error.ts";
-import { assertSecureUrl, configError, providerError, stringField } from "../../flow/_http.ts";
-import { createPkce } from "../../flow/random.ts";
-import type { CustomStart, CustomStartContext } from "../../flow/types.ts";
+import { UnauthError } from "../../../../error.ts";
+import {
+  assertSecureUrl,
+  configError,
+  providerError,
+  stringField,
+} from "../../../flow/_internal/http/shared.ts";
+import { createPkce } from "../../../flow/random.ts";
+import type { CustomStart, CustomStartContext } from "../../../flow/types.ts";
 import { type AtprotoClient, relocation, sameCallback } from "./client.ts";
 import { type DpopKey, createDpopKey, dpopPost } from "./dpop.ts";
 import {

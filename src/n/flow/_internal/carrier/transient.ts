@@ -1,7 +1,7 @@
 import { type ExpiresIn, type SessionConfigJWE, defineJWESession } from "unjwt/session";
-import { durationSeconds } from "./_http.ts";
-import { createState } from "./random.ts";
-import type { FlowRecord, Provider, FlowStore } from "./types.ts";
+import { durationSeconds } from "../http/shared.ts";
+import { createState } from "../../random.ts";
+import type { FlowRecord, Provider, FlowStore } from "../../types.ts";
 
 /** Where a flow record waits between the two legs. */
 export interface FlowCarrierOptions {

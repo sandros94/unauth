@@ -1,8 +1,21 @@
-import { UnauthError, isUnauthError } from "../../../_internal/error.ts";
-import { assertSecureUrl, isRecord, providerError, stringField } from "../../flow/_http.ts";
-import { PROVIDER_FETCH_TIMEOUT, isAbort, raced, readText } from "../../flow/_http-body.ts";
-import { getObject } from "../../flow/_http-json.ts";
-import { type MetadataOptions, defineMetadataLoader } from "../../flow/_metadata.ts";
+import { UnauthError, isUnauthError } from "../../../../error.ts";
+import {
+  assertSecureUrl,
+  isRecord,
+  providerError,
+  stringField,
+} from "../../../flow/_internal/http/shared.ts";
+import {
+  PROVIDER_FETCH_TIMEOUT,
+  isAbort,
+  raced,
+  readText,
+} from "../../../flow/_internal/http/body.ts";
+import { getObject } from "../../../flow/_internal/http/json.ts";
+import {
+  type MetadataOptions,
+  defineMetadataLoader,
+} from "../../../flow/_internal/cache/metadata.ts";
 
 /** Where the resolvers an identity needs are, and how to reach them. */
 export interface AtprotoResolveOptions extends MetadataOptions {

@@ -1,15 +1,15 @@
-import { configError } from "../flow/_http.ts";
+import { configError } from "../flow/_internal/http/shared.ts";
 import { defineProvider } from "../flow/provider.ts";
 import type { CustomProvider } from "../flow/types.ts";
 import type { WebRequestEvent } from "../request-event.ts";
-import { type PresetHandler, type PresetHandlerConfig, presetHandler } from "./_shared.ts";
-import { type AtprotoProfile, complete } from "./_atproto/callback.ts";
-import { type AtprotoClient, resolveClient } from "./_atproto/client.ts";
-import { resolversOf, start } from "./_atproto/flow.ts";
+import { type PresetHandler, type PresetHandlerConfig, presetHandler } from "./_internal/shared.ts";
+import { type AtprotoProfile, complete } from "./_internal/atproto/callback.ts";
+import { type AtprotoClient, resolveClient } from "./_internal/atproto/client.ts";
+import { resolversOf, start } from "./_internal/atproto/flow.ts";
 
-export type { AtprotoProfile } from "./_atproto/callback.ts";
-export type { AtprotoClient, AtprotoClientMetadata } from "./_atproto/client.ts";
-export { type DpopKey, type DpopProofOptions, createDpopProof } from "./_atproto/dpop.ts";
+export type { AtprotoProfile } from "./_internal/atproto/callback.ts";
+export type { AtprotoClient, AtprotoClientMetadata } from "./_internal/atproto/client.ts";
+export { type DpopKey, type DpopProofOptions, createDpopProof } from "./_internal/atproto/dpop.ts";
 
 /** Options of {@link defineAtprotoProvider}. */
 export interface AtprotoProviderConfig {

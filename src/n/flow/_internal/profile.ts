@@ -1,5 +1,5 @@
-import { stringField } from "./_http.ts";
-import type { ProfileResult } from "./types.ts";
+import { stringField } from "./http/shared.ts";
+import type { ProfileResult } from "../types.ts";
 
 /**
  * The normalized identity of an account payload using the OpenID Connect standard claims, with

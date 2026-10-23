@@ -1,7 +1,7 @@
-import { UnauthError, type UnauthErrorCauseMap } from "../../_internal/error.ts";
-import { stringField } from "./_http.ts";
-import type { FormAnswer } from "./_http-json.ts";
-import type { OAuthTokens } from "./types.ts";
+import { UnauthError, type UnauthErrorCauseMap } from "../../../error.ts";
+import { stringField } from "./http/shared.ts";
+import type { FormAnswer } from "./http/json.ts";
+import type { OAuthTokens } from "../types.ts";
 
 /** Options of {@link parseTokenResponse}. */
 export interface TokenResponseOptions {

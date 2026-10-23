@@ -1,5 +1,5 @@
-import { profileError } from "./_http.ts";
-import { standardProfile } from "./_profile.ts";
+import { profileError } from "./_internal/http/shared.ts";
+import { standardProfile } from "./_internal/profile.ts";
 import type { OAuthClientSecret, ProfileMapper } from "./oauth2.ts";
 import { defineProvider } from "./provider.ts";
 import type {

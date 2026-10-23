@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { type Fetch, readObject } from "../../../src/n/flow/_http.ts";
-import { getJson, postForm } from "../../../src/n/flow/_http-json.ts";
-import { PROVIDER_DOCUMENT_MAX_BYTES } from "../../../src/n/flow/_http-body.ts";
+import { type Fetch, readObject } from "../../../src/n/flow/_internal/http/shared.ts";
+import { getJson, postForm } from "../../../src/n/flow/_internal/http/json.ts";
+import { PROVIDER_DOCUMENT_MAX_BYTES } from "../../../src/n/flow/_internal/http/body.ts";
 import { defineOAuth2Provider, exchangeCode, isUnauthError } from "../../../src/n/index.ts";
 
 const URL_ = "https://idp.test/doc";

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { type JWK_oct, generateJWK } from "unjwt/session";
 
-import { type FlowKey, flowKeyResolver } from "../../src/n/_flow-key.ts";
+import { type FlowKey, flowKeyResolver } from "../../src/n/_internal/flow-key.ts";
 import { isUnauthError } from "../../src/n/index.ts";
 
 const PEM_REMEDY = /importPEM\(pem, alg\)[\s\S]*deriveKey/;

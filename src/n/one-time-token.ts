@@ -2,8 +2,8 @@ import { type ExpiresIn, type SessionConfigJWS, defineJWSSession } from "unjwt/s
 import { secureRandomBytes } from "unsecure/random";
 import { base64Stringify } from "unsecure/utils";
 import { hash } from "unsecure/hash";
-import { UnauthError } from "../_internal/error.ts";
-import { configError, durationSeconds } from "./flow/_http.ts";
+import { UnauthError } from "../error.ts";
+import { configError, durationSeconds } from "./flow/_internal/http/shared.ts";
 
 /** What `consume` is asked to burn. */
 export interface OneTimeTokenUse {

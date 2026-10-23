@@ -1,4 +1,4 @@
-import { type Envelope, driverKey, fitsDriver, readEnvelope } from "./_cache-driver.ts";
+import { type Envelope, driverKey, fitsDriver, readEnvelope } from "./driver.ts";
 
 /** How long a provider document (discovery, JWK Set) is trusted before it is fetched again. */
 export const PROVIDER_CACHE_TTL: number = 10 * 60_000;

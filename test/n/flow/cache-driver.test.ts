@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { PROVIDER_CACHE_TTL } from "../../../src/n/flow/_cache.ts";
+import { PROVIDER_CACHE_TTL } from "../../../src/n/flow/_internal/cache/load.ts";
 import { type CacheDriver, discover, fetchJwks, isUnauthError } from "../../../src/n/index.ts";
 import { createFakeProvider } from "./_fake-provider.ts";
 

@@ -1,4 +1,4 @@
-import { profileError } from "../flow/_http.ts";
+import { profileError } from "../flow/_internal/http/shared.ts";
 import { type OidcProfile, claimsProfile, defineOidcProvider } from "../flow/oidc.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
 import type { WebRequestEvent } from "../request-event.ts";
@@ -7,7 +7,7 @@ import {
   type PresetHandler,
   type PresetHandlerConfig,
   presetHandler,
-} from "./_shared.ts";
+} from "./_internal/shared.ts";
 
 /** LinkedIn's OpenID Connect claims (https://learn.microsoft.com/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2). */
 export interface LinkedInProfile extends Omit<OidcProfile, "locale"> {

@@ -1,6 +1,6 @@
 import type { JWSSignJWK } from "unjwt";
-import type { CacheDriver } from "./_cache.ts";
-import type { Fetch } from "./_http.ts";
+import type { CacheDriver } from "./_internal/cache/load.ts";
+import type { Fetch } from "./_internal/http/shared.ts";
 
 /** The application's registration at a provider. */
 export interface OAuthClient {
@@ -250,6 +250,20 @@ export interface FlowRecord<TLink = unknown> {
   data?: Record<string, unknown>;
   /** The host the user started on before a relocation, to return to after the sign-in. */
   returnHost?: string;
+}
+
+/** A completed sign-in: the proven identity and what the flow carried. */
+export interface FlowResult<TProfile = Record<string, unknown>, TLink = never> {
+  identity: ProvenIdentity<TProfile>;
+  /** The provider's tokens; absent when a custom provider keeps none past the sign-in. */
+  tokens?: OAuthTokens;
+  /**
+   * The link intent `startFlow` was given, untouched: the account in `identity` is proven, whether
+   * the user who asked is still the signed-in one is the application's to check.
+   */
+  link?: TLink;
+  /** The same-origin path given to `startFlow`. */
+  redirect?: string;
 }
 
 /**

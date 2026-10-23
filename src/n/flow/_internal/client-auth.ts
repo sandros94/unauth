@@ -1,8 +1,8 @@
 import { base64Stringify } from "unsecure/utils";
 import { sign } from "unjwt";
-import { configError } from "./_http.ts";
-import { createJti } from "./random.ts";
-import type { OAuthProvider } from "./types.ts";
+import { configError } from "./http/shared.ts";
+import { createJti } from "../random.ts";
+import type { OAuthProvider } from "../types.ts";
 
 /** How long a `private_key_jwt` client assertion stays valid. */
 const ASSERTION_LIFETIME = 60;

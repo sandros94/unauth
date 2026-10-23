@@ -1,5 +1,5 @@
-import { type Fetch, configError, fetchOf } from "./_http.ts";
-import { getObject } from "./_http-json.ts";
+import { type Fetch, configError, fetchOf } from "./_internal/http/shared.ts";
+import { getObject } from "./_internal/http/json.ts";
 import type { OAuthTokens, OAuthProvider } from "./types.ts";
 
 /**

@@ -22,6 +22,10 @@
       "types": "./dist/n/providers/*.d.mts",
       "default": "./dist/n/providers/*.mjs"
     },
+    "./error": {
+      "types": "./dist/error.d.mts",
+      "default": "./dist/error.mjs"
+    },
     "./argon2": {
       "types": "./dist/argon2.d.mts",
       "default": "./dist/argon2.mjs"

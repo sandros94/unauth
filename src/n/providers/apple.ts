@@ -1,6 +1,6 @@
 import { type JWSSignJWK, importPEM, sign } from "unjwt";
 import { safeJsonParse } from "unsecure/sanitize";
-import { isRecord, profileError } from "../flow/_http.ts";
+import { isRecord, profileError } from "../flow/_internal/http/shared.ts";
 import { defineProvider } from "../flow/provider.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
 import type { WebRequestEvent } from "../request-event.ts";
@@ -11,7 +11,7 @@ import {
   presetHandler,
   booleanClaim,
   nonEmpty,
-} from "./_shared.ts";
+} from "./_internal/shared.ts";
 
 /** What Apple posts as `user` on the first authorization only. */
 export interface AppleUser {

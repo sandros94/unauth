@@ -3,7 +3,7 @@ import { type JWK_oct, defineJWESession, generateJWK } from "unjwt/session";
 
 import { type WebRequestEvent, deriveKey } from "../../../src/n/index.ts";
 import { defineSignInHandler } from "../../../src/n/sign-in.ts";
-import { presetHandler } from "../../../src/n/providers/_shared.ts";
+import { presetHandler } from "../../../src/n/providers/_internal/shared.ts";
 import { defineAppleHandler, defineAppleProvider } from "../../../src/n/providers/apple.ts";
 import { defineDiscordHandler, defineDiscordProvider } from "../../../src/n/providers/discord.ts";
 import {

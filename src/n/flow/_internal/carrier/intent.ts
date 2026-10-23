@@ -1,7 +1,7 @@
 import type { SessionConfigJWE } from "unjwt/session";
-import { UnauthError } from "../../_internal/error.ts";
-import { type SealedCarrier, sealedCarrier } from "./_sealed-carrier.ts";
-import type { StartFlowOptions } from "./start-flow.ts";
+import { UnauthError } from "../../../../error.ts";
+import { type SealedCarrier, sealedCarrier } from "./sealed.ts";
+import type { StartFlowOptions } from "../../start-flow.ts";
 
 /** The query parameter carrying a request's sealed intent to the host a start is relocated to. */
 const INTENT_PARAM = "unauth_intent";

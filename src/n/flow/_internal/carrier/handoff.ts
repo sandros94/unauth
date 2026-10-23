@@ -1,6 +1,6 @@
 import type { SessionConfigJWE } from "unjwt/session";
-import { type SealedCarrier, sealedCarrier } from "./flow/_sealed-carrier.ts";
-import type { FlowResult } from "./flow/complete-flow.ts";
+import { type SealedCarrier, sealedCarrier } from "./sealed.ts";
+import type { FlowResult } from "../../types.ts";
 
 /** The query parameter carrying a sealed sign-in result back to the host the user started on. */
 export const HANDOFF_PARAM = "unauth_handoff";

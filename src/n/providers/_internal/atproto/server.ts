@@ -1,5 +1,5 @@
-import { isUnauthError } from "../../../_internal/error.ts";
-import { assertSecureUrl, providerError } from "../../flow/_http.ts";
+import { isUnauthError } from "../../../../error.ts";
+import { assertSecureUrl, providerError } from "../../../flow/_internal/http/shared.ts";
 import {
   type MetadataLoader,
   type MetadataOptions,
@@ -7,7 +7,7 @@ import {
   assertIssuerDocument,
   defineMetadataLoader,
   requiredMember,
-} from "../../flow/_metadata.ts";
+} from "../../../flow/_internal/cache/metadata.ts";
 import { loginError } from "./identity.ts";
 
 /** The atproto authorization server of an account, with the endpoints a sign-in uses. */

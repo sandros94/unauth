@@ -5,7 +5,7 @@ import {
   MAX_ENTRIES,
   PROVIDER_CACHE_TTL,
   loadCache,
-} from "../../../src/n/flow/_cache.ts";
+} from "../../../src/n/flow/_internal/cache/load.ts";
 import { type Fetch, discover } from "../../../src/n/index.ts";
 
 const NOW = Date.UTC(2026, 9, 1, 12);
