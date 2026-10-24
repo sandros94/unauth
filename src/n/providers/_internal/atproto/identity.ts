@@ -1,0 +1,273 @@
+import { UnauthError, isUnauthError } from "../../../../error.ts";
+import {
+  assertSecureUrl,
+  isRecord,
+  providerError,
+  stringField,
+} from "../../../flow/_internal/http/shared.ts";
+import {
+  PROVIDER_FETCH_TIMEOUT,
+  isAbort,
+  raced,
+  readText,
+} from "../../../flow/_internal/http/body.ts";
+import { getObject } from "../../../flow/_internal/http/json.ts";
+import {
+  type MetadataOptions,
+  defineMetadataLoader,
+} from "../../../flow/_internal/cache/metadata.ts";
+
+/** Where the resolvers an identity needs are, and how to reach them. */
+export interface AtprotoResolveOptions extends MetadataOptions {
+  /** A DNS-over-HTTPS resolver answering `application/dns-json`. */
+  dnsResolver: string;
+  /** The `did:plc` directory. */
+  plcDirectory: string;
+}
+
+/** An account: its DID, the handle it verifiably claims, and the origin of its PDS. */
+export interface AtprotoIdentity {
+  did: string;
+  /** Present only when the handle and the DID document point at each other. */
+  handle?: string;
+  pds: string;
+}
+
+/** What `login` names: an account, or a server to start from. */
+export type AtprotoLogin = { kind: "account"; input: string } | { kind: "server"; url: string };
+
+/** Handle syntax (atproto Handle spec) and the TLDs it never resolves. */
+const HANDLE = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
+const DISALLOWED_TLDS = new Set([
+  "alt",
+  "arpa",
+  "example",
+  "internal",
+  "invalid",
+  "local",
+  "localhost",
+  "onion",
+]);
+const DID_PLC = /^did:plc:[a-z2-7]{24}$/;
+const DID_WEB = /^did:web:([a-z0-9.-]+)$/;
+/** The longest handle document (`/.well-known/atproto-did`) read. */
+const HANDLE_DOCUMENT_MAX_BYTES = 1024;
+
+const loadDid = /* @__PURE__ */ defineMetadataLoader<DidDocument, AtprotoResolveOptions>({
+  name: "atproto-did",
+  label: "DID document",
+  url: (did, options) =>
+    did.startsWith("did:plc:")
+      ? `${options.plcDirectory.replace(/\/$/, "")}/${did}`
+      : `https://${did.slice("did:web:".length)}/.well-known/did.json`,
+  parse: parseDidDocument,
+});
+
+/** `ERR_AUTHN_LOGIN_INVALID` (400): `login` names no usable account. */
+export function loginError(
+  message: string,
+  cause?: unknown,
+): UnauthError<"ERR_AUTHN_LOGIN_INVALID"> {
+  return new UnauthError(`[unauth/n] ${message}`, "ERR_AUTHN_LOGIN_INVALID", {
+    status: 400,
+    cause,
+  });
+}
+
+/** A `login`: an `https://` URL is a server to start from, anything else an account (handle or DID). */
+export function parseLogin(login: string): AtprotoLogin {
+  const input = login.trim().replace(/^@/, "");
+  if (/^https:\/\//i.test(input)) {
+    const url = assertServerUrl(input);
+    return { kind: "server", url: url.origin };
+  }
+  if (input.startsWith("did:")) {
+    assertDid(input);
+    return { kind: "account", input };
+  }
+  return { kind: "account", input: normalizeHandle(input) };
+}
+
+/**
+ * Handle or DID → DID document → PDS, the handle verified in both directions: starting from a
+ * handle, a document not claiming it is refused; starting from a DID, an unverified handle is
+ * left out. `did:plc` and host-only `did:web` are the methods atproto supports.
+ */
+export async function resolveIdentity(
+  input: string,
+  options: AtprotoResolveOptions,
+): Promise<AtprotoIdentity> {
+  if (input.startsWith("did:")) {
+    const document = await resolveDid(input, options);
+    return { did: input, ...(await verifiedHandle(document, options)), pds: pdsOf(document) };
+  }
+  const did = await resolveHandle(input, options);
+  const document = await resolveDid(did, options);
+  if (claimedHandle(document) !== input) {
+    throw loginError(`${did} does not claim the handle ${input}.`);
+  }
+  return { did, handle: input, pds: pdsOf(document) };
+}
+
+/** The handle `document` claims, when the handle resolves back to the document's DID. */
+export async function verifiedHandle(
+  document: DidDocument,
+  options: AtprotoResolveOptions,
+): Promise<{ handle?: string }> {
+  const claimed = claimedHandle(document);
+  if (claimed === undefined) return {};
+  const did = await resolveHandle(claimed, options).catch(() => undefined);
+  return did === document.id ? { handle: claimed } : {};
+}
+
+/** A DID document, kept ten minutes; an unknown DID is `ERR_AUTHN_LOGIN_INVALID`. */
+export function resolveDid(did: string, options: AtprotoResolveOptions): Promise<DidDocument> {
+  assertDid(did);
+  return loadDid(did, options).catch((error: unknown) => {
+    if (isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") && error.cause.status === 404) {
+      throw loginError(`${did} is unknown.`, error);
+    }
+    throw error;
+  });
+}
+
+/** The origin of the PDS a DID document names; `ERR_AUTHN_LOGIN_INVALID` without one. */
+export function pdsOf(document: DidDocument): string {
+  const services = Array.isArray(document.service) ? document.service : [];
+  for (const entry of services) {
+    if (!isRecord(entry)) continue;
+    const id = entry.id;
+    const endpoint = stringField(entry, "serviceEndpoint");
+    if (
+      (id === "#atproto_pds" || id === `${document.id}#atproto_pds`) &&
+      entry.type === "AtprotoPersonalDataServer" &&
+      endpoint !== undefined
+    ) {
+      try {
+        return assertSecureUrl(endpoint, { label: `The PDS of ${document.id}` }).origin;
+      } catch (error) {
+        throw loginError(`${document.id} names an unusable PDS.`, error);
+      }
+    }
+  }
+  throw loginError(`${document.id} names no PDS.`);
+}
+
+export function normalizeHandle(value: string): string {
+  const handle = value.toLowerCase();
+  const tld = handle.slice(handle.lastIndexOf(".") + 1);
+  if (handle.length > 253 || !HANDLE.test(handle) || DISALLOWED_TLDS.has(tld)) {
+    throw loginError(`${JSON.stringify(value)} is not an atproto handle or DID.`);
+  }
+  return handle;
+}
+
+export function assertDid(did: string): void {
+  if (DID_PLC.test(did)) return;
+  const host = DID_WEB.exec(did)?.[1];
+  if (host !== undefined && HANDLE.test(host) && !/^[\d.]+$/.test(host)) return;
+  throw loginError(`${JSON.stringify(did)} is not a did:plc or a host-only did:web.`);
+}
+
+/** The `https://` origin of a server given as `login`. */
+function assertServerUrl(input: string): URL {
+  try {
+    return assertSecureUrl(input, { label: "The server" });
+  } catch (error) {
+    throw loginError(`${JSON.stringify(input)} is not an https:// server URL.`, error);
+  }
+}
+
+/**
+ * DNS TXT `_atproto.<handle>` over DNS-over-HTTPS, then the HTTPS well-known document when DNS has
+ * no record or cannot be asked. A DNS answer naming two DIDs refuses the handle instead.
+ */
+async function resolveHandle(handle: string, options: AtprotoResolveOptions): Promise<string> {
+  const fromDns = await resolveHandleDns(handle, options).catch((error: unknown) => {
+    if (isUnauthError(error, "ERR_AUTHN_LOGIN_INVALID")) throw error;
+    return undefined;
+  });
+  const did = fromDns ?? (await resolveHandleHttps(handle, options));
+  try {
+    assertDid(did);
+  } catch (error) {
+    throw loginError(`The handle ${handle} resolves to something that is not a DID.`, error);
+  }
+  return did;
+}
+
+async function resolveHandleDns(
+  handle: string,
+  options: AtprotoResolveOptions,
+): Promise<string | undefined> {
+  const url = new URL(options.dnsResolver);
+  url.searchParams.set("name", `_atproto.${handle}`);
+  url.searchParams.set("type", "TXT");
+  const answer = await getObject(url.href, {
+    fetch: options.fetch,
+    headers: { accept: "application/dns-json" },
+    label: "DNS resolver",
+  });
+  const records = Array.isArray(answer.Answer) ? answer.Answer : [];
+  const dids = new Set<string>();
+  for (const record of records) {
+    if (!isRecord(record) || record.type !== 16) continue;
+    const data = stringField(record, "data");
+    if (data === undefined) continue;
+    // A TXT record arrives as one or more quoted character-strings.
+    const text = data.replaceAll(/"\s*"/g, "").replace(/^"|"$/g, "");
+    if (text.startsWith("did=")) dids.add(text.slice(4));
+  }
+  if (dids.size > 1) throw loginError(`The handle ${handle} has conflicting DNS records.`);
+  return dids.values().next().value;
+}
+
+async function resolveHandleHttps(handle: string, options: AtprotoResolveOptions): Promise<string> {
+  const url = `https://${handle}/.well-known/atproto-did`;
+  const signal = AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT);
+  let response: Response;
+  try {
+    response = await raced(options.fetch(url, { signal, redirect: "error" }), signal);
+  } catch (error) {
+    throw loginError(
+      isAbort(error)
+        ? `The handle ${handle} did not answer within ${PROVIDER_FETCH_TIMEOUT} ms.`
+        : `The handle ${handle} does not resolve.`,
+      error,
+    );
+  }
+  if (!response.ok) throw loginError(`The handle ${handle} does not resolve.`);
+  const text = await readText(response, { maxBytes: HANDLE_DOCUMENT_MAX_BYTES, signal }).catch(
+    () => undefined,
+  );
+  const did = text?.split("\n", 1)[0]?.trim();
+  if (!did) throw loginError(`The handle ${handle} does not resolve.`);
+  return did;
+}
+
+export interface DidDocument extends Record<string, unknown> {
+  id: string;
+}
+
+/** `document` once it is the DID document of `did`. */
+function parseDidDocument(document: unknown, did: string): DidDocument {
+  if (!isRecord(document))
+    throw providerError(`The DID document of ${did} is not a JSON object.`, {
+      reason: "malformed",
+    });
+  if (document.id !== did) {
+    throw providerError(`The DID document fetched for ${did} belongs to another DID.`, {
+      reason: "malformed",
+    });
+  }
+  return { ...document, id: did };
+}
+
+/** The first `at://` alias of `alsoKnownAs`, which is the handle the account claims. */
+function claimedHandle(document: DidDocument): string | undefined {
+  const aliases = Array.isArray(document.alsoKnownAs) ? document.alsoKnownAs : [];
+  const alias = aliases.find(
+    (entry): entry is string => typeof entry === "string" && entry.startsWith("at://"),
+  );
+  return alias?.slice("at://".length).toLowerCase();
+}

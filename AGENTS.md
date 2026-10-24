@@ -23,9 +23,10 @@
 - `pnpm fmt` — automatically fix lint issues.
 - `pnpm test` — run all tests.
 - `pnpm test:coverage` — run tests with coverage reporting.
-- `pnpm typecheck` — type-check the library, playground, and docs.
+- `pnpm typecheck` — type-check the library and its tests.
+- `pnpm typecheck:playgrounds` — type-check the three playgrounds (h3 and nitro with the root TypeScript, nuxt with its own `nuxt typecheck`).
 
-Each script is independent — `test` does **not** run lint or type-check. **Always run** `pnpm fmt` and `pnpm typecheck` after making changes.
+Each script is independent — `test` does **not** run lint or type-check. **Always run** `pnpm fmt` and `pnpm typecheck` after making changes. After adding or renaming a Nuxt server util, run `pnpm dev:prepare` (it runs `nuxt prepare`) before `pnpm lint`, or the type-aware lint cannot see the auto-import.
 
 ## Repository Structure
 
@@ -33,7 +34,7 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 - `src/` — Library source code.
 - `test/` — Tests (unit, nuxt environment, e2e).
 - `playground/` — App for manual testing and development of the library.
-- `docs/` — Documentation site.
+- `docs/` — Documentation site (planned, not started: the API still shifts).
 
 ## Testing Strategy
 
@@ -66,6 +67,7 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 - Prefer explicit errors over silent failures.
 - Use warnings for recoverable situations; throw for invalid states.
 - Include actionable context in error messages.
+- Errors are structured content for downstream application logic: a stable `code`, a `cause` whose shape `UnauthErrorCauseMap` declares (what a UI translates), and a `status` hint. The message is for logs, never the only carrier of meaning.
 
 ## Documentation Requirements
 
@@ -74,10 +76,10 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 ## Code Conventions
 
 - Use **ESM** and modern JavaScript.
-- Avoid barrel files (`index.ts` re-exports); import directly from specific modules.
+- Import from specific modules, never through a barrel, for anything internal and for `unjwt`/`unsecure` subpaths (TypeScript then loads only what the file uses). Public entry points (`src/n/index.ts` and the top-level `src/*.ts` files, which mirror `unjwt`'s and `unsecure`'s subpaths) are the one place that re-exports.
 - Place non-exported/internal helpers at the end of the file.
 - For multi-arg functions, use an options object as the second parameter.
-- Split logic across files; avoid long single-file modules (>200 LoC). Use `_*` prefix for internal files.
+- Split logic across files; avoid long single-file modules (>200 LoC). Internal files live in an `_internal/` folder next to the public modules they serve (`src/n/_internal/`, `src/n/flow/_internal/`, `src/n/providers/_internal/`), grouped by concern once a folder grows; no `_` prefix on the files themselves.
 - Prefer **Web APIs** over Node.js APIs where possible.
 - Do not add comments explaining what the line does unless prompted.
 - Before adding new code, study surrounding patterns, naming conventions, and architectural decisions.
