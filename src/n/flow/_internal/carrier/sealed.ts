@@ -1,4 +1,5 @@
-import { type SessionConfigJWE, defineJWESession } from "unjwt/session";
+import { defineJWESession } from "unjwt/session";
+import type { FlowKey } from "../../../_internal/flow-key.ts";
 
 /** Seals a value for another request and opens it there, once. */
 export interface SealedCarrier<T> {
@@ -13,7 +14,7 @@ export interface SealedCarrier<T> {
  * process's memory until they expire.
  */
 export function sealedCarrier<T>(
-  key: SessionConfigJWE["key"],
+  key: FlowKey,
   options: { typ: string; name: string },
 ): SealedCarrier<T> {
   const tokens = defineJWESession<{ value: T }, typeof MAX_AGE>({

@@ -1,4 +1,4 @@
-import type { SessionConfigJWE } from "unjwt/session";
+import type { FlowKey } from "../../../_internal/flow-key.ts";
 import { UnauthError } from "../../../../error.ts";
 import { type SealedCarrier, sealedCarrier } from "./sealed.ts";
 import type { StartFlowOptions } from "../../start-flow.ts";
@@ -67,7 +67,7 @@ export async function resumeIntent<TMemo>(
 /** The intent token's `typ`: never a session, flow or handoff token. */
 const INTENT_TYP = "unauth-intent+jwt";
 
-function carrierOf<TMemo>(key: SessionConfigJWE["key"]): SealedCarrier<SealedIntent<TMemo>> {
+function carrierOf<TMemo>(key: FlowKey): SealedCarrier<SealedIntent<TMemo>> {
   return sealedCarrier<SealedIntent<TMemo>>(key, { typ: INTENT_TYP, name: "unauth-intent" });
 }
 

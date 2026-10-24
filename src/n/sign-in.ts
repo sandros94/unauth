@@ -78,7 +78,8 @@ export type SignInAnswer<TResult> = Exclude<TResult, void>;
  * stay inferred.
  *
  * @throws `ERR_UNAUTH_CONFIG_INVALID` without `onSuccess`, for a `redirect` that is not a
- * same-origin path, an `origin` that is not an absolute URL, or a missing or string `key`.
+ * same-origin path, an `origin` that is not an absolute URL, or a `key` that is missing, a string
+ * or not symmetric.
  *
  * @example
  * import type { H3Event } from "h3";

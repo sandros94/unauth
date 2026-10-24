@@ -1,4 +1,5 @@
 import { type ExpiresIn, type SessionConfigJWE, defineJWESession } from "unjwt/session";
+import type { FlowKey } from "../../../_internal/flow-key.ts";
 import { durationSeconds } from "../http/shared.ts";
 import { createState } from "../../random.ts";
 import type { FlowRecord, Provider, FlowStore } from "../../types.ts";
@@ -6,7 +7,7 @@ import type { FlowRecord, Provider, FlowStore } from "../../types.ts";
 /** Where a flow record waits between the two legs. */
 export interface FlowCarrierOptions {
   /** Seals the flow cookie. */
-  key: SessionConfigJWE["key"];
+  key: FlowKey;
   /** Keep records here; the cookie then carries only their id. */
   store?: FlowStore;
   /** The framework's per-request state, as the event carries it; handed to the flow session as is. */

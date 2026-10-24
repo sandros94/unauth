@@ -63,7 +63,7 @@ app.get(
 );
 ```
 
-- `key`: a JWE key, or a callback returning one, called once on the first request. `deriveKey(secret, { info })` derives an `A256GCM` key from a random secret of 32+ characters. A PEM goes through `importPEM(pem, alg)` from `unauth/jwk`.
+- `key`: a symmetric JWE key, or a callback returning one, called once on the first request. `deriveKey(secret, { info })` derives an `A256GCM` key from a random secret of 32+ characters. A key pair is refused: a token sealed to a public key could be minted by anyone holding it.
 - `origin`: the callback is this route on that origin, and its forms may start a sign-in that links an account or names it; `redirectUri` names the callback outright instead.
 - `onStart(event)`: optional; returns `{ redirect, memo, loginHint, scopes, params }` for this request. `memo` is anything the application wants back at the callback, sealed; `loginHint` names the account (OAuth's `login_hint`, an AT Protocol handle). A start that returns either `memo`, or `loginHint` for a custom provider, is taken only as a `POST` from the application's own origin (`ERR_AUTHN_CROSS_SITE_START` otherwise): start those sign-ins from a form.
 - `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `memo` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.

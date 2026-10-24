@@ -1,4 +1,4 @@
-import type { SessionConfigJWE } from "unjwt/session";
+import type { FlowKey } from "../../../_internal/flow-key.ts";
 import { type SealedCarrier, sealedCarrier } from "./sealed.ts";
 import type { FlowResult } from "../../types.ts";
 
@@ -12,9 +12,7 @@ export type HandoffCarrier<TProfile, TMemo> = SealedCarrier<FlowResult<TProfile,
  * Seals a sign-in result for the host the user started on, under the flow key with its own
  * `typ`; a token opens once, within a minute, in this process.
  */
-export function handoffCarrier<TProfile, TMemo>(
-  key: SessionConfigJWE["key"],
-): HandoffCarrier<TProfile, TMemo> {
+export function handoffCarrier<TProfile, TMemo>(key: FlowKey): HandoffCarrier<TProfile, TMemo> {
   return sealedCarrier<FlowResult<TProfile, TMemo>>(key, {
     typ: HANDOFF_TYP,
     name: "unauth-handoff",

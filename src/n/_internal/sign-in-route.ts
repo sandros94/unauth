@@ -1,4 +1,4 @@
-import type { SessionConfigJWE } from "unjwt/session";
+import type { FlowKey } from "./flow-key.ts";
 import { UnauthError, isUnauthError } from "../../error.ts";
 import {
   HANDOFF_PARAM,
@@ -16,7 +16,7 @@ export interface SignInRoute<TProfile, TResult, TEvent extends WebRequestEvent, 
   /** Every option of both legs but the flow key and the request's intent. */
   flow: Omit<StartFlowOptions, keyof FlowIntent | "key" | "context">;
   /** The flow key, asked for on every request. */
-  key: () => Promise<SessionConfigJWE["key"]>;
+  key: () => Promise<FlowKey>;
   /** The steps of one request, asked for once at its start. */
   steps: (event: TEvent) => SignInSteps<TProfile, TResult, TMemo>;
 }
@@ -43,9 +43,7 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
   route: SignInRoute<TProfile, TResult, TEvent, TMemo>,
 ): (event: TEvent) => Promise<TResult | Response> {
   const { flow } = route;
-  let carrier:
-    | { key: SessionConfigJWE["key"]; handoff: HandoffCarrier<TProfile, TMemo> }
-    | undefined;
+  let carrier: { key: FlowKey; handoff: HandoffCarrier<TProfile, TMemo> } | undefined;
   return async (event) => {
     const { method } = event.req;
     if (method !== "GET" && method !== "POST") {
@@ -55,7 +53,7 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
     const fail = async (error: UnauthError, headers?: Headers): Promise<TResult | Response> =>
       onError ? onError(error) : failureResponse(error, headers);
 
-    let key: SessionConfigJWE["key"];
+    let key: FlowKey;
     try {
       key = await route.key();
     } catch (error) {

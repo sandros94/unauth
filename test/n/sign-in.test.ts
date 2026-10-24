@@ -7,7 +7,6 @@ import {
   importPEM,
   toPublicJWK,
 } from "unjwt/session";
-import { base64UrlParse } from "unjwt/utils";
 import { hkdf } from "unsecure/hkdf";
 
 import {
@@ -505,36 +504,35 @@ describe("defineSignInHandler with a session", () => {
     expect(start.status).toBe(500);
     expect(start.headers.get("location")).toBeNull();
     expect(errors.map((error) => error.code)).toEqual(["ERR_UNAUTH_CONFIG_INVALID"]);
-    expect(errors[0]!.message).toMatch(/importPEM\(pem, alg\)[\s\S]*deriveKey/);
+    expect(errors[0]!.message).toMatch(/not a string[\s\S]*deriveKey\(secret, \{ info \}\)/);
   });
 
-  it("seals the flow with an asymmetric pair imported from a PEM", async () => {
+  it("refuses an asymmetric pair imported from a PEM: its public half could forge tokens", async () => {
     const alg = "RSA-OAEP-256";
     const pair = await generateJWK(alg);
     const pem = await exportPEM(pair.privateKey);
+    const errors: UnauthError[] = [];
     const handler = defineSignInHandler(fakeProvider(), {
       ...base(),
+      // @ts-expect-error a key pair is not a flow key
       key: async () => {
         const privateKey = await importPEM(pem, alg, { pemType: "pkcs8" });
         return { privateKey, publicKey: toPublicJWK(privateKey) };
       },
       onSuccess: signIn,
+      onError: (_event, error) => {
+        errors.push(error);
+        return new Response(null, { status: 500 });
+      },
     });
 
-    const { start, session } = await signInFlow(handler);
+    const start = await call(handler, "/auth/fake");
 
-    const flowCookie = start.headers
-      .getSetCookie()
-      .find((line) => line.startsWith("unauth-flow="))!;
-    const token = flowCookie.slice("unauth-flow=".length).split(";", 1)[0]!;
-    const header = JSON.parse(base64UrlParse(token.split(".", 1)[0]!)) as {
-      alg: string;
-      typ: string;
-    };
-    expect(header.alg).toBe(alg);
-    expect(header.alg).not.toBe("dir");
-    expect(header.typ).toBe("unauth-flow+jwt");
-    expect(session.data.subject).toBe("user-1");
+    expect(start.status).toBe(500);
+    expect(start.headers.get("location")).toBeNull();
+    expect(start.headers.getSetCookie()).toEqual([]);
+    expect(errors.map((error) => error.code)).toEqual(["ERR_UNAUTH_CONFIG_INVALID"]);
+    expect(errors[0]!.message).toMatch(/symmetric[\s\S]*public half/);
   });
 
   it("derives redirect_uri from a request on `origin`, and refuses another origin", async () => {
