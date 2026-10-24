@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { type Fetch, readObject } from "../../../src/n/flow/_internal/http/shared.ts";
-import { getJson, postForm } from "../../../src/n/flow/_internal/http/json.ts";
+import { getJson } from "../../../src/n/flow/_internal/http/json.ts";
+import { postForm, postText } from "../../../src/n/flow/_internal/http/form.ts";
 import { PROVIDER_DOCUMENT_MAX_BYTES } from "../../../src/n/flow/_internal/http/body.ts";
 import { defineOAuth2Provider, exchangeCode, isUnauthError } from "../../../src/n/index.ts";
 
@@ -275,5 +276,68 @@ describe("postForm", () => {
     expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
     expect((error as Error).message).toMatch(/Could not reach the endpoint/);
     expect((error as Error).cause).toEqual({ reason: "unreachable", cause: boom });
+  });
+});
+
+describe("endpoint names in messages", () => {
+  it("drop the query, where a credential may travel", async () => {
+    const { fetch } = recording(async () => new Response("nope", { status: 503 }));
+
+    const error = await rejection(
+      getJson("https://api.test/summary?key=top-secret&ids=1", { fetch, label: "Web API" }),
+    );
+
+    expect((error as Error).message).toBe(
+      "[unauth/n] The Web API at https://api.test/summary answered 503.",
+    );
+    expect((error as Error).message).not.toContain("top-secret");
+  });
+});
+
+describe("postText", () => {
+  const form = () => new URLSearchParams({ "openid.mode": "check_authentication" });
+
+  it("POSTs the form asking for text and hands the body back with its status", async () => {
+    const { fetch, inits } = recording(
+      async () => new Response("ns:x\nis_valid:true\n", { status: 200 }),
+    );
+
+    const answer = await postText(URL_, form(), { fetch, label: "endpoint" });
+
+    expect(answer).toMatchObject({ ok: true, status: 200, text: "ns:x\nis_valid:true\n" });
+    expect(new Headers(inits[0]?.headers).get("accept")).toBe("text/plain");
+    expect(new Headers(inits[0]?.headers).get("content-type")).toBe(
+      "application/x-www-form-urlencoded",
+    );
+    expect(inits[0]?.redirect).toBe("error");
+  });
+
+  it("leaves a failing status to the caller", async () => {
+    const { fetch } = recording(async () => new Response("busy", { status: 503 }));
+
+    await expect(postText(URL_, form(), { fetch, label: "endpoint" })).resolves.toMatchObject({
+      ok: false,
+      status: 503,
+      text: "busy",
+    });
+  });
+
+  it("refuses an oversized body and malformed UTF-8", async () => {
+    const chunk = new Uint8Array(64 * 1024).fill(0x20);
+    const { body } = streamed([chunk, chunk, chunk, chunk, chunk]);
+    const big = await rejection(
+      postText(URL_, form(), { fetch: async () => new Response(body), label: "endpoint" }),
+    );
+    expect((big as Error).cause).toEqual({ reason: "too-large", status: 200 });
+
+    const bad = await rejection(
+      postText(URL_, form(), {
+        fetch: async () => new Response(new Uint8Array([0xff, 0xfe])),
+        label: "endpoint",
+      }),
+    );
+    expect(isUnauthError(bad, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
+    expect((bad as Error).message).toMatch(/did not answer text/);
+    expect((bad as Error).cause).toMatchObject({ reason: "malformed", status: 200 });
   });
 });

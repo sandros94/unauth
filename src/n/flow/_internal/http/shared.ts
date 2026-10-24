@@ -161,3 +161,13 @@ function durationError(
     cause,
   );
 }
+
+/** `<label> at <url>` for a message, the URL without its query and fragment. */
+export function endpointName(label: string, url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${label} at ${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return label;
+  }
+}

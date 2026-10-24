@@ -1,5 +1,5 @@
 import { type Fetch, configError, fetchOf, nowOf } from "./_internal/http/shared.ts";
-import { postForm } from "./_internal/http/json.ts";
+import { postForm } from "./_internal/http/form.ts";
 import { authenticateClient } from "./_internal/client-auth.ts";
 import { parseTokenResponse } from "./_internal/token-response.ts";
 import type { OAuthTokens, OAuthProvider } from "./types.ts";

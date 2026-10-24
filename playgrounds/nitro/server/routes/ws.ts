@@ -40,5 +40,6 @@ export default defineWebSocketHandler({
 });
 
 function getContext(peer: { context: Record<string, unknown> }): SessionManager<SessionData, "1h"> {
-  return peer.context as unknown as SessionManager<SessionData, "1h">;
+  // oxlint-disable-next-line typescript/no-explicit-any
+  return peer.context as any;
 }

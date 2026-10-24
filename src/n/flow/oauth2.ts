@@ -16,6 +16,7 @@ export interface OAuth2ProviderConfig extends Pick<
   | "scopeSeparator"
   | "pkce"
   | "tokenAuth"
+  | "clientIdParameter"
   | "responseMode"
   | "authorizationParams"
   | "tokenParams"

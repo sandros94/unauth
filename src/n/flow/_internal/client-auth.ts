@@ -14,6 +14,7 @@ export async function authenticateClient(
 ): Promise<void> {
   const { client } = provider;
   const { body, headers } = request;
+  const clientIdParameter = provider.clientIdParameter ?? "client_id";
   switch (provider.tokenAuth) {
     case "basic": {
       // RFC 6749 §2.3.1: each half is form-encoded before the pair is base64-encoded.
@@ -22,7 +23,7 @@ export async function authenticateClient(
       return;
     }
     case "body": {
-      body.set("client_id", client.id);
+      body.set(clientIdParameter, client.id);
       body.set("client_secret", await secretOf(client));
       return;
     }
@@ -41,13 +42,13 @@ export async function authenticateClient(
           expiresIn: ASSERTION_LIFETIME,
         },
       );
-      body.set("client_id", client.id);
+      body.set(clientIdParameter, client.id);
       body.set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer");
       body.set("client_assertion", assertion);
       return;
     }
     case "none": {
-      body.set("client_id", client.id);
+      body.set(clientIdParameter, client.id);
     }
   }
 }

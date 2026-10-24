@@ -9,7 +9,7 @@ A collection of low-level and high-level, server-agnostic, Authentication and Au
 
 ## Features
 
-- **OAuth 2.1 and OpenID Connect** — one handler for both legs of a sign-in, presets for GitHub, Google, Apple, Microsoft, Discord, GitLab, LinkedIn, Facebook, Twitch and X, generic `defineOAuth2Provider` and `defineOidcProvider`
+- **OAuth 2.1 and OpenID Connect** — one handler for both legs of a sign-in, presets for GitHub, Google, Apple, Microsoft, Discord, GitLab, LinkedIn, Facebook, Twitch, X, Spotify, TikTok, Netlify, Vercel and Cloudflare Access, generic `defineOAuth2Provider` and `defineOidcProvider`
 - **AT Protocol** — sign in with any PDS account: handle resolution, PAR, PKCE, DPoP, the account verified against its PDS automatically
 - **Custom providers** — any protocol over the same engine, with `start` and `complete` legs
 - **One-time tokens** — signed, single-use, expiring tokens

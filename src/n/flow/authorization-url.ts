@@ -44,14 +44,15 @@ export function buildAuthorizationUrl(
   }
   const url = new URL(provider.authorization);
   const query = url.searchParams;
+  const clientIdParameter = provider.clientIdParameter ?? "client_id";
   for (const [name, value] of Object.entries({
     ...provider.authorizationParams,
     ...params.params,
   })) {
-    if (!RESERVED.has(name)) query.set(name, value);
+    if (!RESERVED.has(name) && name !== clientIdParameter) query.set(name, value);
   }
   query.set("response_type", "code");
-  query.set("client_id", provider.client.id);
+  query.set(clientIdParameter, provider.client.id);
   query.set("redirect_uri", params.redirectUri);
   const scopes = params.scopes ?? provider.scopes;
   if (scopes.length > 0) query.set("scope", scopes.join(provider.scopeSeparator));

@@ -129,6 +129,11 @@ export interface OAuthProvider<TProfile = Record<string, unknown>> {
    */
   insecureHosts?: string[];
   tokenAuth: TokenAuthMethod;
+  /**
+   * The parameter carrying the client identifier in the authorization request and the token
+   * request body, for a provider that names it otherwise. @default "client_id"
+   */
+  clientIdParameter?: string;
   responseMode: "query" | "form_post";
   authorizationParams: Record<string, string>;
   tokenParams: Record<string, string>;

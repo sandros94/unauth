@@ -4,6 +4,7 @@ import { defineBuildConfig } from "obuild/config";
 const PROVIDERS = [
   "apple",
   "atproto",
+  "cloudflare-access",
   "discord",
   "facebook",
   "github",
@@ -11,7 +12,12 @@ const PROVIDERS = [
   "google",
   "linkedin",
   "microsoft",
+  "netlify",
+  "spotify",
+  "steam",
+  "tiktok",
   "twitch",
+  "vercel",
   "x",
 ];
 
