@@ -98,6 +98,36 @@ export function assertSecureUrl(
   );
 }
 
+/**
+ * `value` as an `https:` URL read from a provider's document (a DID document, a server's metadata):
+ * anything else, plain `http:` on a loopback host included, is `ERR_AUTHN_PROVIDER_ERROR`
+ * (`malformed`). The loopback and `insecureHosts` exceptions of {@link assertSecureUrl} are for
+ * URLs the application configured, never for ones a remote party chose; `allowHttp` admits plain
+ * `http:` on any host, for a development setup the application opted into.
+ */
+export function assertRemoteUrl(
+  value: string,
+  options: { label: string; allowHttp?: boolean },
+): URL {
+  const expected = options.allowHttp ? "an http: or https:" : "an https:";
+  if (value.length > MAX_URL_LENGTH) {
+    throw providerError(`${options.label} must be at most ${MAX_URL_LENGTH} characters.`, {
+      reason: "malformed",
+    });
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch (error) {
+    throw providerError(`${options.label} must be ${expected} URL.`, {
+      reason: "malformed",
+      cause: error,
+    });
+  }
+  if (url.protocol === "https:" || (options.allowHttp && url.protocol === "http:")) return url;
+  throw providerError(`${options.label} must be ${expected} URL.`, { reason: "malformed" });
+}
+
 /** `value` in seconds when it is a positive duration (`30`, `"10m"`), else `ERR_UNAUTH_CONFIG_INVALID`. */
 export function durationSeconds(value: ExpiresIn, options: { label: string }): number {
   let seconds: number;

@@ -1,5 +1,6 @@
 import { UnauthError, isUnauthError } from "../../../../error.ts";
 import {
+  assertRemoteUrl,
   assertSecureUrl,
   isRecord,
   providerError,
@@ -23,6 +24,8 @@ export interface AtprotoResolveOptions extends MetadataOptions {
   dnsResolver: string;
   /** The `did:plc` directory. */
   plcDirectory: string;
+  /** Lets the URLs read from documents use plain `http:` (a PDS run locally). */
+  allowHttp?: boolean;
 }
 
 /** An account: its DID, the handle it verifiably claims, and the origin of its PDS. */
@@ -99,14 +102,18 @@ export async function resolveIdentity(
 ): Promise<AtprotoIdentity> {
   if (input.startsWith("did:")) {
     const document = await resolveDid(input, options);
-    return { did: input, ...(await verifiedHandle(document, options)), pds: pdsOf(document) };
+    return {
+      did: input,
+      ...(await verifiedHandle(document, options)),
+      pds: pdsOf(document, options),
+    };
   }
   const did = await resolveHandle(input, options);
   const document = await resolveDid(did, options);
   if (claimedHandle(document) !== input) {
     throw loginHintError(`${did} does not claim the handle ${input}.`);
   }
-  return { did, handle: input, pds: pdsOf(document) };
+  return { did, handle: input, pds: pdsOf(document, options) };
 }
 
 /** The handle `document` claims, when the handle resolves back to the document's DID. */
@@ -132,7 +139,7 @@ export function resolveDid(did: string, options: AtprotoResolveOptions): Promise
 }
 
 /** The origin of the PDS a DID document names; `ERR_AUTHN_LOGIN_HINT_INVALID` without one. */
-export function pdsOf(document: DidDocument): string {
+export function pdsOf(document: DidDocument, options: { allowHttp?: boolean }): string {
   const services = Array.isArray(document.service) ? document.service : [];
   for (const entry of services) {
     if (!isRecord(entry)) continue;
@@ -144,7 +151,10 @@ export function pdsOf(document: DidDocument): string {
       endpoint !== undefined
     ) {
       try {
-        return assertSecureUrl(endpoint, { label: `The PDS of ${document.id}` }).origin;
+        return assertRemoteUrl(endpoint, {
+          label: `The PDS of ${document.id}`,
+          allowHttp: options.allowHttp,
+        }).origin;
       } catch (error) {
         throw loginHintError(`${document.id} names an unusable PDS.`, error);
       }

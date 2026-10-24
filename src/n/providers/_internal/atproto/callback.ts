@@ -118,7 +118,7 @@ async function verifiedProfile(
     } catch (error) {
       throw profileError("The signed-in account's DID document could not be read.", error);
     }
-    const pds = pdsOf(document);
+    const pds = pdsOf(document, options);
     const issuer = await authorizationServerOf(pds, options);
     if (issuer !== data.issuer) {
       throw profileError("The signed-in account belongs to another authorization server.", {

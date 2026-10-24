@@ -20,17 +20,26 @@ import { type AtprotoServer, serverOfPds, serverOfUrl } from "./server.ts";
 const DEFAULT_DNS_RESOLVER = "https://cloudflare-dns.com/dns-query";
 const DEFAULT_PLC_DIRECTORY = "https://plc.directory";
 
-/** Where accounts are resolved: the DNS-over-HTTPS resolver and the `did:plc` directory. */
+/**
+ * Where accounts are resolved: the DNS-over-HTTPS resolver and the `did:plc` directory; and
+ * whether the URLs their documents name may use plain `http:`.
+ */
 export interface Resolvers {
   dnsResolver: string;
   plcDirectory: string;
+  allowHttp: boolean;
 }
 
 /** The resolvers a provider config names, defaulted and checked to be `https:`. */
-export function resolversOf(config: { dnsResolver?: string; plcDirectory?: string }): Resolvers {
+export function resolversOf(config: {
+  dnsResolver?: string;
+  plcDirectory?: string;
+  allowHttp?: boolean;
+}): Resolvers {
   const resolvers = {
     dnsResolver: config.dnsResolver ?? DEFAULT_DNS_RESOLVER,
     plcDirectory: config.plcDirectory ?? DEFAULT_PLC_DIRECTORY,
+    allowHttp: config.allowHttp ?? false,
   };
   assertSecureUrl(resolvers.dnsResolver, { label: `The AT Protocol "dnsResolver"` });
   assertSecureUrl(resolvers.plcDirectory, { label: `The AT Protocol "plcDirectory"` });

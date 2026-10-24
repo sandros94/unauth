@@ -49,6 +49,14 @@ export interface AtprotoProviderConfig {
   logoUri?: string;
   tosUri?: string;
   policyUri?: string;
+  /**
+   * Development only: lets the PDS, authorization server and endpoints named by DID documents and
+   * server metadata use plain `http:`, for a PDS run locally. Off, those must be `https:`: with
+   * it on, any account's documents can point this server at plain-http services it can reach.
+   *
+   * @default false
+   */
+  allowHttp?: boolean;
   /** A DNS-over-HTTPS resolver answering `application/dns-json`. @default "https://cloudflare-dns.com/dns-query" */
   dnsResolver?: string;
   /** The `did:plc` directory. @default "https://plc.directory" */
@@ -133,6 +141,7 @@ export const defineAtprotoHandler: PresetHandler<AtprotoProviderPart, AtprotoPro
       "policyUri",
       "dnsResolver",
       "plcDirectory",
+      "allowHttp",
     ],
     shared: ["redirectUri"],
   });

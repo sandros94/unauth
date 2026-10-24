@@ -1,5 +1,5 @@
 import { isUnauthError } from "../../../../error.ts";
-import { assertSecureUrl, providerError } from "../../../flow/_internal/http/shared.ts";
+import { assertRemoteUrl, providerError } from "../../../flow/_internal/http/shared.ts";
 import {
   type MetadataLoader,
   type MetadataOptions,
@@ -43,24 +43,62 @@ const REQUIRED_TRUE = [
   "client_id_metadata_document_supported",
 ];
 
-/** The origin of the one authorization server a PDS's protected resource metadata names, kept ten minutes. */
-export const authorizationServerOf: MetadataLoader<string> = /* @__PURE__ */ defineMetadataLoader({
+/** What a server document's URLs are held to: `https:`, or any `http(s):` for a local setup. */
+export interface UrlPolicy {
+  allowHttp?: boolean;
+}
+
+const loadAuthorizationServer: MetadataLoader<string> = /* @__PURE__ */ defineMetadataLoader({
   name: "atproto-resource",
   label: RESOURCE_LABEL,
   url: (pds) => `${pds}${PROTECTED_RESOURCE}`,
   parse: parseProtectedResource,
 });
 
-/** The metadata of an authorization server, checked against the atproto profile and kept ten minutes. */
-export const serverMetadata: MetadataLoader<AtprotoServer> = /* @__PURE__ */ defineMetadataLoader({
+const loadServerMetadata: MetadataLoader<AtprotoServer> = /* @__PURE__ */ defineMetadataLoader({
   name: "atproto-server",
   label: SERVER_LABEL,
   url: (issuer) => `${issuer}${AUTHORIZATION_SERVER}`,
   parse: parseServerMetadata,
 });
 
+/**
+ * The origin of the one authorization server a PDS's protected resource metadata names, kept ten
+ * minutes; one that is not `https:` (nor `http:` under `allowHttp`) is `ERR_AUTHN_PROVIDER_ERROR`.
+ */
+export async function authorizationServerOf(
+  pds: string,
+  options: MetadataOptions & UrlPolicy,
+): Promise<string> {
+  const issuer = await loadAuthorizationServer(pds, options);
+  assertRemoteUrl(issuer, {
+    label: `The authorization server of ${pds}`,
+    allowHttp: options.allowHttp,
+  });
+  return issuer;
+}
+
+/**
+ * The metadata of an authorization server, checked against the atproto profile and kept ten
+ * minutes; an endpoint that is not `https:` (nor `http:` under `allowHttp`) is
+ * `ERR_AUTHN_PROVIDER_ERROR`.
+ */
+export async function serverMetadata(
+  issuer: string,
+  options: MetadataOptions & UrlPolicy,
+): Promise<AtprotoServer> {
+  const server = await loadServerMetadata(issuer, options);
+  for (const name of ["authorizationEndpoint", "parEndpoint", "tokenEndpoint"] as const) {
+    assertRemoteUrl(server[name], { label: `${issuer} "${name}"`, allowHttp: options.allowHttp });
+  }
+  return server;
+}
+
 /** The authorization server of a PDS, with its metadata. */
-export async function serverOfPds(pds: string, options: MetadataOptions): Promise<AtprotoServer> {
+export async function serverOfPds(
+  pds: string,
+  options: MetadataOptions & UrlPolicy,
+): Promise<AtprotoServer> {
   return serverMetadata(await authorizationServerOf(pds, options), options);
 }
 
@@ -70,7 +108,7 @@ export async function serverOfPds(pds: string, options: MetadataOptions): Promis
  */
 export async function serverOfUrl(
   origin: string,
-  options: MetadataOptions,
+  options: MetadataOptions & UrlPolicy,
 ): Promise<AtprotoServer> {
   try {
     return await serverOfPds(origin, options);
@@ -108,8 +146,12 @@ function parseProtectedResource(document: unknown, pds: string): string {
 function parseServerMetadata(document: unknown, issuer: string): AtprotoServer {
   const context = { issuer, url: `${issuer}${AUTHORIZATION_SERVER}`, label: SERVER_LABEL };
   const metadata = assertIssuerDocument(document, context);
+  // Shape only: whether plain http: is acceptable is the caller's policy, checked at every use.
   const endpoint = (name: string): string =>
-    assertSecureUrl(requiredMember(metadata, name, context), { label: `${issuer} "${name}"` }).href;
+    assertRemoteUrl(requiredMember(metadata, name, context), {
+      label: `${issuer} "${name}"`,
+      allowHttp: true,
+    }).href;
   const includes = (name: string, value: string): boolean =>
     Array.isArray(metadata[name]) && metadata[name].includes(value);
   const notAtproto = (detail: string) =>
@@ -136,17 +178,9 @@ function parseServerMetadata(document: unknown, issuer: string): AtprotoServer {
   };
 }
 
-/** `value` as an `https:` origin with no path; anything else is `ERR_AUTHN_PROVIDER_ERROR`. */
+/** `value` as an `http(s):` origin with no path; anything else is `ERR_AUTHN_PROVIDER_ERROR`. */
 function originOf(value: string, label: string): string {
-  let url: URL;
-  try {
-    url = assertSecureUrl(value, { label });
-  } catch (error) {
-    throw providerError(`${label} must be an https: URL, got ${JSON.stringify(value)}.`, {
-      reason: "malformed",
-      cause: error,
-    });
-  }
+  const url = assertRemoteUrl(value, { label, allowHttp: true });
   if (url.href !== `${url.origin}/`) {
     throw providerError(`${label} must be an origin with no path, got ${JSON.stringify(value)}.`, {
       reason: "malformed",

@@ -198,6 +198,68 @@ describe("sign-in from a handle", () => {
   });
 });
 
+describe("a remote document naming a plain-http loopback URL", () => {
+  const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
+  const reachedLoopback = () => fake.requests.some((r) => LOOPBACK.has(r.url.hostname));
+
+  it("refuses a DID document whose PDS is on loopback, without asking it anything", async () => {
+    fake.documents.set(ALICE.did, didDocument(ALICE.did, ALICE.handle, "http://127.0.0.1:2375"));
+
+    const error = await rejection(begin(provider(), ALICE.handle));
+
+    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
+    expect(reachedLoopback()).toBe(false);
+  });
+
+  it("refuses PDS metadata delegating to a loopback authorization server", async () => {
+    const fetch: typeof fake.fetch = async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (url.origin === PDS && url.pathname === "/.well-known/oauth-protected-resource") {
+        return Response.json({ resource: PDS, authorization_servers: ["http://localhost:9000"] });
+      }
+      return fake.fetch(input, init);
+    };
+    const error = await rejection(
+      startFlow(provider(), formStart(REDIRECT_URI), {
+        key,
+        redirectUri: REDIRECT_URI,
+        fetch,
+        loginHint: ALICE.handle,
+      }),
+    );
+
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
+    expect(error).toMatchObject({ cause: { reason: "malformed" } });
+    expect(reachedLoopback()).toBe(false);
+  });
+
+  it("refuses authorization-server metadata naming a loopback endpoint, as a provider error", async () => {
+    for (const member of ["pushed_authorization_request_endpoint", "token_endpoint"]) {
+      fake.metadata = { [member]: "http://[::1]:6379/internal/admin?cmd=FLUSHALL" };
+
+      const error = await rejection(begin(provider(), ALICE.handle));
+
+      expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
+      expect(isUnauthError(error) && error.status).toBe(502);
+      expect(reachedLoopback()).toBe(false);
+      expect(served("/oauth/par")).toBe(0);
+    }
+  });
+
+  it("follows them when the provider opts in with allowHttp, for a PDS run locally", async () => {
+    fake.documents.set(ALICE.did, didDocument(ALICE.did, ALICE.handle, "http://127.0.0.1:2583"));
+    await rejection(begin(provider({ allowHttp: true }), ALICE.handle));
+    expect(fake.requests.map((r) => r.url.href)).toContain(
+      "http://127.0.0.1:2583/.well-known/oauth-protected-resource",
+    );
+
+    fake = createFakeAtproto();
+    fake.metadata = { pushed_authorization_request_endpoint: "http://localhost:2583/oauth/par" };
+    await rejection(begin(provider({ allowHttp: true }), ALICE.handle));
+    expect(fake.requests.map((r) => r.url.href)).toContain("http://localhost:2583/oauth/par");
+  });
+});
+
 describe("sign-in from a DID", () => {
   it("keeps the handle only when it resolves back to the DID", async () => {
     const verified = await signIn(provider(), ALICE.did);
