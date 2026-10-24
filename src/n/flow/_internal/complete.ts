@@ -30,6 +30,11 @@ import { fetchProfile } from "../userinfo.ts";
 export interface CompleteFlowOptions extends FlowCarrierOptions {
   /** The response's headers: the consumed flow cookie is expired on them. */
   headers: Headers;
+  /**
+   * Replaces the global `fetch` for every request to a provider or to what a sign-in resolves
+   * (discovery, keys, handles, servers): the place to refuse private network ranges when the
+   * server can reach some.
+   */
   fetch?: Fetch;
   now?: () => number;
   /** Keep the discovery document and the JWK Set here instead of in memory. */

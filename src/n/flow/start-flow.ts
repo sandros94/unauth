@@ -33,6 +33,11 @@ export interface StartFlowOptions<TLink = never> extends FlowCarrierOptions {
   scopes?: string[];
   /** Extra authorization parameters (`prompt`, `login_hint`…); never the flow's own. */
   params?: Record<string, string>;
+  /**
+   * Replaces the global `fetch` for every request to a provider or to what a sign-in resolves
+   * (discovery, keys, handles, servers): the place to refuse private network ranges when the
+   * server can reach some.
+   */
   fetch?: Fetch;
   now?: () => number;
   /** Keep the discovery document here instead of in memory. */

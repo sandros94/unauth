@@ -67,6 +67,7 @@ app.get(
 - `origin`: the callback is this route on that origin; `redirectUri` names it outright instead.
 - `onStart(event)`: optional; returns `{ redirect, link, login, scopes, params }` for this request.
 - `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `link` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.
+- `fetch`: optional; replaces the global `fetch` for every request a sign-in makes to a provider, where a deployment refuses private network ranges.
 - `onError(event, error)`: optional; `error` is an `UnauthError` with `code`, `cause` and `status`. Without it the failure is answered with a plain `Response` of that status.
 - Annotate the `event` of the first hook you write with the framework's event type: every hook and the handler take it, `result` and `link` stay inferred.
 - `defineSignInHandler(provider, options)` is the same handler for any provider.
