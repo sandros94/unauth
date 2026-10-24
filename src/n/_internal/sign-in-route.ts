@@ -12,40 +12,45 @@ import type { Provider } from "../flow/types.ts";
 import { type FlowIntent, type WebRequestEvent, isCallback } from "../request-event.ts";
 
 /** What {@link signInRoute} serves: the flow, its key, and the route's steps for each request. */
-export interface SignInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TLink> {
+export interface SignInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TMemo> {
   /** Every option of both legs but the flow key and the request's intent. */
   flow: Omit<StartFlowOptions, keyof FlowIntent | "key" | "context">;
   /** The flow key, asked for on every request. */
   key: () => Promise<SessionConfigJWE["key"]>;
   /** The steps of one request, asked for once at its start. */
-  steps: (event: TEvent) => SignInSteps<TProfile, TResult, TLink>;
+  steps: (event: TEvent) => SignInSteps<TProfile, TResult, TMemo>;
 }
 
 /** The steps of one request around the flow. */
-export interface SignInSteps<TProfile, TResult, TLink> {
-  onStart?: () => FlowIntent<TLink> | void | Promise<FlowIntent<TLink> | void>;
+export interface SignInSteps<TProfile, TResult, TMemo> {
+  onStart?: () => FlowIntent<TMemo> | void | Promise<FlowIntent<TMemo> | void>;
   onError?: (error: UnauthError) => TResult | Response | Promise<TResult | Response>;
   /** Turns a completed sign-in into the response. */
-  complete: (result: FlowResult<TProfile, TLink>) => Promise<TResult | Response>;
+  complete: (result: FlowResult<TProfile, TMemo>) => Promise<TResult | Response>;
 }
 
 /**
- * One route for both legs of a sign-in: without `code`/`error` (or a `form_post` body) it answers
- * the redirect to the provider, otherwise it completes the callback and returns `complete`'s
- * value. A sign-in a relocation moved off its starting host is redirected back there with the
+ * One route for both legs of a sign-in, answering `GET` and `POST` and refusing any other method
+ * with a `405`, so it is mounted without a method filter: without `code`/`error` (or a
+ * `form_post` body) it answers the redirect to the provider, otherwise it completes the callback
+ * and returns `complete`'s value. A sign-in a relocation moved off its starting host is redirected back there with the
  * result in a sealed, single-use handoff token, and `complete` runs on that host. The consumed flow cookie is expired on the
  * response, error responses included; an `UnauthError` is answered by `onError`, else by a plain
  * response.
  */
-export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TLink>(
+export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TMemo>(
   provider: Provider<TProfile>,
-  route: SignInRoute<TProfile, TResult, TEvent, TLink>,
+  route: SignInRoute<TProfile, TResult, TEvent, TMemo>,
 ): (event: TEvent) => Promise<TResult | Response> {
   const { flow } = route;
   let carrier:
-    | { key: SessionConfigJWE["key"]; handoff: HandoffCarrier<TProfile, TLink> }
+    | { key: SessionConfigJWE["key"]; handoff: HandoffCarrier<TProfile, TMemo> }
     | undefined;
   return async (event) => {
+    const { method } = event.req;
+    if (method !== "GET" && method !== "POST") {
+      return new Response(null, { status: 405, headers: { allow: "GET, POST" } });
+    }
     const { onStart, onError, complete } = route.steps(event);
     const fail = async (error: UnauthError, headers?: Headers): Promise<TResult | Response> =>
       onError ? onError(error) : failureResponse(error, headers);
@@ -57,13 +62,13 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
       if (!isUnauthError(error)) throw error;
       return fail(error);
     }
-    if (carrier?.key !== key) carrier = { key, handoff: handoffCarrier<TProfile, TLink>(key) };
+    if (carrier?.key !== key) carrier = { key, handoff: handoffCarrier<TProfile, TMemo>(key) };
     const { handoff } = carrier;
 
     const handed =
       provider.kind === "custom" ? new URL(event.req.url).searchParams.get(HANDOFF_PARAM) : null;
     if (handed !== null) {
-      let result: FlowResult<TProfile, TLink>;
+      let result: FlowResult<TProfile, TMemo>;
       try {
         result = await handoff.take(handed);
       } catch (error) {
@@ -80,8 +85,8 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
 
     if (!isCallback(provider, event.req)) {
       try {
-        const intent: FlowIntent<TLink> = (await onStart?.()) ?? {};
-        return await startFlow<TLink>(provider, event.req, {
+        const intent: FlowIntent<TMemo> = (await onStart?.()) ?? {};
+        return await startFlow<TMemo>(provider, event.req, {
           ...flow,
           key,
           context: event.context,
@@ -94,9 +99,9 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
     }
 
     const headers = new Headers();
-    let completed: CompletedFlow<TProfile, TLink>;
+    let completed: CompletedFlow<TProfile, TMemo>;
     try {
-      completed = await completeFlowWithReturnHost<TProfile, TLink>(provider, event.req, {
+      completed = await completeFlowWithReturnHost<TProfile, TMemo>(provider, event.req, {
         ...flow,
         key,
         headers,

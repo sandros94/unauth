@@ -64,8 +64,8 @@ export function defineGitLabProvider(options: GitLabProviderConfig): OAuthProvid
 export type GitLabHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<GitLabProviderConfig, GitLabProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<GitLabProviderConfig, GitLabProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a GitLab sign-in on one route: `defineSignInHandler` on {@link defineGitLabProvider}, the

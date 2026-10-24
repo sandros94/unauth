@@ -86,8 +86,8 @@ export function defineGitHubProvider(options: GitHubProviderConfig): OAuthProvid
 export type GitHubHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<GitHubProviderConfig, GitHubProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<GitHubProviderConfig, GitHubProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a GitHub sign-in on one route: `defineSignInHandler` on {@link defineGitHubProvider}, the

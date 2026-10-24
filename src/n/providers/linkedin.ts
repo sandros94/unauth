@@ -57,8 +57,8 @@ export function defineLinkedInProvider(
 export type LinkedInHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<LinkedInProviderConfig, LinkedInProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<LinkedInProviderConfig, LinkedInProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a LinkedIn sign-in on one route: `defineSignInHandler` on {@link defineLinkedInProvider}, the

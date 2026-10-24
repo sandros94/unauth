@@ -64,7 +64,7 @@ export interface AtprotoProvider extends CustomProvider<AtprotoProfile> {
 }
 
 /**
- * AT Protocol (Bluesky and every other PDS) as a public client, sign-in only: `login` names the
+ * AT Protocol (Bluesky and every other PDS) as a public client, sign-in only: `loginHint` names the
  * account (a handle or a DID) or the server to start from (an `https://` URL); the account's
  * authorization server is discovered through its DID document and PDS; the request is pushed
  * (PAR) with PKCE and a DPoP proof signed by a key minted for this sign-in; the callback's `iss`,
@@ -105,14 +105,16 @@ export type AtprotoProviderPart =
 export type AtprotoHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<AtprotoProviderPart, AtprotoProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<AtprotoProviderPart, AtprotoProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of an AT Protocol sign-in on one route: `defineSignInHandler` on the provider, the options
  * split between them by the provider's keys. `redirectUri` is both the provider's callback and the
- * sign-in's. The account comes from the request's `?login=` (a handle, a DID or a server) unless
- * `onStart` names one.
+ * sign-in's. The account (a handle, a DID or a server) is `onStart`'s `loginHint`: the handler
+ * reads nothing from the request, the application does, from the form it serves. Naming the
+ * account picks the server the flow's `state` is pushed to, so the start is taken only as a `POST`
+ * from the application's own origin (`ERR_AUTHN_CROSS_SITE_START` otherwise).
  */
 export const defineAtprotoHandler: PresetHandler<AtprotoProviderPart, AtprotoProfile> =
   /* @__PURE__ */ presetHandler(atprotoProviderOf, {
@@ -133,7 +135,6 @@ export const defineAtprotoHandler: PresetHandler<AtprotoProviderPart, AtprotoPro
       "plcDirectory",
     ],
     shared: ["redirectUri"],
-    login: (event) => new URL(event.req.url).searchParams.get("login") ?? undefined,
   });
 
 function atprotoProviderOf(part: AtprotoProviderPart): AtprotoProvider {

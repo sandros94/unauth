@@ -16,10 +16,13 @@ export interface SignInHandlerOptions<
   TProfile = unknown,
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
+  TMemo = never,
 >
   extends Omit<StartFlowOptions, keyof FlowIntent | "key" | "context">, SignInKey {
-  /** An origin whose requests derive `redirectUri` from their own URL: added to `trustedOrigins`. */
+  /**
+   * An origin whose requests derive `redirectUri` from their own URL, and whose forms may start a
+   * sign-in that links an account or names it: added to `trustedOrigins`.
+   */
   origin?: string;
   /**
    * Where the browser lands when `onSuccess` answers nothing; a same-origin `redirect` the flow
@@ -29,20 +32,22 @@ export interface SignInHandlerOptions<
    */
   redirect?: string;
   /**
-   * Per-request additions to the authorization leg. A `link` intent carries what the application
-   * needs to recognise the signed-in user at the callback; sealed in the flow, it comes back as
-   * `result.link`. An `UnauthError` it throws is answered as a failed flow; anything else
-   * propagates as it is.
+   * Per-request additions to the authorization leg. A `memo` carries what the application needs
+   * back at the callback, such as the signed-in user asking to link this account; sealed in the
+   * flow, it comes back as `result.memo`. A start returning `memo`, or `loginHint` for a custom
+   * provider, is accepted only as a `POST` from the application's own origin
+   * (`ERR_AUTHN_CROSS_SITE_START` otherwise): start those sign-ins from a form. An `UnauthError`
+   * it throws is answered as a failed flow; anything else propagates as it is.
    */
-  onStart?: (event: TEvent) => FlowIntent<TLink> | void | Promise<FlowIntent<TLink> | void>;
+  onStart?: (event: TEvent) => FlowIntent<TMemo> | void | Promise<FlowIntent<TMemo> | void>;
   /**
-   * Runs after a completed callback: the application writes its session, or links `result.link`.
+   * Runs after a completed callback: the application writes its session, or acts on `result.memo`.
    * Its return value is the response; `undefined` answers a `302` to the flow's `redirect`, else
    * to `redirect`. What it throws propagates as it is.
    */
   onSuccess: (
     event: TEvent,
-    result: FlowResult<TProfile, NoInfer<TLink>>,
+    result: FlowResult<TProfile, NoInfer<TMemo>>,
   ) => TResult | Promise<TResult>;
   /**
    * Answers a failed flow, always an `UnauthError`; its return value is the response. Without it
@@ -60,15 +65,16 @@ export interface SignInHandlerOptions<
 export type SignInAnswer<TResult> = Exclude<TResult, void>;
 
 /**
- * One route for both legs of a sign-in: a handler taking a web-standard request event. A request
- * without `code` or `error` (or a `form_post` body) starts the flow with `onStart`'s intent and
- * answers the redirect to the provider; the callback completes it and calls `onSuccess`, which
- * writes the application's session. The handler returns `onSuccess`'s value, or a `302` to the
- * landing path when that is `undefined`. A failed flow is an `UnauthError`, answered by `onError`
- * or by a plain `Response` with its status.
+ * One route for both legs of a sign-in: a handler taking a web-standard request event, mounted
+ * without a method filter (it answers `GET` and `POST`, `405` otherwise). A request without
+ * `code` or `error` (or a `form_post` body) starts the flow with `onStart`'s intent and answers
+ * the redirect to the provider; the callback completes it and calls `onSuccess`, which writes the
+ * application's session. The handler returns `onSuccess`'s value, or a `302` to the landing path
+ * when that is `undefined`. A failed flow is an `UnauthError`, answered by `onError` or by a plain
+ * `Response` with its status.
  *
  * Every hook takes the event first. The annotation on the first hook's `event` types every hook
- * and the handler: put the framework's event type on the first hook written; `result` and `link`
+ * and the handler: put the framework's event type on the first hook written; `result` and `memo`
  * stay inferred.
  *
  * @throws `ERR_UNAUTH_CONFIG_INVALID` without `onSuccess`, for a `redirect` that is not a
@@ -77,15 +83,16 @@ export type SignInAnswer<TResult> = Exclude<TResult, void>;
  * @example
  * import type { H3Event } from "h3";
  *
+ * // Mounted without a method filter: a sign-in starts from a link or a form, a memo from a form only.
  * const handler = defineSignInHandler(github, {
  *   key,
  *   origin: "https://app.example",
  *   onStart: async (event: H3Event) => {
  *     const session = await useAuthSession(event);
- *     return session.id ? { link: { userId: session.data.userId } } : undefined;
+ *     return session.id ? { memo: { userId: session.data.userId } } : undefined;
  *   },
- *   onSuccess: async (event, { identity, link }) => {
- *     // `event` is an `H3Event`; `link` has the type `onStart` returned.
+ *   onSuccess: async (event, { identity, memo }) => {
+ *     // `event` is an `H3Event`; `memo` has the type `onStart` returned.
  *   },
  * });
  */
@@ -93,10 +100,10 @@ export function defineSignInHandler<
   TProfile,
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
+  TMemo = never,
 >(
   provider: Provider<TProfile>,
-  options: SignInHandlerOptions<TProfile, TResult, TEvent, TLink>,
+  options: SignInHandlerOptions<TProfile, TResult, TEvent, TMemo>,
 ): (event: TEvent) => Promise<Response | SignInAnswer<TResult>> {
   const { key, origin, redirect, onStart, onSuccess, onError, ...flow } = options;
   if (typeof onSuccess !== "function") {
@@ -111,7 +118,7 @@ export function defineSignInHandler<
   }
   const trustedOrigins =
     origin === undefined ? flow.trustedOrigins : [...(flow.trustedOrigins ?? []), originOf(origin)];
-  return signInRoute<TProfile, SignInAnswer<TResult>, TEvent, TLink>(provider, {
+  return signInRoute<TProfile, SignInAnswer<TResult>, TEvent, TMemo>(provider, {
     flow: { ...flow, trustedOrigins },
     key: flowKeyResolver(key),
     steps: (event) => ({

@@ -15,12 +15,7 @@ export default defineEventHandler(async (event) => {
 
   const session = await useAuthSession(event);
   await session.clear();
-  await session.update({
-    userId: user.id,
-    provider: "password",
-    subject: body.user,
-    signedInAt: Date.now(),
-  });
+  await session.update({ userId: user.id, signedInAt: Date.now() });
 
-  return { id: session.id, subject: session.data.subject, expiresAt: session.expiresAt };
+  return { id: session.id, userId: session.data.userId, expiresAt: session.expiresAt };
 });

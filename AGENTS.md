@@ -85,6 +85,7 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 - Before adding new code, study surrounding patterns, naming conventions, and architectural decisions.
 - Use existing UnJS utilities and dependencies before adding new packages.
 - Keep runtime code minimal and fast.
+- A sign-in route is mounted without a method filter (`routes/auth/github.ts`, `app.all(...)`, never `.get.ts`): the handler answers `GET` and `POST` itself and refuses other methods with a `405`.
 
 ## Commit Conventions
 

@@ -15,7 +15,7 @@ import {
   defineOAuth2Provider,
   defineOidcProvider,
 } from "../../../src/n/index.ts";
-import { cookieHeader, isExpired } from "../_session.ts";
+import { cookieHeader, formStart, isExpired } from "../_session.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "./_fake-provider.ts";
 
 const APP = "https://app.test";
@@ -61,7 +61,9 @@ async function beginSignIn(
   fake: Awaited<ReturnType<typeof createFakeProvider>>,
   options: Partial<Parameters<typeof startFlow>[2]> = {},
 ) {
-  const response = await startFlow(provider, new Request(`${APP}/auth/fake`), {
+  const url = `${APP}/auth/fake`;
+  const start = options.memo === undefined ? new Request(url) : formStart(url);
+  const response = await startFlow(provider, start, {
     key,
     redirectUri: REDIRECT_URI,
     fetch: fake.fetch,
@@ -182,7 +184,7 @@ describe("completeFlow", () => {
     const fake = await createFakeProvider();
     const { request } = await beginSignIn(fakeOAuth2(), fake, {
       redirect: "/dashboard?tab=1",
-      link: { userId: "u-42" },
+      memo: { userId: "u-42" },
     });
     const headers = new Headers();
 
@@ -199,7 +201,7 @@ describe("completeFlow", () => {
     expect(Object.hasOwn(result.identity, "tokens")).toBe(false);
     expect(result.tokens?.access_token).toMatch(/^at-/);
     expect(result.redirect).toBe("/dashboard?tab=1");
-    expect(result.link).toEqual({ userId: "u-42" });
+    expect(result.memo).toEqual({ userId: "u-42" });
     expect(flowCookieCleared(headers)).toBe(true);
   });
 
@@ -210,17 +212,17 @@ describe("completeFlow", () => {
 
   it("carries a nested link payload sealed in the flow cookie and hands it back untouched", async () => {
     const fake = await createFakeProvider();
-    const link = { account: { provider: "github", subject: "42" }, scopes: ["repo"], at: 1 };
-    const { response, request } = await beginSignIn(fakeOAuth2(), fake, { link });
+    const memo = { account: { provider: "github", subject: "42" }, scopes: ["repo"], at: 1 };
+    const { response, request } = await beginSignIn(fakeOAuth2(), fake, { memo });
 
     const cookie = response.headers.getSetCookie().join("\n");
     expect(cookie).not.toMatch(/github|repo/);
-    const result = await completeFlow<unknown, typeof link>(fakeOAuth2(), request, {
+    const result = await completeFlow<unknown, typeof memo>(fakeOAuth2(), request, {
       key,
       headers: new Headers(),
       fetch: fake.fetch,
     });
-    expect(result.link).toEqual(link);
+    expect(result.memo).toEqual(memo);
   });
 
   it("fetches the discovery document once across both legs", async () => {
@@ -757,18 +759,18 @@ describe("FlowStore", () => {
   it("carries a nested link payload through the store", async () => {
     const fake = await createFakeProvider();
     const { store, records } = memoryStore();
-    const link = { account: { provider: "github", subject: "42" }, scopes: ["repo"] };
-    const { request } = await beginSignIn(fakeOAuth2(), fake, { store, link });
+    const memo = { account: { provider: "github", subject: "42" }, scopes: ["repo"] };
+    const { request } = await beginSignIn(fakeOAuth2(), fake, { store, memo });
 
     const [entry] = records.values();
-    expect(entry!.record.link).toEqual(link);
+    expect(entry!.record.memo).toEqual(memo);
     const result = await completeFlow(fakeOAuth2(), request, {
       key,
       store,
       headers: new Headers(),
       fetch: fake.fetch,
     });
-    expect(result.link).toEqual(link);
+    expect(result.memo).toEqual(memo);
   });
 
   it("throws ERR_AUTHN_FLOW_EXPIRED when the store no longer has the record", async () => {

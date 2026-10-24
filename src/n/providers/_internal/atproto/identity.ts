@@ -33,8 +33,8 @@ export interface AtprotoIdentity {
   pds: string;
 }
 
-/** What `login` names: an account, or a server to start from. */
-export type AtprotoLogin = { kind: "account"; input: string } | { kind: "server"; url: string };
+/** What `loginHint` names: an account, or a server to start from. */
+export type AtprotoLoginHint = { kind: "account"; input: string } | { kind: "server"; url: string };
 
 /** Handle syntax (atproto Handle spec) and the TLDs it never resolves. */
 const HANDLE = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -63,20 +63,20 @@ const loadDid = /* @__PURE__ */ defineMetadataLoader<DidDocument, AtprotoResolve
   parse: parseDidDocument,
 });
 
-/** `ERR_AUTHN_LOGIN_INVALID` (400): `login` names no usable account. */
-export function loginError(
+/** `ERR_AUTHN_LOGIN_HINT_INVALID` (400): `loginHint` names no usable account. */
+export function loginHintError(
   message: string,
   cause?: unknown,
-): UnauthError<"ERR_AUTHN_LOGIN_INVALID"> {
-  return new UnauthError(`[unauth/n] ${message}`, "ERR_AUTHN_LOGIN_INVALID", {
+): UnauthError<"ERR_AUTHN_LOGIN_HINT_INVALID"> {
+  return new UnauthError(`[unauth/n] ${message}`, "ERR_AUTHN_LOGIN_HINT_INVALID", {
     status: 400,
     cause,
   });
 }
 
-/** A `login`: an `https://` URL is a server to start from, anything else an account (handle or DID). */
-export function parseLogin(login: string): AtprotoLogin {
-  const input = login.trim().replace(/^@/, "");
+/** A `loginHint`: an `https://` URL is a server to start from, anything else an account (handle or DID). */
+export function parseLoginHint(loginHint: string): AtprotoLoginHint {
+  const input = loginHint.trim().replace(/^@/, "");
   if (/^https:\/\//i.test(input)) {
     const url = assertServerUrl(input);
     return { kind: "server", url: url.origin };
@@ -104,7 +104,7 @@ export async function resolveIdentity(
   const did = await resolveHandle(input, options);
   const document = await resolveDid(did, options);
   if (claimedHandle(document) !== input) {
-    throw loginError(`${did} does not claim the handle ${input}.`);
+    throw loginHintError(`${did} does not claim the handle ${input}.`);
   }
   return { did, handle: input, pds: pdsOf(document) };
 }
@@ -120,18 +120,18 @@ export async function verifiedHandle(
   return did === document.id ? { handle: claimed } : {};
 }
 
-/** A DID document, kept ten minutes; an unknown DID is `ERR_AUTHN_LOGIN_INVALID`. */
+/** A DID document, kept ten minutes; an unknown DID is `ERR_AUTHN_LOGIN_HINT_INVALID`. */
 export function resolveDid(did: string, options: AtprotoResolveOptions): Promise<DidDocument> {
   assertDid(did);
   return loadDid(did, options).catch((error: unknown) => {
     if (isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") && error.cause.status === 404) {
-      throw loginError(`${did} is unknown.`, error);
+      throw loginHintError(`${did} is unknown.`, error);
     }
     throw error;
   });
 }
 
-/** The origin of the PDS a DID document names; `ERR_AUTHN_LOGIN_INVALID` without one. */
+/** The origin of the PDS a DID document names; `ERR_AUTHN_LOGIN_HINT_INVALID` without one. */
 export function pdsOf(document: DidDocument): string {
   const services = Array.isArray(document.service) ? document.service : [];
   for (const entry of services) {
@@ -146,18 +146,18 @@ export function pdsOf(document: DidDocument): string {
       try {
         return assertSecureUrl(endpoint, { label: `The PDS of ${document.id}` }).origin;
       } catch (error) {
-        throw loginError(`${document.id} names an unusable PDS.`, error);
+        throw loginHintError(`${document.id} names an unusable PDS.`, error);
       }
     }
   }
-  throw loginError(`${document.id} names no PDS.`);
+  throw loginHintError(`${document.id} names no PDS.`);
 }
 
 export function normalizeHandle(value: string): string {
   const handle = value.toLowerCase();
   const tld = handle.slice(handle.lastIndexOf(".") + 1);
   if (handle.length > 253 || !HANDLE.test(handle) || DISALLOWED_TLDS.has(tld)) {
-    throw loginError(`${JSON.stringify(value)} is not an atproto handle or DID.`);
+    throw loginHintError(`${JSON.stringify(value)} is not an atproto handle or DID.`);
   }
   return handle;
 }
@@ -166,15 +166,15 @@ export function assertDid(did: string): void {
   if (DID_PLC.test(did)) return;
   const host = DID_WEB.exec(did)?.[1];
   if (host !== undefined && HANDLE.test(host) && !/^[\d.]+$/.test(host)) return;
-  throw loginError(`${JSON.stringify(did)} is not a did:plc or a host-only did:web.`);
+  throw loginHintError(`${JSON.stringify(did)} is not a did:plc or a host-only did:web.`);
 }
 
-/** The `https://` origin of a server given as `login`. */
+/** The `https://` origin of a server given as `loginHint`. */
 function assertServerUrl(input: string): URL {
   try {
     return assertSecureUrl(input, { label: "The server" });
   } catch (error) {
-    throw loginError(`${JSON.stringify(input)} is not an https:// server URL.`, error);
+    throw loginHintError(`${JSON.stringify(input)} is not an https:// server URL.`, error);
   }
 }
 
@@ -184,14 +184,14 @@ function assertServerUrl(input: string): URL {
  */
 async function resolveHandle(handle: string, options: AtprotoResolveOptions): Promise<string> {
   const fromDns = await resolveHandleDns(handle, options).catch((error: unknown) => {
-    if (isUnauthError(error, "ERR_AUTHN_LOGIN_INVALID")) throw error;
+    if (isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")) throw error;
     return undefined;
   });
   const did = fromDns ?? (await resolveHandleHttps(handle, options));
   try {
     assertDid(did);
   } catch (error) {
-    throw loginError(`The handle ${handle} resolves to something that is not a DID.`, error);
+    throw loginHintError(`The handle ${handle} resolves to something that is not a DID.`, error);
   }
   return did;
 }
@@ -218,7 +218,7 @@ async function resolveHandleDns(
     const text = data.replaceAll(/"\s*"/g, "").replace(/^"|"$/g, "");
     if (text.startsWith("did=")) dids.add(text.slice(4));
   }
-  if (dids.size > 1) throw loginError(`The handle ${handle} has conflicting DNS records.`);
+  if (dids.size > 1) throw loginHintError(`The handle ${handle} has conflicting DNS records.`);
   return dids.values().next().value;
 }
 
@@ -229,19 +229,19 @@ async function resolveHandleHttps(handle: string, options: AtprotoResolveOptions
   try {
     response = await raced(options.fetch(url, { signal, redirect: "error" }), signal);
   } catch (error) {
-    throw loginError(
+    throw loginHintError(
       isAbort(error)
         ? `The handle ${handle} did not answer within ${PROVIDER_FETCH_TIMEOUT} ms.`
         : `The handle ${handle} does not resolve.`,
       error,
     );
   }
-  if (!response.ok) throw loginError(`The handle ${handle} does not resolve.`);
+  if (!response.ok) throw loginHintError(`The handle ${handle} does not resolve.`);
   const text = await readText(response, { maxBytes: HANDLE_DOCUMENT_MAX_BYTES, signal }).catch(
     () => undefined,
   );
   const did = text?.split("\n", 1)[0]?.trim();
-  if (!did) throw loginError(`The handle ${handle} does not resolve.`);
+  if (!did) throw loginHintError(`The handle ${handle} does not resolve.`);
   return did;
 }
 

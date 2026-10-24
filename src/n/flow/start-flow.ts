@@ -1,6 +1,7 @@
 import type { CacheDriver } from "./_internal/cache/load.ts";
 import { type Fetch, fetchOf, nowOf } from "./_internal/http/shared.ts";
 import { resolveRedirectUri, safeRedirect } from "./_internal/redirect.ts";
+import { assertFormStart } from "./_internal/form-start.ts";
 import { resumeIntent, withSealedIntent } from "./_internal/carrier/intent.ts";
 import { type FlowCarrierOptions, saveFlow } from "./_internal/carrier/transient.ts";
 import { buildAuthorizationUrl } from "./authorization-url.ts";
@@ -9,26 +10,28 @@ import { createNonce, createPkce, createState } from "./random.ts";
 import type { CustomProvider, FlowRecord, OAuthProvider, Provider } from "./types.ts";
 
 /** Options of {@link startFlow}. */
-export interface StartFlowOptions<TLink = never> extends FlowCarrierOptions {
+export interface StartFlowOptions<TMemo = never> extends FlowCarrierOptions {
   /** The callback URL registered at the provider. */
   redirectUri?: string;
-  /** Origins whose requests may derive `redirectUri` from their own URL, when it is not set. */
+  /**
+   * Origins whose requests may derive `redirectUri` from their own URL, when it is not set, and
+   * whose forms may start a sign-in that carries a `memo` or names the account (`loginHint`).
+   */
   trustedOrigins?: string[];
   /** Where to go after sign-in; kept only when it is a same-origin path. */
   redirect?: string;
   /**
-   * A link intent: whatever the application needs to recognise, at the callback, the signed-in
-   * user who asked to link this provider account. It is sealed in the flow record, out of the
-   * browser's reach, and handed back untouched as `FlowResult.link`; it must survive a JSON round
-   * trip.
+   * A memo: whatever the application needs back at the callback, such as the signed-in user who
+   * asked to link this provider account. It is sealed in the flow record, out of the browser's
+   * reach, and handed back untouched as `FlowResult.memo`; it must survive a JSON round trip.
    */
-  link?: TLink;
+  memo?: TMemo;
   /**
    * Which account signs in, as the user typed it: the `login_hint` of an OAuth provider, and
    * what a custom provider resolves the account from (an ATProto handle). Some custom providers
    * require it.
    */
-  login?: string;
+  loginHint?: string;
   /** Replaces the provider's scopes. */
   scopes?: string[];
   /** Extra authorization parameters (`prompt`, `login_hint`…); never the flow's own. */
@@ -51,28 +54,40 @@ export interface StartFlowOptions<TLink = never> extends FlowCarrierOptions {
  * engine's. A browser holds one flow at a time: a second sign-in started before the first
  * completes replaces it.
  *
- * A custom provider's relocation records nothing: the request's intent (`redirect`, `link`,
- * `login`, `scopes`, `params`) and its host are sealed into the relocation URL as `unauth_intent`,
+ * A custom provider's relocation records nothing: the request's intent (`redirect`, `memo`,
+ * `loginHint`, `scopes`, `params`) and its host are sealed into the relocation URL as `unauth_intent`,
  * and the relocated start reads them back, the intent's members winning over the options it was
  * given and the host, when it is another, recorded as `returnHost`. That token opens once, within
  * a minute; one that does not is `ERR_AUTHN_FLOW_EXPIRED`.
+ *
+ * A start that carries a `memo`, or names the account of a custom provider (`loginHint`), is
+ * taken only from a form submitted on the application's own pages: a `POST` whose `Origin` is the
+ * request's or one of `trustedOrigins`. Anything else is `ERR_AUTHN_CROSS_SITE_START` (403): a
+ * cross-site navigation must not seal the signed-in user's memo, or hand the flow's `state` to a
+ * server the request picked, into a flow the user never asked for. A relocated start opened from
+ * a sealed intent was checked where it began.
  */
-export async function startFlow<TLink = never>(
+export async function startFlow<TMemo = never>(
   provider: Provider<unknown>,
   request: Request,
-  options: StartFlowOptions<TLink>,
+  options: StartFlowOptions<TMemo>,
 ): Promise<Response> {
   const resumed = provider.kind === "custom" ? await resumeIntent(request, options) : { options };
   options = resumed.options;
+  const steerable =
+    options.memo !== undefined || (provider.kind === "custom" && options.loginHint !== undefined);
+  if (steerable && resumed.returnHost === undefined) {
+    assertFormStart(request, options.trustedOrigins);
+  }
   const redirectUri = resolveRedirectUri(request, {
     redirectUri:
       options.redirectUri ?? (provider.kind === "custom" ? provider.redirectUri : undefined),
     trustedOrigins: options.trustedOrigins,
   });
   const redirect = safeRedirect(options.redirect);
-  const record: FlowRecord<TLink> = { provider: provider.id, state: createState(), redirectUri };
+  const record: FlowRecord<TMemo> = { provider: provider.id, state: createState(), redirectUri };
   if (redirect !== undefined) record.redirect = redirect;
-  if (options.link !== undefined) record.link = options.link;
+  if (options.memo !== undefined) record.memo = options.memo;
   if (resumed.returnHost !== undefined && resumed.returnHost !== new URL(request.url).hostname) {
     record.returnHost = resumed.returnHost;
   }
@@ -104,8 +119,8 @@ async function startOAuth(
   if (pkce) record.verifier = pkce.verifier;
   if (resolved.nonce) record.nonce = createNonce();
   const params = { ...options.params };
-  if (options.login !== undefined && params.login_hint === undefined) {
-    params.login_hint = options.login;
+  if (options.loginHint !== undefined && params.login_hint === undefined) {
+    params.login_hint = options.loginHint;
   }
   return buildAuthorizationUrl(resolved, {
     redirectUri,
@@ -130,9 +145,9 @@ async function startCustom(
   const { record, redirectUri, options } = context;
   const started = await provider.start({
     request,
-    record: { ...record },
+    record: { provider: record.provider, state: record.state, redirectUri: record.redirectUri },
     redirectUri,
-    login: options.login,
+    loginHint: options.loginHint,
     scopes: options.scopes,
     params: options.params,
     fetch: fetchOf(options),

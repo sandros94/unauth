@@ -12,8 +12,8 @@ export interface WebRequestEvent {
   readonly context?: Record<string, unknown>;
 }
 
-/** What a request may add to the authorization leg: where to return, a link intent, extra scopes. */
-export type FlowIntent<TLink = never> = StartIntent<TLink>;
+/** What a request may add to the authorization leg: where to return, a memo, the account, extra scopes. */
+export type FlowIntent<TMemo = never> = StartIntent<TMemo>;
 
 /** Whether `request` is the callback leg: a query with `code` or `error`, or a `POST` to a `form_post` provider's route. */
 export function isCallback(

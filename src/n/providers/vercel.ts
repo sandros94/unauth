@@ -49,8 +49,8 @@ export function defineVercelProvider(options: VercelProviderConfig): OAuthProvid
 export type VercelHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<VercelProviderConfig, VercelProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<VercelProviderConfig, VercelProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Vercel sign-in on one route: `defineSignInHandler` on {@link defineVercelProvider}, the

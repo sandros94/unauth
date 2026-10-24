@@ -59,8 +59,8 @@ export function defineXProvider(options: XProviderOptions): OAuthProvider<XProfi
 export type XHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<XProviderOptions, XProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<XProviderOptions, XProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of an X sign-in on one route: `defineSignInHandler` on {@link defineXProvider}, the

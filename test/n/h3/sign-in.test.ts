@@ -160,10 +160,10 @@ describe("h3 v2", () => {
       clientId: "c",
       clientSecret: "s",
       key: flowKey,
-      onStart: () => ({ link: { userId: "u1" } }),
-      onSuccess: (event: H3Event, { identity, link }) => {
+      onStart: () => ({ memo: { userId: "u1" } }),
+      onSuccess: (event: H3Event, { identity, memo }) => {
         expectTypeOf(identity.profile).toEqualTypeOf<GitHubProfile>();
-        expectTypeOf(link).toEqualTypeOf<{ userId: string } | undefined>();
+        expectTypeOf(memo).toEqualTypeOf<{ userId: string } | undefined>();
         return identity.subject;
       },
       onError: (event, error) => {
@@ -176,11 +176,11 @@ describe("h3 v2", () => {
 
     const fromStart = defineSignInHandler(fakeProvider(), {
       key: flowKey,
-      onStart: (event: H3Event) => (event.req.url ? { link: { userId: "u1" } } : undefined),
-      onSuccess: (event, { identity, link }) => {
+      onStart: (event: H3Event) => (event.req.url ? { memo: { userId: "u1" } } : undefined),
+      onSuccess: (event, { identity, memo }) => {
         expectTypeOf(event).toEqualTypeOf<H3Event>();
         expectTypeOf(identity.profile).toEqualTypeOf<Record<string, unknown>>();
-        expectTypeOf(link).toEqualTypeOf<{ userId: string } | undefined>();
+        expectTypeOf(memo).toEqualTypeOf<{ userId: string } | undefined>();
       },
       onError: (event) => {
         expectTypeOf(event).toEqualTypeOf<H3Event>();

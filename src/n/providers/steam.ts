@@ -50,8 +50,8 @@ export function defineSteamProvider(config: SteamProviderConfig): CustomProvider
 export type SteamHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<SteamProviderConfig, SteamProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<SteamProviderConfig, SteamProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Steam sign-in on one route: `defineSignInHandler` on {@link defineSteamProvider},

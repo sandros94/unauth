@@ -1,6 +1,6 @@
 import { isRecord, profileError } from "../../flow/_internal/http/shared.ts";
 import type { ProfileContext, Provider } from "../../flow/types.ts";
-import type { FlowIntent, WebRequestEvent } from "../../request-event.ts";
+import type { WebRequestEvent } from "../../request-event.ts";
 import {
   type SignInAnswer,
   type SignInHandlerOptions,
@@ -25,20 +25,19 @@ export type PresetHandlerConfig<
   TProfile,
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = TConfig & SignInHandlerOptions<TProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = TConfig & SignInHandlerOptions<TProfile, TResult, TEvent, TMemo>;
 
 /** A preset's sign-in route: {@link defineSignInHandler} on the provider its own options define. */
 export interface PresetHandler<TConfig, TProfile> {
-  <TResult = never, TEvent extends WebRequestEvent = WebRequestEvent, TLink = never>(
-    options: PresetHandlerConfig<TConfig, TProfile, TResult, TEvent, TLink>,
+  <TResult = never, TEvent extends WebRequestEvent = WebRequestEvent, TMemo = never>(
+    options: PresetHandlerConfig<TConfig, TProfile, TResult, TEvent, TMemo>,
   ): (event: TEvent) => Promise<Response | SignInAnswer<TResult>>;
 }
 
 /**
  * The {@link PresetHandler} of `define`: the members `keys` names, every member of its config and
  * nothing else, go to `define`, the others to {@link defineSignInHandler}; `shared` ones go to both.
- * `login` reads the account from the request when the application's `onStart` names none.
  */
 export function presetHandler<
   TConfig extends object,
@@ -49,27 +48,18 @@ export function presetHandler<
   options: {
     keys: TKeys & CoveringKeys<TConfig, TKeys>;
     shared?: readonly TKeys[number][];
-    login?: (event: WebRequestEvent) => string | undefined;
   },
 ): PresetHandler<TConfig, TProfile> {
   const keys = new Set<PropertyKey>(options.keys);
   const shared = new Set<PropertyKey>(options.shared);
-  const { login } = options;
-  return <TResult, TEvent extends WebRequestEvent, TLink>(
-    all: PresetHandlerConfig<TConfig, TProfile, TResult, TEvent, TLink>,
+  return <TResult, TEvent extends WebRequestEvent, TMemo>(
+    all: PresetHandlerConfig<TConfig, TProfile, TResult, TEvent, TMemo>,
   ): ((event: TEvent) => Promise<Response | SignInAnswer<TResult>>) => {
     const config: Record<string, unknown> = {};
     const signIn: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(all)) {
       if (keys.has(name)) config[name] = value;
       if (!keys.has(name) || shared.has(name)) signIn[name] = value;
-    }
-    if (login) {
-      const { onStart } = all;
-      signIn.onStart = async (event: TEvent): Promise<FlowIntent<TLink>> => {
-        const intent = (await onStart?.(event)) ?? {};
-        return intent.login === undefined ? { ...intent, login: login(event) } : intent;
-      };
     }
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `all` is checked whole by `PresetHandler`, then split by name: each half is what its callee declares
     const provider = define(config as TConfig);

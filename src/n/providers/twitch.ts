@@ -64,8 +64,8 @@ export function defineTwitchProvider(options: TwitchProviderConfig): OAuthProvid
 export type TwitchHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<TwitchProviderConfig, TwitchProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<TwitchProviderConfig, TwitchProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Twitch sign-in on one route: `defineSignInHandler` on {@link defineTwitchProvider}, the

@@ -51,8 +51,8 @@ export function defineGoogleProvider(options: GoogleProviderConfig): OAuthProvid
 export type GoogleHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<GoogleProviderConfig, GoogleProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<GoogleProviderConfig, GoogleProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Google sign-in on one route: `defineSignInHandler` on {@link defineGoogleProvider}, the

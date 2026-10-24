@@ -16,17 +16,19 @@
           <button type="button" data-call="POST /login">login</button>
         </form>
         <p><a href="/auth/github">sign in with GitHub</a></p>
-        <form action="/auth/atproto" method="get">
+        <form action="/auth/atproto" method="post">
           <input name="login" placeholder="alice.bsky.social" autocomplete="username" required />
           <button type="submit">sign in with AT Protocol</button>
         </form>
       </section>
       <section id="signed-in" hidden>
-        <p>Signed in as <strong id="who"></strong> with <span id="provider"></span>.</p>
+        <p>Signed in as <strong id="who"></strong>.</p>
         <p>Connected accounts:</p>
         <ul id="identities"></ul>
-        <p><a href="/auth/github">connect GitHub</a></p>
-        <form action="/auth/atproto" method="get">
+        <form action="/auth/github" method="post">
+          <button type="submit">connect GitHub</button>
+        </form>
+        <form action="/auth/atproto" method="post">
           <input name="login" placeholder="alice.bsky.social" autocomplete="username" required />
           <button type="submit">connect AT Protocol</button>
         </form>
@@ -64,21 +66,23 @@
         document.querySelector("#signed-out").hidden = Boolean(session);
         document.querySelector("#signed-in").hidden = !session;
         if (!session) return;
-        document.querySelector("#who").textContent = session.name ?? session.subject;
-        document.querySelector("#provider").textContent = session.provider;
+        document.querySelector("#who").textContent = session.name ?? session.userId;
         const list = document.querySelector("#identities");
         list.replaceChildren();
         for (const entry of session.identities) {
           const item = document.createElement("li");
           item.textContent = `${entry.provider}: ${entry.name ?? entry.subject}`;
+          const action = document.createElement("button");
           if (session.identities.length > 1) {
-            const unlink = document.createElement("button");
-            unlink.textContent = "unlink";
-            unlink.addEventListener("click", () =>
+            action.textContent = "unlink";
+            action.addEventListener("click", () =>
               call("POST", "/unlink", { provider: entry.provider, subject: entry.subject }),
             );
-            item.append(" ", unlink);
+          } else {
+            action.textContent = "delete account";
+            action.addEventListener("click", () => call("POST", "/delete"));
           }
+          item.append(" ", action);
           list.append(item);
         }
       }

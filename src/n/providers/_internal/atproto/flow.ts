@@ -12,7 +12,7 @@ import { type DpopKey, createDpopKey, dpopPost } from "./dpop.ts";
 import {
   type AtprotoIdentity,
   type AtprotoResolveOptions,
-  parseLogin,
+  parseLoginHint,
   resolveIdentity,
 } from "./identity.ts";
 import { type AtprotoServer, serverOfPds, serverOfUrl } from "./server.ts";
@@ -61,7 +61,7 @@ const RESERVED = new Set([
 ]);
 
 /**
- * The first leg: the account or server `login` names is resolved, the request is pushed (PAR) with
+ * The first leg: the account or server `loginHint` names is resolved, the request is pushed (PAR) with
  * PKCE and a DPoP proof, and the user is sent to the authorization endpoint; a start on a
  * `devHosts` host is relocated first.
  */
@@ -82,11 +82,11 @@ export async function start(
       `The AT Protocol sign-in runs at ${context.redirectUri}, but the provider's "redirectUri" is ${client.redirectUri}; they must be the same URL.`,
     );
   }
-  const login = context.login?.trim();
-  if (!login) {
+  const loginHint = context.loginHint?.trim();
+  if (!loginHint) {
     throw new UnauthError(
-      "[unauth/n] An AT Protocol sign-in needs the account's handle, DID or server as `login`.",
-      "ERR_AUTHN_LOGIN_REQUIRED",
+      "[unauth/n] Enter a handle, a DID or a server to sign in.",
+      "ERR_AUTHN_LOGIN_HINT_REQUIRED",
       { status: 400 },
     );
   }
@@ -95,7 +95,7 @@ export async function start(
     throw configError(`An AT Protocol sign-in needs the "atproto" scope.`);
   }
   const options: AtprotoResolveOptions = { ...context, ...resolvers };
-  const target = parseLogin(login);
+  const target = parseLoginHint(loginHint);
   let identity: AtprotoIdentity | undefined;
   let server: AtprotoServer;
   if (target.kind === "account") {

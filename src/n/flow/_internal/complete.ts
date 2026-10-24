@@ -41,8 +41,8 @@ export interface CompleteFlowOptions extends FlowCarrierOptions {
   cache?: CacheDriver;
 }
 
-export interface CompletedFlow<TProfile, TLink> {
-  result: FlowResult<TProfile, TLink>;
+export interface CompletedFlow<TProfile, TMemo> {
+  result: FlowResult<TProfile, TMemo>;
   returnHost?: string;
 }
 
@@ -52,11 +52,11 @@ export interface CompletedFlow<TProfile, TLink> {
  * proven the callback belongs to this sign-in (RFC 6749 §4.1.2.1 sends `state` with an error too):
  * a stray link cannot fail a sign-in in progress with an error of its own.
  */
-export async function completeFlowWithReturnHost<TProfile, TLink = unknown>(
+export async function completeFlowWithReturnHost<TProfile, TMemo = unknown>(
   provider: Provider<TProfile>,
   request: Request,
   options: CompleteFlowOptions,
-): Promise<CompletedFlow<TProfile, TLink>> {
+): Promise<CompletedFlow<TProfile, TMemo>> {
   const taken = await takeFlow({ request, headers: options.headers, provider, options });
   const params = await callbackParams(request);
 
@@ -97,10 +97,10 @@ export async function completeFlowWithReturnHost<TProfile, TLink = unknown>(
     provider.kind === "custom"
       ? await completeCustom(provider, request, { params, record, options })
       : await completeOAuth(provider, { params, record, options });
-  const result: FlowResult<TProfile, TLink> = { identity };
+  const result: FlowResult<TProfile, TMemo> = { identity };
   if (tokens) result.tokens = tokens;
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the record came back under the flow key (sealed, or by a sealed store reference), so `link` is what this application's `startFlow` put there
-  if (record.link !== undefined) result.link = record.link as TLink;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the record came back under the flow key (sealed, or by a sealed store reference), so `memo` is what this application's `startFlow` put there
+  if (record.memo !== undefined) result.memo = record.memo as TMemo;
   if (record.redirect !== undefined) result.redirect = record.redirect;
   return record.returnHost === undefined ? { result } : { result, returnHost: record.returnHost };
 }
@@ -169,7 +169,12 @@ async function completeCustom<TProfile>(
     completed = await provider.complete({
       request,
       params,
-      record,
+      record: {
+        provider: record.provider,
+        state: record.state,
+        redirectUri: record.redirectUri,
+        ...(record.data === undefined ? {} : { data: record.data }),
+      },
       fetch: fetchOf(options),
       now: nowOf(options),
       cache: options.cache,

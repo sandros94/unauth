@@ -35,7 +35,8 @@ export function safeRedirect(redirect: string | undefined): string | undefined {
   return new URL(result, base).origin === base ? result : undefined;
 }
 
-function originOf(origin: string): string | undefined {
+/** The origin of `origin` when it is an absolute URL, else `undefined`. */
+export function originOf(origin: string): string | undefined {
   try {
     return new URL(origin).origin;
   } catch {

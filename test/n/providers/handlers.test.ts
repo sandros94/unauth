@@ -211,16 +211,16 @@ describe("preset handler types", () => {
     ).toThrow(expect.objectContaining({ code: "ERR_UNAUTH_CONFIG_INVALID" }));
   });
 
-  it("types result.link as the payload onStart returns", () => {
+  it("types result.memo as the payload onStart returns", () => {
     defineGitHubHandler({
       ...config,
       key: flowKey,
       onStart: async (event) => {
         const session = await useAppSession(event);
-        return session.id ? { link: { userId: session.data.userId, from: "settings" } } : undefined;
+        return session.id ? { memo: { userId: session.data.userId, from: "settings" } } : undefined;
       },
       onSuccess: (_event, result) => {
-        expectTypeOf(result.link).toEqualTypeOf<{ userId: string; from: string } | undefined>();
+        expectTypeOf(result.memo).toEqualTypeOf<{ userId: string; from: string } | undefined>();
         expectTypeOf(result.identity.profile.login).toEqualTypeOf<string>();
       },
     });
@@ -228,7 +228,7 @@ describe("preset handler types", () => {
       ...config,
       key: flowKey,
       onSuccess: (_event, result) => {
-        expectTypeOf<NonNullable<typeof result.link>>().toBeNever();
+        expectTypeOf<NonNullable<typeof result.memo>>().toBeNever();
       },
     });
   });

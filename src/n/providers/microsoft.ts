@@ -66,8 +66,8 @@ export function defineMicrosoftProvider(
 export type MicrosoftHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<MicrosoftProviderConfig, MicrosoftProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<MicrosoftProviderConfig, MicrosoftProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Microsoft sign-in on one route: `defineSignInHandler` on {@link defineMicrosoftProvider}, the

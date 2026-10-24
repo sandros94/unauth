@@ -70,8 +70,8 @@ export function defineDiscordProvider(
 export type DiscordHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<DiscordProviderConfig, DiscordProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<DiscordProviderConfig, DiscordProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Discord sign-in on one route: `defineSignInHandler` on {@link defineDiscordProvider}, the

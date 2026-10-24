@@ -15,7 +15,7 @@ import { handoffCarrier } from "../../../src/n/flow/_internal/carrier/handoff.ts
 import { completeFlowWithReturnHost } from "../../../src/n/flow/_internal/complete.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "./_fake-provider.ts";
 import { sealedCarrier } from "../../../src/n/flow/_internal/carrier/sealed.ts";
-import { cookieHeader } from "../_session.ts";
+import { cookieHeader, formStart } from "../_session.ts";
 
 const APP = "https://app.test";
 const MOVED = "https://ip.test";
@@ -46,7 +46,7 @@ function movingProvider() {
     }
     const url = new URL(`${IDP}/authorize`);
     url.searchParams.set("state", context.record.state);
-    if (context.login !== undefined) url.searchParams.set("login", context.login);
+    if (context.loginHint !== undefined) url.searchParams.set("login", context.loginHint);
     return { url };
   });
   const provider = defineProvider({
@@ -86,10 +86,10 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
 describe("a relocated start", () => {
   it("seals the intent and the origin host into the relocation URL, and records nothing", async () => {
     const { provider } = movingProvider();
-    const moved = await startFlow<Link>(provider, new Request(`${APP}/auth/custom?x=1`), {
+    const moved = await startFlow<Link>(provider, formStart(`${APP}/auth/custom?x=1`), {
       key,
       redirectUri: REDIRECT_URI,
-      link: { userId: "u1" },
+      memo: { userId: "u1" },
       redirect: "/after",
     });
 
@@ -100,7 +100,7 @@ describe("a relocated start", () => {
     expect([...location.searchParams.keys()]).toEqual(["x", "unauth_intent"]);
     expect(moved.headers.getSetCookie()).toEqual([]);
     expect(await intentCarrier().take(location.searchParams.get("unauth_intent")!)).toEqual({
-      intent: { link: { userId: "u1" }, redirect: "/after" },
+      intent: { memo: { userId: "u1" }, redirect: "/after" },
       returnHost: "app.test",
     });
   });
@@ -158,10 +158,10 @@ describe("a relocated start", () => {
 
   it("merges the sealed intent over the relocated start's own options", async () => {
     const { provider, start } = movingProvider();
-    const moved = await startFlow<Link>(provider, new Request(`${APP}/auth/custom`), {
+    const moved = await startFlow<Link>(provider, formStart(`${APP}/auth/custom`), {
       key,
       redirectUri: REDIRECT_URI,
-      link: { userId: "u1" },
+      memo: { userId: "u1" },
       redirect: "/after",
     });
 
@@ -169,23 +169,23 @@ describe("a relocated start", () => {
       key,
       redirectUri: REDIRECT_URI,
       redirect: "/elsewhere",
-      login: "bob",
+      loginHint: "bob",
     });
-    expect(start.mock.calls[1]![0].login).toBe("bob");
+    expect(start.mock.calls[1]![0].loginHint).toBe("bob");
     const result = await completeFlow<unknown, Link>(provider, callback(started), {
       key,
       headers: new Headers(),
     });
-    expect(result.link).toEqual({ userId: "u1" });
+    expect(result.memo).toEqual({ userId: "u1" });
     expect(result.redirect).toBe("/after");
   });
 
   it("refuses a replayed intent token", async () => {
     const { provider } = movingProvider();
-    const moved = await startFlow<Link>(provider, new Request(`${APP}/auth/custom`), {
+    const moved = await startFlow<Link>(provider, formStart(`${APP}/auth/custom`), {
       key,
       redirectUri: REDIRECT_URI,
-      link: { userId: "u1" },
+      memo: { userId: "u1" },
     });
     const relocated = moved.headers.get("location")!;
     await startFlow(provider, new Request(relocated), { key, redirectUri: REDIRECT_URI });
@@ -200,10 +200,10 @@ describe("a relocated start", () => {
   it("refuses an expired intent token", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const { provider } = movingProvider();
-    const moved = await startFlow<Link>(provider, new Request(`${APP}/auth/custom`), {
+    const moved = await startFlow<Link>(provider, formStart(`${APP}/auth/custom`), {
       key,
       redirectUri: REDIRECT_URI,
-      link: { userId: "u1" },
+      memo: { userId: "u1" },
     });
     vi.setSystemTime(Date.now() + 2 * 60_000);
 
@@ -221,7 +221,7 @@ describe("a relocated start", () => {
     const { provider, start } = movingProvider();
     const token = await handoffCarrier<unknown, Link>(key).issue({
       identity: { provider: "custom", subject: "acct-1", profile: {} },
-      link: { userId: "u1" },
+      memo: { userId: "u1" },
     });
 
     const error = await rejection(
@@ -236,17 +236,17 @@ describe("a relocated start", () => {
 
   it("leaves a start without the parameter as it is", async () => {
     const { provider } = movingProvider();
-    const started = await startFlow<Link>(provider, new Request(REDIRECT_URI), {
+    const started = await startFlow<Link>(provider, formStart(REDIRECT_URI), {
       key,
       redirectUri: REDIRECT_URI,
-      link: { userId: "u2" },
+      memo: { userId: "u2" },
     });
     const { result, returnHost } = await completeFlowWithReturnHost<unknown, Link>(
       provider,
       callback(started),
       { key, headers: new Headers() },
     );
-    expect(result.link).toEqual({ userId: "u2" });
+    expect(result.memo).toEqual({ userId: "u2" });
     expect(returnHost).toBeUndefined();
   });
 });
@@ -287,19 +287,19 @@ describe("a provider that cannot relocate", () => {
 
 describe("the sealed carriers", () => {
   it("open their own tokens once, and refuse each other's", async () => {
-    const intents = sealedCarrier<{ login: string }>(key, {
+    const intents = sealedCarrier<{ loginHint: string }>(key, {
       typ: "unauth-intent+jwt",
       name: "unauth-intent",
     });
     const handoffs = handoffCarrier<unknown, never>(key);
-    const intent = await intents.issue({ login: "alice" });
+    const intent = await intents.issue({ loginHint: "alice" });
     const handoff = await handoffs.issue({
       identity: { provider: "custom", subject: "acct-1", profile: {} },
     });
 
     await expect(handoffs.take(intent)).rejects.toThrow(/"typ"/);
     await expect(intents.take(handoff)).rejects.toThrow(/"typ"/);
-    expect(await intents.take(intent)).toEqual({ login: "alice" });
+    expect(await intents.take(intent)).toEqual({ loginHint: "alice" });
     await expect(intents.take(intent)).rejects.toThrow("sealed token already used");
     expect((await handoffs.take(handoff)).identity.subject).toBe("acct-1");
   });
@@ -307,10 +307,10 @@ describe("the sealed carriers", () => {
   it("refuses an intent token where the route expects a handoff", async () => {
     const { provider } = movingProvider();
     const handler = defineSignInHandler(provider, { key, onSuccess: () => "ok" });
-    const moved = await startFlow<Link>(provider, new Request(`${APP}/auth/custom`), {
+    const moved = await startFlow<Link>(provider, formStart(`${APP}/auth/custom`), {
       key,
       redirectUri: REDIRECT_URI,
-      link: { userId: "u1" },
+      memo: { userId: "u1" },
     });
     const token = new URL(moved.headers.get("location")!).searchParams.get("unauth_intent")!;
 

@@ -66,8 +66,8 @@ export function defineFacebookProvider(
 export type FacebookHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<FacebookProviderConfig, FacebookProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<FacebookProviderConfig, FacebookProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Facebook sign-in on one route: `defineSignInHandler` on {@link defineFacebookProvider}, the

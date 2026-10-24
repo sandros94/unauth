@@ -64,13 +64,13 @@ export function defineCloudflareAccessProvider(
 export type CloudflareAccessHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
+  TMemo = never,
 > = PresetHandlerConfig<
   CloudflareAccessProviderConfig,
   CloudflareAccessProfile,
   TResult,
   TEvent,
-  TLink
+  TMemo
 >;
 
 /**

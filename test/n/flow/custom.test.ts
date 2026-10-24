@@ -9,7 +9,7 @@ import {
   isUnauthError,
   startFlow,
 } from "../../../src/n/index.ts";
-import { cookieHeader, isExpired } from "../_session.ts";
+import { cookieHeader, formStart, isExpired } from "../_session.ts";
 
 const APP = "https://app.test";
 const REDIRECT_URI = `${APP}/auth/custom`;
@@ -32,8 +32,8 @@ function ticketProvider(options: { tokens?: boolean } = {}) {
     const url = new URL(`${IDP}/authorize`);
     url.searchParams.set("state", context.record.state);
     url.searchParams.set("redirect_uri", context.redirectUri);
-    if (context.login !== undefined) url.searchParams.set("login", context.login);
-    return { url, data: { ticket: `t-${context.login ?? "anonymous"}` } };
+    if (context.loginHint !== undefined) url.searchParams.set("login", context.loginHint);
+    return { url, data: { ticket: `t-${context.loginHint ?? "anonymous"}` } };
   });
   const complete = vi.fn(async (context: Parameters<CustomProvider<Account>["complete"]>[0]) => {
     const { ticket } = context.record.data ?? {};
@@ -72,7 +72,7 @@ async function run(
   provider: CustomProvider<Account>,
   options: Partial<Parameters<typeof startFlow>[2]> = {},
 ) {
-  const response = await startFlow(provider, new Request(`${APP}/auth/custom`), {
+  const response = await startFlow(provider, formStart(`${APP}/auth/custom`), {
     key,
     redirectUri: REDIRECT_URI,
     ...options,
@@ -87,7 +87,7 @@ async function run(
 describe("a custom provider", () => {
   it("runs both legs: the engine keeps state and the record, the provider its data", async () => {
     const { provider, start, complete } = ticketProvider();
-    const { response, result, headers } = await run(provider, { login: "alice" });
+    const { response, result, headers } = await run(provider, { loginHint: "alice" });
 
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get("location")!);
@@ -125,10 +125,10 @@ describe("a custom provider", () => {
 
   it("carries redirect and link through the record", async () => {
     const { provider } = ticketProvider();
-    const { result } = await run(provider, { redirect: "/home", link: { userId: "u1" } });
+    const { result } = await run(provider, { redirect: "/home", memo: { userId: "u1" } });
 
     expect(result.redirect).toBe("/home");
-    expect(result.link).toEqual({ userId: "u1" });
+    expect(result.memo).toEqual({ userId: "u1" });
   });
 
   it("refuses a callback whose state is not the flow's before calling the provider", async () => {

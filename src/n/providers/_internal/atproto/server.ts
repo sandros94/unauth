@@ -8,7 +8,7 @@ import {
   defineMetadataLoader,
   requiredMember,
 } from "../../../flow/_internal/cache/metadata.ts";
-import { loginError } from "./identity.ts";
+import { loginHintError } from "./identity.ts";
 
 /** The atproto authorization server of an account, with the endpoints a sign-in uses. */
 export interface AtprotoServer {
@@ -66,7 +66,7 @@ export async function serverOfPds(pds: string, options: MetadataOptions): Promis
 
 /**
  * The authorization server behind a URL the user typed: a PDS (through its protected resource
- * metadata) or an authorization server itself. Neither is `ERR_AUTHN_LOGIN_INVALID`.
+ * metadata) or an authorization server itself. Neither is `ERR_AUTHN_LOGIN_HINT_INVALID`.
  */
 export async function serverOfUrl(
   origin: string,
@@ -76,13 +76,13 @@ export async function serverOfUrl(
     return await serverOfPds(origin, options);
   } catch (error) {
     if (!isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") || error.cause.status !== 404) {
-      throw loginError(`${origin} is not an atproto server.`, error);
+      throw loginHintError(`${origin} is not an atproto server.`, error);
     }
   }
   try {
     return await serverMetadata(origin, options);
   } catch (error) {
-    throw loginError(`${origin} is not an atproto server.`, error);
+    throw loginHintError(`${origin} is not an atproto server.`, error);
   }
 }
 

@@ -17,7 +17,7 @@ import {
   defineAtprotoProvider,
 } from "../../../src/n/providers/atproto.ts";
 import { type CookieJar, cookieJar } from "../_cookies.ts";
-import { cookieHeader, isExpired } from "../_session.ts";
+import { cookieHeader, formStart, isExpired } from "../_session.ts";
 import { s256 } from "../flow/_fake-provider.ts";
 import {
   ALICE,
@@ -55,20 +55,31 @@ function provider(overrides: Partial<Parameters<typeof defineAtprotoProvider>[0]
   });
 }
 
-/** The first leg for `login`: the redirect and the request that carries the flow cookie back. */
-async function begin(atproto: AtprotoProvider, login: string | undefined) {
-  const response = await startFlow(atproto, new Request(REDIRECT_URI), {
+/** The application's own reading of the account from the request: the `?login=` query member. */
+const loginFromQuery = (event: WebRequestEvent) => ({
+  loginHint: new URL(event.req.url).searchParams.get("login") ?? undefined,
+});
+
+/** A request to `url` with `cookie`; `form` makes it the `POST` a start naming the account must be. */
+function requestFor(url: string | URL, cookie?: string, form = false): Request {
+  const headers: Record<string, string> = cookie ? { cookie } : {};
+  return form ? formStart(url, { headers }) : new Request(url, cookie ? { headers } : undefined);
+}
+
+/** The first leg for `loginHint`: the redirect and the request that carries the flow cookie back. */
+async function begin(atproto: AtprotoProvider, loginHint: string | undefined) {
+  const response = await startFlow(atproto, formStart(REDIRECT_URI), {
     key,
     redirectUri: REDIRECT_URI,
     fetch: fake.fetch,
-    login,
+    loginHint,
   });
   return { response, location: new URL(response.headers.get("location")!) };
 }
 
-/** Both legs for `login`. */
-async function signIn(atproto: AtprotoProvider, login: string | undefined) {
-  const { response, location } = await begin(atproto, login);
+/** Both legs for `loginHint`. */
+async function signIn(atproto: AtprotoProvider, loginHint: string | undefined) {
+  const { response, location } = await begin(atproto, loginHint);
   const back = fake.approve(location);
   const request = new Request(back, { headers: { cookie: cookieHeader(response.headers) } });
   const headers = new Headers();
@@ -150,7 +161,7 @@ describe("sign-in from a handle", () => {
 
     const error = await rejection(begin(provider(), "two.test"));
 
-    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_INVALID")).toBe(true);
+    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
     expect(served("/.well-known/atproto-did")).toBe(0);
     expect(served("/oauth/par")).toBe(0);
   });
@@ -160,7 +171,7 @@ describe("sign-in from a handle", () => {
 
     const error = await rejection(begin(provider(), "mallory.test"));
 
-    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_INVALID")).toBe(true);
+    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
     expect(isUnauthError(error) && error.status).toBe(400);
     expect(served("/oauth/par")).toBe(0);
   });
@@ -168,13 +179,13 @@ describe("sign-in from a handle", () => {
   it("refuses a handle that resolves nowhere, a malformed one, and a missing login", async () => {
     for (const login of ["nobody.test", "not a handle", "did:key:abc", "alice.local"]) {
       const error = await rejection(begin(provider(), login));
-      expect({ login, invalid: isUnauthError(error, "ERR_AUTHN_LOGIN_INVALID") }).toEqual({
+      expect({ login, invalid: isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID") }).toEqual({
         login,
         invalid: true,
       });
     }
     const missing = await rejection(begin(provider(), undefined));
-    expect(isUnauthError(missing, "ERR_AUTHN_LOGIN_REQUIRED")).toBe(true);
+    expect(isUnauthError(missing, "ERR_AUTHN_LOGIN_HINT_REQUIRED")).toBe(true);
     expect(isUnauthError(missing) && missing.status).toBe(400);
   });
 
@@ -183,7 +194,7 @@ describe("sign-in from a handle", () => {
 
     const error = await rejection(begin(provider(), ALICE.handle));
 
-    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_INVALID")).toBe(true);
+    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
   });
 });
 
@@ -238,7 +249,7 @@ describe("sign-in from a server", () => {
 
   it("refuses a URL that is no atproto server", async () => {
     const error = await rejection(begin(provider(), "https://nowhere.test"));
-    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_INVALID")).toBe(true);
+    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
   });
 });
 
@@ -449,8 +460,8 @@ describe("the client", () => {
     // No redirectUri on the start options: the provider's registered one is used.
     const moved = await startFlow(
       atproto,
-      new Request("http://localhost:3987/auth/atproto?login=x"),
-      { key, fetch: fake.fetch, login: "x" },
+      formStart("http://localhost:3987/auth/atproto?login=x"),
+      { key, fetch: fake.fetch, loginHint: "x" },
     );
     expect(moved.status).toBe(302);
     const movedTo = new URL(moved.headers.get("location")!);
@@ -464,11 +475,11 @@ describe("the client", () => {
 
     // Not listed: the start runs where it is, and the flow cookie is set on that host. A handler
     // naming the devHosts form of the callback is accepted as the same callback.
-    const stayed = await startFlow(atproto, new Request("http://dev.test:3000/auth/atproto"), {
+    const stayed = await startFlow(atproto, formStart("http://dev.test:3000/auth/atproto"), {
       key,
       redirectUri: "http://localhost:3000/auth/atproto",
       fetch: fake.fetch,
-      login: ALICE.handle,
+      loginHint: ALICE.handle,
     });
     expect(stayed.status).toBe(302);
     expect(new URL(stayed.headers.get("location")!).origin).toBe(ISSUER);
@@ -477,11 +488,11 @@ describe("the client", () => {
 
   it("refuses to run at another callback URL than the one it published", async () => {
     const error = await rejection(
-      startFlow(provider(), new Request("https://app.test/other"), {
+      startFlow(provider(), formStart("https://app.test/other"), {
         key,
         redirectUri: "https://app.test/other",
         fetch: fake.fetch,
-        login: ALICE.handle,
+        loginHint: ALICE.handle,
       }),
     );
     expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
@@ -534,25 +545,24 @@ describe("a devHosts round trip through defineSignInHandler", () => {
     const handler = defineSignInHandler(atproto, {
       key,
       fetch: fake.fetch,
-      onStart: (event) => ({
-        login: new URL(event.req.url).searchParams.get("login") ?? undefined,
-      }),
+      onStart: loginFromQuery,
       onSuccess: (event, result) => {
         seen.push({ host: new URL(event.req.url).hostname, did: result.identity.subject });
         return { did: result.identity.subject };
       },
     });
-    const call = async (url: string | URL, cookie?: string) => {
+    const call = async (url: string | URL, cookie?: string, form = false) => {
       const res = { headers: new Headers() };
-      const answer = await handler({
-        req: new Request(url, cookie ? { headers: { cookie } } : undefined),
-        res,
-      });
+      const answer = await handler({ req: requestFor(url, cookie, form), res });
       return { answer, res };
     };
 
     // 1. Start on localhost: moved to 127.0.0.1, nothing set.
-    const moved = await call(`http://localhost:3000/auth/atproto?login=${ALICE.handle}`);
+    const moved = await call(
+      `http://localhost:3000/auth/atproto?login=${ALICE.handle}`,
+      undefined,
+      true,
+    );
     const movedTo = new URL((moved.answer as Response).headers.get("location")!);
     const intent = movedTo.searchParams.get("unauth_intent")!;
     expect(movedTo.href).toBe(
@@ -617,15 +627,12 @@ describe("a devHosts round trip through defineSignInHandler", () => {
       };
       return {
         jarOf,
-        visit: async (to: string | URL) => {
+        visit: async (to: string | URL, form = false) => {
           const url = new URL(to);
           const jar = jarOf(url);
           const cookie = jar.toString();
           const res = { headers: new Headers() };
-          const answer = await handler({
-            req: new Request(url, cookie ? { headers: { cookie } } : undefined),
-            res,
-          });
+          const answer = await handler({ req: requestFor(url, cookie, form), res });
           jar.update(res.headers);
           if (answer instanceof Response) jar.update(answer.headers);
           return { answer, res };
@@ -635,7 +642,7 @@ describe("a devHosts round trip through defineSignInHandler", () => {
 
     /** From the start on localhost to the handoff back there: the answer and the response headers of each step. */
     async function devRoundTrip(visit: ReturnType<typeof browser>["visit"]) {
-      const moved = await visit(`${LOCAL}/auth/atproto?login=${ALICE.handle}`);
+      const moved = await visit(`${LOCAL}/auth/atproto?login=${ALICE.handle}`, true);
       const movedTo = new URL((moved.answer as Response).headers.get("location")!);
       const intent = movedTo.searchParams.get("unauth_intent")!;
       expect(intent).toMatch(/^eyJ/);
@@ -667,12 +674,15 @@ describe("a devHosts round trip through defineSignInHandler", () => {
         fetch: fake.fetch,
         onStart: async (event) => {
           const current = await session.use(event);
-          return current.id ? { link: { userId: current.data.userId } } : undefined;
+          return {
+            ...loginFromQuery(event),
+            ...(current.id ? { memo: { userId: current.data.userId } } : {}),
+          };
         },
-        onSuccess: async (event, { identity, link }) => {
+        onSuccess: async (event, { identity, memo }) => {
           const current = await session.use(event);
-          if (link) {
-            links.push(link);
+          if (memo) {
+            links.push(memo);
             return "linked";
           }
           await current.clear();
@@ -713,8 +723,10 @@ describe("a devHosts round trip through defineSignInHandler", () => {
         ...devConfig,
         key,
         fetch: fake.fetch,
-        onStart: (event) =>
-          new URL(event.req.url).hostname === "localhost" ? { redirect: "/after" } : {},
+        onStart: (event) => ({
+          ...loginFromQuery(event),
+          ...(new URL(event.req.url).hostname === "localhost" ? { redirect: "/after" } : {}),
+        }),
         onSuccess: async (event, { identity }) => {
           const current = await session.use(event);
           await current.clear();
@@ -745,13 +757,11 @@ describe("through defineSignInHandler", () => {
     const handler = defineSignInHandler(atproto, {
       key,
       fetch: fake.fetch,
-      onStart: (event) => ({
-        login: new URL(event.req.url).searchParams.get("login") ?? undefined,
-      }),
+      onStart: loginFromQuery,
       onSuccess: (_event, result) => ({ did: result.identity.subject }),
     });
     const start = await handler({
-      req: new Request(`${REDIRECT_URI}?login=${ALICE.handle}`),
+      req: formStart(`${REDIRECT_URI}?login=${ALICE.handle}`),
       res: { headers: new Headers() },
     });
     expect(start).toBeInstanceOf(Response);
@@ -800,12 +810,10 @@ describe("defineAtprotoHandler", () => {
     handler: (event: WebRequestEvent) => Promise<unknown>,
     url: string | URL,
     cookie?: string,
+    form = false,
   ) {
     const res = { headers: new Headers() };
-    const answer = await handler({
-      req: new Request(url, cookie ? { headers: { cookie } } : undefined),
-      res,
-    });
+    const answer = await handler({ req: requestFor(url, cookie, form), res });
     return { answer, res };
   }
 
@@ -815,7 +823,7 @@ describe("defineAtprotoHandler", () => {
     session: ReturnType<typeof auth>,
     url: string,
   ) {
-    const started = await run(handler, url);
+    const started = await run(handler, url, undefined, true);
     const start = started.answer as Response;
     expect(start.status).toBe(302);
     const back = fake.approve(start.headers.get("location")!);
@@ -828,7 +836,7 @@ describe("defineAtprotoHandler", () => {
     return current.data;
   }
 
-  it("reads ?login= from the request and writes the session, from an inline config", async () => {
+  it("signs the account onStart names in and writes the session, from an inline config", async () => {
     const session = auth();
     const handler = defineAtprotoHandler({
       clientId: CLIENT_ID,
@@ -837,6 +845,7 @@ describe("defineAtprotoHandler", () => {
       plcDirectory: PLC,
       key,
       fetch: fake.fetch,
+      onStart: loginFromQuery,
       onSuccess: replaceSession(session),
     });
 
@@ -851,6 +860,7 @@ describe("defineAtprotoHandler", () => {
       provider: provider(),
       key,
       fetch: fake.fetch,
+      onStart: loginFromQuery,
       onSuccess: replaceSession(session),
     });
 
@@ -863,11 +873,11 @@ describe("defineAtprotoHandler", () => {
       provider: provider(),
       key,
       fetch: fake.fetch,
-      onStart: () => ({ login: ALICE.handle, redirect: "/account" }),
+      onStart: () => ({ loginHint: ALICE.handle, redirect: "/account" }),
       onSuccess: (_event, result) => ({ did: result.identity.subject, redirect: result.redirect }),
     });
 
-    const started = await run(handler, `${REDIRECT_URI}?login=nobody.test`);
+    const started = await run(handler, `${REDIRECT_URI}?login=nobody.test`, undefined, true);
     const start = started.answer as Response;
     expect([...fake.pushed.values()][0]?.loginHint).toBe(ALICE.handle);
     const back = fake.approve(start.headers.get("location")!);
@@ -875,18 +885,24 @@ describe("defineAtprotoHandler", () => {
     expect(done.answer).toEqual({ did: ALICE.did, redirect: "/account" });
   });
 
-  it("fills in the query's login when onStart names none", async () => {
+  it("reads nothing from the request itself: a query login without onStart is no account", async () => {
+    const errors: UnauthError[] = [];
     const handler = defineAtprotoHandler({
       provider: provider(),
       key,
       fetch: fake.fetch,
       onStart: () => ({ redirect: "/account" }),
       onSuccess: () => "ok",
+      onError: (_event, error) => {
+        errors.push(error);
+        return new Response(null, { status: error.status });
+      },
     });
 
-    const started = await run(handler, `${REDIRECT_URI}?login=${ALICE.handle}`);
-    expect((started.answer as Response).status).toBe(302);
-    expect([...fake.pushed.values()][0]?.loginHint).toBe(ALICE.handle);
+    const started = await run(handler, `${REDIRECT_URI}?login=${ALICE.handle}`, undefined, true);
+    expect((started.answer as Response).status).toBe(400);
+    expect(errors.map((error) => error.code)).toEqual(["ERR_AUTHN_LOGIN_HINT_REQUIRED"]);
+    expect(served("/oauth/par")).toBe(0);
   });
 
   it("refuses a sign-in with no login anywhere", async () => {
@@ -904,7 +920,7 @@ describe("defineAtprotoHandler", () => {
 
     const { answer } = await run(handler, REDIRECT_URI);
     expect((answer as Response).status).toBe(400);
-    expect(errors.map((error) => error.code)).toEqual(["ERR_AUTHN_LOGIN_REQUIRED"]);
+    expect(errors.map((error) => error.code)).toEqual(["ERR_AUTHN_LOGIN_HINT_REQUIRED"]);
     expect(served("/oauth/par")).toBe(0);
   });
 
@@ -918,13 +934,19 @@ describe("defineAtprotoHandler", () => {
       plcDirectory: PLC,
       key,
       fetch: fake.fetch,
+      onStart: loginFromQuery,
       onSuccess: (event, result) => {
         seen.push(`${new URL(event.req.url).hostname} ${result.identity.subject}`);
         return "ok";
       },
     });
 
-    const moved = await run(handler, `http://localhost:3000/auth/atproto?login=${ALICE.handle}`);
+    const moved = await run(
+      handler,
+      `http://localhost:3000/auth/atproto?login=${ALICE.handle}`,
+      undefined,
+      true,
+    );
     const movedTo = new URL((moved.answer as Response).headers.get("location")!);
     expect(movedTo.origin).toBe("http://127.0.0.1:3000");
     const started = await run(handler, movedTo);

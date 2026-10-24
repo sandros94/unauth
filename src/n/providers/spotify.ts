@@ -69,8 +69,8 @@ export function defineSpotifyProvider(
 export type SpotifyHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<SpotifyProviderConfig, SpotifyProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<SpotifyProviderConfig, SpotifyProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Spotify sign-in on one route: `defineSignInHandler` on {@link defineSpotifyProvider}, the

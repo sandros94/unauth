@@ -167,7 +167,7 @@ describe("start", () => {
         redirectUri: `${REDIRECT_URI}?tenant=acme`,
         fetch: fake().fetch,
         now: Date.now,
-        login: "ignored",
+        loginHint: "ignored",
         scopes: ["ignored"],
         params: { prompt: "ignored" },
       }),

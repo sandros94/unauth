@@ -63,8 +63,8 @@ export function defineNetlifyProvider(
 export type NetlifyHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<NetlifyProviderConfig, NetlifyProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<NetlifyProviderConfig, NetlifyProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a Netlify sign-in on one route: `defineSignInHandler` on {@link defineNetlifyProvider}, the

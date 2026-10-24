@@ -61,6 +61,9 @@ function fakeProvider(options: { responseMode?: "query" | "form_post" } = {}): P
   });
 }
 
+/** The start of a sign-in that links an account: a form submitted on the application's pages. */
+const FORM: RequestInit = { method: "POST", headers: { origin: APP } };
+
 /** A web-standard event for `request`, with the `Headers` its response is sent with. */
 function eventFor(request: Request): WebRequestEvent & { res: { headers: Headers } } {
   return { req: request, res: { headers: new Headers() }, context: {} };
@@ -309,9 +312,10 @@ describe("defineSignInHandler with a session", () => {
   async function signInFlow(
     handler: (event: WebRequestEvent) => Promise<unknown>,
     path = "/auth/fake",
+    init: RequestInit = {},
   ) {
     const jar = cookieJar();
-    const start = await call(handler, path);
+    const start = await call(handler, path, init);
     jar.update(start.headers);
     const back = fake.approve(start.headers.get("location")!);
     const done = await call(handler, `${back.pathname}${back.search}`, {
@@ -450,15 +454,15 @@ describe("defineSignInHandler with a session", () => {
     expect(await second.done.json()).toEqual({ written: "user-1" });
   });
 
-  it("hands a link intent to onSuccess as result.link, the session untouched by the sign-in", async () => {
+  it("hands a link intent to onSuccess as result.memo, the session untouched by the sign-in", async () => {
     const handler = defineSignInHandler(fakeProvider(), {
       ...base(),
-      onStart: () => ({ link: { userId: "u1" } }),
-      onSuccess: (_event, result) => ({ link: result.link }),
+      onStart: () => ({ memo: { userId: "u1" } }),
+      onSuccess: (_event, result) => ({ memo: result.memo }),
     });
-    const { done, session } = await signInFlow(handler);
+    const { done, session } = await signInFlow(handler, "/auth/fake", FORM);
 
-    expect(await done.json()).toEqual({ link: { userId: "u1" } });
+    expect(await done.json()).toEqual({ memo: { userId: "u1" } });
     expect(done.headers.getSetCookie().filter((line) => line.startsWith("unauth="))).toEqual([]);
     expect(session.id).toBeUndefined();
   });
@@ -629,7 +633,7 @@ describe("defineSignInHandler types", () => {
     expectTypeOf(
       defineSignInHandler(fakeProvider(), {
         key: flowKey,
-        onSuccess: async (_event, result) => (result.link === undefined ? undefined : { ok: true }),
+        onSuccess: async (_event, result) => (result.memo === undefined ? undefined : { ok: true }),
         onError: () => ({ ok: false }),
       }),
     ).returns.resolves.toEqualTypeOf<Response | { ok: boolean }>();
@@ -650,40 +654,40 @@ describe("defineSignInHandler types", () => {
     expectTypeOf(missing).toBeFunction();
   });
 
-  it("types result.link as the payload onStart returns", () => {
+  it("types result.memo as the payload onStart returns", () => {
     defineSignInHandler(fakeProvider(), {
       key: flowKey,
-      onStart: (event) => (event.req.url ? { link: { userId: "u1", from: "settings" } } : {}),
+      onStart: (event) => (event.req.url ? { memo: { userId: "u1", from: "settings" } } : {}),
       onSuccess: (_event, result) => {
-        expectTypeOf(result.link).toEqualTypeOf<{ userId: string; from: string } | undefined>();
-        return result.link?.from;
+        expectTypeOf(result.memo).toEqualTypeOf<{ userId: string; from: string } | undefined>();
+        return result.memo?.from;
       },
     });
     defineSignInHandler(fakeProvider(), {
       key: flowKey,
       onStart: async (event) => {
         const session = await useAppSession(event);
-        return session.id ? { link: { userId: session.data.userId } } : undefined;
+        return session.id ? { memo: { userId: session.data.userId } } : undefined;
       },
       onSuccess: (_event, result) => {
-        expectTypeOf(result.link).toEqualTypeOf<{ userId: string } | undefined>();
+        expectTypeOf(result.memo).toEqualTypeOf<{ userId: string } | undefined>();
       },
     });
   });
 
-  it("leaves result.link never without a link from onStart", () => {
+  it("leaves result.memo never without a link from onStart", () => {
     defineSignInHandler(fakeProvider(), {
       key: flowKey,
       onStart: () => ({ redirect: "/home" }),
       onSuccess: (_event, result) => {
-        expectTypeOf(result.link).toEqualTypeOf<undefined>();
-        expectTypeOf<NonNullable<typeof result.link>>().toBeNever();
+        expectTypeOf(result.memo).toEqualTypeOf<undefined>();
+        expectTypeOf<NonNullable<typeof result.memo>>().toBeNever();
       },
     });
     defineSignInHandler(fakeProvider(), {
       key: flowKey,
       onSuccess: (_event, result) => {
-        expectTypeOf<NonNullable<typeof result.link>>().toBeNever();
+        expectTypeOf<NonNullable<typeof result.memo>>().toBeNever();
       },
     });
   });

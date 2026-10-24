@@ -143,9 +143,9 @@ export interface OAuthProvider<TProfile = Record<string, unknown>> {
 
 /**
  * A provider that runs its own two legs over the engine's flow: the engine keeps `state`, the
- * return path, the link intent and the sealed record, parses the callback and checks `state` and
- * the provider's `error`; the provider builds the URL the user is sent to and turns the callback
- * into an identity, keeping what it needs between the legs in the record's `data`.
+ * return path, the application's memo and the sealed record, parses the callback and checks
+ * `state` and the provider's `error`; the provider builds the URL the user is sent to and turns
+ * the callback into an identity, keeping what it needs between the legs in the record's `data`.
  */
 export interface CustomProvider<TProfile = Record<string, unknown>> {
   id: string;
@@ -161,11 +161,14 @@ export interface CustomProvider<TProfile = Record<string, unknown>> {
   complete: (context: CustomCompleteContext) => Promise<CustomFlowResult<TProfile>>;
 }
 
+/** The members of the flow record a custom provider sees: its binding, and its own `data`. */
+export type ProviderFlowRecord = Pick<FlowRecord, "provider" | "state" | "redirectUri" | "data">;
+
 /** What both legs of a custom provider receive. */
 export interface CustomFlowContext {
   request: Request;
-  /** The flow record as the engine keeps it; `data` is the provider's own. */
-  record: FlowRecord;
+  /** The flow's binding and the provider's own `data`; the application's memo stays the engine's. */
+  record: ProviderFlowRecord;
   fetch: Fetch;
   now: () => number;
   cache?: CacheDriver;
@@ -175,8 +178,8 @@ export interface CustomFlowContext {
 export interface CustomStartContext extends CustomFlowContext {
   /** The callback URL, replayed by the engine as `record.redirectUri`. */
   redirectUri: string;
-  /** Which account signs in (a handle, an email, a username), when the request named one. */
-  login?: string;
+  /** Which account signs in (a handle, an email, a username), when the application named one. */
+  loginHint?: string;
   /** Replaces the provider's scopes. */
   scopes?: string[];
   /** Extra authorization parameters the request asked for. */
@@ -235,10 +238,10 @@ export interface ProviderConfig<TProfile = Record<string, unknown>> extends Part
 export type CustomProviderConfig<TProfile = Record<string, unknown>> = CustomProvider<TProfile>;
 
 /**
- * What `startFlow` keeps for `completeFlow`, sealed as JSON: `link` must survive a JSON round
- * trip. A store or a custom provider sees `link` as `unknown`.
+ * What `startFlow` keeps for `completeFlow`, sealed as JSON: `memo` must survive a JSON round
+ * trip. A store sees `memo` as `unknown`; a custom provider does not see it.
  */
-export interface FlowRecord<TLink = unknown> {
+export interface FlowRecord<TMemo = unknown> {
   /** The `id` of the provider the flow was started for. */
   provider: string;
   state: string;
@@ -249,8 +252,8 @@ export interface FlowRecord<TLink = unknown> {
   nonce?: string;
   /** Same-origin path to return to after sign-in. */
   redirect?: string;
-  /** The application's link intent, as `startFlow` was given it. */
-  link?: TLink;
+  /** The application's memo, as `startFlow` was given it. */
+  memo?: TMemo;
   /** Provider-private values; open to any provider. */
   data?: Record<string, unknown>;
   /** The host the user started on before a relocation, to return to after the sign-in. */
@@ -258,15 +261,16 @@ export interface FlowRecord<TLink = unknown> {
 }
 
 /** A completed sign-in: the proven identity and what the flow carried. */
-export interface FlowResult<TProfile = Record<string, unknown>, TLink = never> {
+export interface FlowResult<TProfile = Record<string, unknown>, TMemo = never> {
   identity: ProvenIdentity<TProfile>;
   /** The provider's tokens; absent when a custom provider keeps none past the sign-in. */
   tokens?: OAuthTokens;
   /**
-   * The link intent `startFlow` was given, untouched: the account in `identity` is proven, whether
-   * the user who asked is still the signed-in one is the application's to check.
+   * The memo `startFlow` was given, untouched: what the application noted when the sign-in
+   * started (the user asking to link this account, where it came from…). The account in
+   * `identity` is proven; what the memo means is the application's to decide.
    */
-  link?: TLink;
+  memo?: TMemo;
   /** The same-origin path given to `startFlow`. */
   redirect?: string;
 }

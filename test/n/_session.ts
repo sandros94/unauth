@@ -30,3 +30,13 @@ export function isExpired(line: string): boolean {
 export function setCookieLine(headers: Headers, name: string): string | undefined {
   return headers.getSetCookie().find((line) => line.startsWith(`${name}=`));
 }
+
+/**
+ * A form submitted on the application's own pages: a `POST` to `url` whose `Origin` is `url`'s,
+ * the shape a start that links an account or names the account must have.
+ */
+export function formStart(url: string | URL, init: RequestInit = {}): Request {
+  const headers = new Headers(init.headers);
+  headers.set("origin", new URL(url).origin);
+  return new Request(url, { ...init, method: "POST", headers });
+}

@@ -83,6 +83,13 @@ export async function unlinkIdentity(
   }
 }
 
+export async function deleteUser(userId: string): Promise<void> {
+  const db = await useAccounts();
+  await db.sql`DELETE FROM credentials WHERE user_id = ${userId}`;
+  await db.sql`DELETE FROM identities WHERE user_id = ${userId}`;
+  await db.sql`DELETE FROM users WHERE id = ${userId}`;
+}
+
 export async function listIdentities(userId: string): Promise<LinkedIdentity[]> {
   const db = await useAccounts();
   const { rows } = await db.sql<{

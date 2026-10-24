@@ -24,14 +24,14 @@ describe("oauth2 / oidc typing", () => {
 
   it("takes the profile type from a mapper", () => {
     interface Custom {
-      login: string;
+      loginHint: string;
     }
     const custom = defineOAuth2Provider({
       id: "p",
       clientId: "c",
       authorization: "https://idp.test/a",
       token: "https://idp.test/t",
-      profile: () => ({ subject: "1", profile: { login: "x" } }),
+      profile: () => ({ subject: "1", profile: { loginHint: "x" } }),
     });
 
     expectTypeOf(custom).toEqualTypeOf<OAuthProvider<Custom>>();

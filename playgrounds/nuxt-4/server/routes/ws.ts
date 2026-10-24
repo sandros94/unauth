@@ -20,7 +20,7 @@ export default defineWebSocketHandler({
 
   open(peer) {
     const { data } = getContext(peer);
-    peer.send(`hello ${data.name ?? data.subject}`);
+    peer.send(`hello ${data.name ?? data.userId}`);
   },
 
   message(peer, message) {
@@ -34,7 +34,7 @@ export default defineWebSocketHandler({
 
   close(peer, details) {
     const { data } = getContext(peer);
-    console.log(`[ws] ${data.subject} left (${details.code ?? "no code"})`);
+    console.log(`[ws] ${data.name ?? data.userId} left (${details.code ?? "no code"})`);
   },
 });
 

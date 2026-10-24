@@ -66,8 +66,8 @@ export function defineTikTokProvider(options: TikTokProviderConfig): OAuthProvid
 export type TikTokHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<TikTokProviderConfig, TikTokProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<TikTokProviderConfig, TikTokProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of a TikTok sign-in on one route: `defineSignInHandler` on {@link defineTikTokProvider}, the

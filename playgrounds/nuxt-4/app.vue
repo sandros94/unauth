@@ -34,8 +34,8 @@ function openSocket() {
     <h1>unauth on Nuxt 4</h1>
     <template v-if="session">
       <p>
-        Signed in as <strong>{{ session.name ?? session.subject }}</strong> with
-        {{ session.provider }}.
+        Signed in as <strong>{{ session.name ?? session.userId }}</strong
+        >.
       </p>
       <p>Connected accounts:</p>
       <ul>
@@ -47,10 +47,11 @@ function openSocket() {
           >
             unlink
           </button>
+          <button v-else @click="call('/delete', 'POST')">delete account</button>
         </li>
       </ul>
-      <p><a href="/auth/github">connect GitHub</a></p>
-      <form action="/auth/atproto" method="get">
+      <form action="/auth/github" method="post"><button type="submit">connect GitHub</button></form>
+      <form action="/auth/atproto" method="post">
         <input
           v-model="login"
           name="login"
@@ -77,7 +78,7 @@ function openSocket() {
         <button type="button" @click="call('/login', 'POST', { user, password })">login</button>
       </form>
       <p><a href="/auth/github">sign in with GitHub</a></p>
-      <form action="/auth/atproto" method="get">
+      <form action="/auth/atproto" method="post">
         <input
           v-model="login"
           name="login"

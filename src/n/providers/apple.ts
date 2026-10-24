@@ -85,8 +85,8 @@ export function defineAppleProvider(options: AppleProviderConfig): OAuthProvider
 export type AppleHandlerConfig<
   TResult = never,
   TEvent extends WebRequestEvent = WebRequestEvent,
-  TLink = never,
-> = PresetHandlerConfig<AppleProviderConfig, AppleProfile, TResult, TEvent, TLink>;
+  TMemo = never,
+> = PresetHandlerConfig<AppleProviderConfig, AppleProfile, TResult, TEvent, TMemo>;
 
 /**
  * Both legs of an Apple sign-in on one route: `defineSignInHandler` on {@link defineAppleProvider}, the

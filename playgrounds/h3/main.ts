@@ -1,4 +1,4 @@
-import { H3, type H3Event, HTTPError, serve } from "h3";
+import { H3, HTTPError, serve, type H3Event } from "h3";
 import { defineJWESession, deriveJWKFromPassword } from "unauth/session";
 
 import { defineSignInHandler } from "unauth/n";
@@ -52,9 +52,11 @@ const atproto = defineAtprotoProvider({
 
 const signInWithAtproto = defineSignInHandler(atproto, {
   key: flowKey,
-  onStart: (event: H3Event) => ({
-    login: new URL(event.req.url).searchParams.get("login") ?? undefined,
-  }),
+  onStart: async (event: H3Event) => {
+    const posted = event.req.method === "POST" ? await event.req.formData() : undefined;
+    const loginHint = posted?.get("login") ?? new URL(event.req.url).searchParams.get("login");
+    return { loginHint: typeof loginHint === "string" && loginHint ? loginHint : undefined };
+  },
   onSuccess: async (event, { identity }) => {
     const session = await useAuthSession(event);
     await session.clear();
@@ -98,7 +100,7 @@ const app = new H3()
       message: "Session cleared; this response should drop the cookie",
     });
   })
-  .get(
+  .all(
     "/auth/github",
     defineSignInHandler(github, {
       key: flowKey,
@@ -114,7 +116,7 @@ const app = new H3()
       },
     }),
   )
-  .get("/auth/atproto", signInWithAtproto)
+  .all("/auth/atproto", signInWithAtproto)
   .get("/oauth-client-metadata.json", () => atproto.client.metadata);
 
 serve(app);

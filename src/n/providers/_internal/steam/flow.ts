@@ -35,7 +35,7 @@ export interface FlowData {
  * The first leg (OpenID 2.0 §9.1): a `checkid_setup` request with `identifier_select` as both
  * identifiers, `openid.return_to` the callback URL with the flow's `state` in its query (§11.1
  * sends those query parameters back) and `openid.realm` the callback's origin. Steam takes no
- * `login`, `scopes` or extra parameters.
+ * `loginHint`, `scopes` or extra parameters.
  */
 export async function start(context: CustomStartContext): Promise<CustomStart> {
   const returnTo = new URL(context.redirectUri);
