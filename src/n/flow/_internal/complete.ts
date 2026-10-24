@@ -43,7 +43,9 @@ export interface CompletedFlow<TProfile, TLink> {
 
 /**
  * `completeFlow`, with the host a relocated start began on: the sign-in route hands the result back
- * there, and only the route may learn it.
+ * there, and only the route may learn it. The provider's `error` counts only once `state` has
+ * proven the callback belongs to this sign-in (RFC 6749 §4.1.2.1 sends `state` with an error too):
+ * a stray link cannot fail a sign-in in progress with an error of its own.
  */
 export async function completeFlowWithReturnHost<TProfile, TLink = unknown>(
   provider: Provider<TProfile>,
@@ -53,17 +55,6 @@ export async function completeFlowWithReturnHost<TProfile, TLink = unknown>(
   const taken = await takeFlow({ request, headers: options.headers, provider, options });
   const params = await callbackParams(request);
 
-  const error = params.error;
-  if (error !== undefined) {
-    throw new UnauthError(
-      "[unauth/n] The provider did not authorize the sign-in.",
-      "ERR_AUTHN_PROVIDER_REFUSED",
-      {
-        status: 401,
-        cause: { error, error_description: params.error_description, error_uri: params.error_uri },
-      },
-    );
-  }
   if (!taken.record) {
     throw new UnauthError(
       taken.reason === "missing"
@@ -81,6 +72,18 @@ export async function completeFlowWithReturnHost<TProfile, TLink = unknown>(
       {
         status: 401,
         cause: { provider: record.provider },
+      },
+    );
+  }
+
+  const error = params.error;
+  if (error !== undefined) {
+    throw new UnauthError(
+      "[unauth/n] The provider did not authorize the sign-in.",
+      "ERR_AUTHN_PROVIDER_REFUSED",
+      {
+        status: 401,
+        cause: { error, error_description: params.error_description, error_uri: params.error_uri },
       },
     );
   }

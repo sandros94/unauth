@@ -401,6 +401,25 @@ describe("completeFlow", () => {
     expect(isUnauthError(error) && error.cause).toEqual({ reason: "unreadable" });
   });
 
+  it("treats an ?error= whose state is not this sign-in's as a state mismatch", async () => {
+    const fake = await createFakeProvider();
+    const { request } = await beginSignIn(fakeOAuth2(), fake);
+    const stray = new URL(REDIRECT_URI);
+    stray.searchParams.set("error", "access_denied");
+    stray.searchParams.set("error_description", "chosen by someone else");
+    const headers = new Headers();
+
+    const error = await rejection(
+      completeFlow(fakeOAuth2(), new Request(stray, { headers: request.headers }), {
+        key,
+        headers,
+        fetch: fake.fetch,
+      }),
+    );
+
+    expect(isUnauthError(error, "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+  });
+
   it("throws ERR_AUTHN_PROVIDER_REFUSED on ?error=, with the provider's error in cause", async () => {
     const fake = await createFakeProvider();
     const { back, request } = await beginSignIn(fakeOAuth2(), fake);
