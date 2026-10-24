@@ -517,11 +517,11 @@ describe("the client", () => {
     expect(atproto.client.metadata).toBeUndefined();
   });
 
-  it("derives the development client from an http: loopback client id, mapping a devHosts callback to 127.0.0.1", () => {
+  it("derives the development client from an http: loopback client id, mapping a devOrigins callback to 127.0.0.1", () => {
     const atproto = defineAtprotoProvider({
       clientId: "http://localhost:3000/oauth-client-metadata.json",
       redirectUri: "http://localhost:3000/auth/atproto",
-      devHosts: ["localhost"],
+      devOrigins: ["http://localhost:3000"],
     });
 
     expect(atproto.client.development).toBe(true);
@@ -550,7 +550,19 @@ describe("the client", () => {
     ).toThrow(/must be https:/);
     expect(() =>
       defineAtprotoProvider({ redirectUri: "http://localhost:3000/auth/atproto" }),
-    ).toThrow(/"devHosts"/);
+    ).toThrow(/"devOrigins"/);
+    expect(() =>
+      defineAtprotoProvider({
+        redirectUri: "http://localhost:3000/auth/atproto",
+        devOrigins: ["http://localhost:4000"],
+      }),
+    ).toThrow(/"devOrigins"/);
+    expect(() =>
+      defineAtprotoProvider({
+        redirectUri: "http://localhost:3000/auth/atproto",
+        devOrigins: ["localhost"],
+      }),
+    ).toThrow(/must be origins/);
     expect(() =>
       defineAtprotoProvider({
         clientId: "http://dev.test/m.json",
@@ -560,10 +572,10 @@ describe("the client", () => {
     expect(() => provider({ scopes: ["transition:generic"] })).toThrow(/"atproto" scope/);
   });
 
-  it("moves a start on a devHosts host to the callback's host before setting any cookie", async () => {
+  it("moves a start on a devOrigins origin to the callback's host before setting any cookie", async () => {
     const atproto = defineAtprotoProvider({
       redirectUri: "http://localhost:3000/auth/atproto",
-      devHosts: ["localhost"],
+      devOrigins: ["http://localhost:3000"],
       dnsResolver: DNS,
       plcDirectory: PLC,
     });
@@ -571,7 +583,7 @@ describe("the client", () => {
     // No redirectUri on the start options: the provider's registered one is used.
     const moved = await startFlow(
       atproto,
-      formStart("http://localhost:3987/auth/atproto?login=x"),
+      formStart("http://localhost:3000/auth/atproto?login=x"),
       { key, fetch: fake.fetch, loginHint: "x" },
     );
     expect(moved.status).toBe(302);
@@ -579,13 +591,22 @@ describe("the client", () => {
     const intent = movedTo.searchParams.get("unauth_intent")!;
     expect(intent).toMatch(/^eyJ/);
     expect(movedTo.href).toBe(
-      `http://127.0.0.1:3987/auth/atproto?login=x&unauth_intent=${encodeURIComponent(intent)}`,
+      `http://127.0.0.1:3000/auth/atproto?login=x&unauth_intent=${encodeURIComponent(intent)}`,
     );
     expect(moved.headers.getSetCookie()).toEqual([]);
     expect(fake.requests).toHaveLength(0);
 
+    // The same hostname on another port is another origin: the start runs where it is.
+    const otherPort = await startFlow(
+      atproto,
+      formStart("http://localhost:3987/auth/atproto?login=x"),
+      { key, fetch: fake.fetch, loginHint: ALICE.handle },
+    );
+    expect(new URL(otherPort.headers.get("location")!).origin).toBe(ISSUER);
+    expect(otherPort.headers.getSetCookie().join("\n")).toMatch(/unauth-flow=/);
+
     // Not listed: the start runs where it is, and the flow cookie is set on that host. A handler
-    // naming the devHosts form of the callback is accepted as the same callback.
+    // naming the devOrigins form of the callback is accepted as the same callback.
     const stayed = await startFlow(atproto, formStart("http://dev.test:3000/auth/atproto"), {
       key,
       redirectUri: "http://localhost:3000/auth/atproto",
@@ -643,12 +664,12 @@ describe("createDpopProof", () => {
   });
 });
 
-describe("a devHosts round trip through defineSignInHandler", () => {
+describe("a devOrigins round trip through defineSignInHandler", () => {
   it("relocates the start, completes on the loopback IP and hands the result back to localhost", async () => {
     const atproto = defineAtprotoProvider({
       clientId: "http://localhost:3000/oauth-client-metadata.json",
       redirectUri: "http://localhost:3000/auth/atproto",
-      devHosts: ["localhost"],
+      devOrigins: ["http://localhost:3000"],
       dnsResolver: DNS,
       plcDirectory: PLC,
     });
@@ -771,7 +792,7 @@ describe("a devHosts round trip through defineSignInHandler", () => {
     const devConfig = {
       clientId: `${LOCAL}/oauth-client-metadata.json`,
       redirectUri: `${LOCAL}/auth/atproto`,
-      devHosts: ["localhost"],
+      devOrigins: [LOCAL],
       dnsResolver: DNS,
       plcDirectory: PLC,
     };
@@ -1035,12 +1056,12 @@ describe("defineAtprotoHandler", () => {
     expect(served("/oauth/par")).toBe(0);
   });
 
-  it("runs a devHosts round trip with the callback given once", async () => {
+  it("runs a devOrigins round trip with the callback given once", async () => {
     const seen: string[] = [];
     const handler = defineAtprotoHandler({
       clientId: "http://localhost:3000/oauth-client-metadata.json",
       redirectUri: "http://localhost:3000/auth/atproto",
-      devHosts: ["localhost"],
+      devOrigins: ["http://localhost:3000"],
       dnsResolver: DNS,
       plcDirectory: PLC,
       key,
@@ -1087,7 +1108,7 @@ describe("defineAtprotoHandler", () => {
   });
 
   it("refuses a provider given with the provider's options, naming them", () => {
-    const both = { provider: provider(), devHosts: ["localhost"], clientName: "App" };
+    const both = { provider: provider(), devOrigins: ["http://localhost:3000"], clientName: "App" };
     let refusal: unknown;
     try {
       // @ts-expect-error the provider's options belong to the provider
@@ -1096,7 +1117,7 @@ describe("defineAtprotoHandler", () => {
       refusal = error;
     }
     expect(isUnauthError(refusal, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
-    expect((refusal as Error).message).toContain(`"devHosts", "clientName"`);
+    expect((refusal as Error).message).toContain(`"devOrigins", "clientName"`);
     expect(() =>
       defineAtprotoHandler({
         provider: provider(),

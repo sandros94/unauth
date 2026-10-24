@@ -14,8 +14,10 @@ export interface StartFlowOptions<TMemo = never> extends FlowCarrierOptions {
   /** The callback URL registered at the provider. */
   redirectUri?: string;
   /**
-   * Origins whose requests may derive `redirectUri` from their own URL, when it is not set, and
-   * whose forms may start a sign-in that carries a `memo` or names the account (`loginHint`).
+   * Origins whose requests may derive `redirectUri` from their own URL, when it is not set,
+   * whose forms may start a sign-in that carries a `memo` or names the account (`loginHint`),
+   * and whose starts a custom provider may relocate. A custom provider's own `trustedOrigins`
+   * are added.
    */
   trustedOrigins?: string[];
   /** Where to go after sign-in; kept only when it is a same-origin path. */
@@ -58,7 +60,9 @@ export interface StartFlowOptions<TMemo = never> extends FlowCarrierOptions {
  * `loginHint`, `scopes`, `params`) and its host are sealed into the relocation URL as `unauth_intent`,
  * and the relocated start reads them back, the intent's members winning over the options it was
  * given and the host, when it is another, recorded as `returnHost`. That token opens once, within
- * a minute; one that does not is `ERR_AUTHN_FLOW_EXPIRED`.
+ * a minute; one that does not is `ERR_AUTHN_FLOW_EXPIRED`. Only a start from one of
+ * `trustedOrigins` is relocated, since the completed sign-in is returned to that origin:
+ * `ERR_UNAUTH_CONFIG_INVALID` for any other.
  *
  * A start that carries a `memo`, or names the account of a custom provider (`loginHint`), is
  * taken only from a form submitted on the application's own pages: a `POST` whose `Origin` is the
@@ -74,6 +78,12 @@ export async function startFlow<TMemo = never>(
 ): Promise<Response> {
   const resumed = provider.kind === "custom" ? await resumeIntent(request, options) : { options };
   options = resumed.options;
+  if (provider.kind === "custom" && provider.trustedOrigins?.length) {
+    options = {
+      ...options,
+      trustedOrigins: [...(options.trustedOrigins ?? []), ...provider.trustedOrigins],
+    };
+  }
   const steerable =
     options.memo !== undefined || (provider.kind === "custom" && options.loginHint !== undefined);
   if (steerable && resumed.returnHost === undefined) {

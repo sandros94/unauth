@@ -153,6 +153,11 @@ export interface CustomProvider<TProfile = Record<string, unknown>> {
   label?: string;
   /** The callback URL the provider registered, used when the start options name none. */
   redirectUri?: string;
+  /**
+   * Origins the provider's sign-in also runs on, added to the start options' `trustedOrigins`:
+   * where its `start` may relocate a sign-in from.
+   */
+  trustedOrigins?: string[];
   /** How the provider sends the user back; a `form_post` callback is a `POST` to the same route. @default "query" */
   responseMode?: "query" | "form_post";
   /** The first leg: where to send the user, and what to seal in the record for `complete`. */
@@ -204,8 +209,10 @@ export type CustomStart =
       /**
        * Where the user starts over; no flow is recorded. The engine seals the request's intent
        * and origin host beside it, as `unauth_intent`, for the start there to read back, and
-       * returns the user to the origin host once the sign-in completes: relocate only a request
-       * whose host the provider vouches for.
+       * returns the user to the origin host once the sign-in completes. Only a request from one
+       * of `trustedOrigins` (the start options' or the provider's) is relocated:
+       * `ERR_UNAUTH_CONFIG_INVALID` otherwise, since a `Host` nobody configured must never
+       * receive the completed sign-in.
        */
       relocate: URL | string;
     };

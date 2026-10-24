@@ -182,6 +182,7 @@ describe("a start naming the account of a custom provider", () => {
     const moved = await startFlow(provider, formStart(`${APP}/auth/custom`), {
       key,
       redirectUri: `${MOVED}/auth/custom`,
+      trustedOrigins: [APP],
       loginHint: "alice",
       memo: { userId: "u1" },
     });

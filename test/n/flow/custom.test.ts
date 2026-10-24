@@ -223,6 +223,7 @@ describe("a custom provider", () => {
     const response = await startFlow(provider, new Request(`${APP}/auth/custom?login=a`), {
       key,
       redirectUri: REDIRECT_URI,
+      trustedOrigins: [APP],
     });
 
     expect(response.status).toBe(302);

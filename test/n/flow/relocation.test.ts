@@ -36,8 +36,11 @@ interface Link {
   userId: string;
 }
 
-/** A provider that must start on `MOVED`: a start anywhere else is relocated there, query and all. */
-function movingProvider() {
+/**
+ * A provider that must start on `MOVED`: a start anywhere else is relocated there, query and all.
+ * It vouches for `APP` itself; any other origin must come from the start options.
+ */
+function movingProvider(options: { trustedOrigins?: string[] } = { trustedOrigins: [APP] }) {
   const start = vi.fn(async (context: Parameters<CustomProvider["start"]>[0]) => {
     const here = new URL(context.request.url);
     if (here.origin !== MOVED) {
@@ -52,6 +55,7 @@ function movingProvider() {
   const provider = defineProvider({
     id: "custom",
     kind: "custom",
+    trustedOrigins: options.trustedOrigins,
     start,
     complete: async () => ({ identity: { subject: "acct-1", profile: {} } }),
   });
@@ -248,6 +252,65 @@ describe("a relocated start", () => {
     );
     expect(result.memo).toEqual({ userId: "u2" });
     expect(returnHost).toBeUndefined();
+  });
+});
+
+describe("a start the deployment did not list", () => {
+  const EVIL = "https://evil.test";
+
+  it("is not relocated: nothing is sealed for a Host nobody configured, whatever the provider decides", async () => {
+    const { provider, start } = movingProvider({});
+    const error = await rejection(
+      startFlow<Link>(provider, new Request(`${EVIL}/auth/custom`), {
+        key,
+        redirectUri: REDIRECT_URI,
+      }),
+    );
+    expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+    expect((error as Error).message).toMatch(/evil\.test[\s\S]*"trustedOrigins"/);
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it("is relocated once the start options or the provider list its origin", async () => {
+    const { provider } = movingProvider({});
+    const byOptions = await startFlow<Link>(provider, new Request(`${APP}/auth/custom`), {
+      key,
+      redirectUri: REDIRECT_URI,
+      trustedOrigins: [`${APP}/`],
+    });
+    expect(new URL(byOptions.headers.get("location")!).origin).toBe(MOVED);
+
+    const vouching = movingProvider({ trustedOrigins: [APP] }).provider;
+    const byProvider = await startFlow<Link>(vouching, new Request(`${APP}/auth/custom`), {
+      key,
+      redirectUri: REDIRECT_URI,
+    });
+    expect(new URL(byProvider.headers.get("location")!).origin).toBe(MOVED);
+
+    // Same host, another scheme or port: another origin.
+    for (const origin of ["http://app.test", "https://app.test:8443"]) {
+      const error = await rejection(
+        startFlow<Link>(vouching, new Request(`${origin}/auth/custom`), {
+          key,
+          redirectUri: REDIRECT_URI,
+        }),
+      );
+      expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+    }
+  });
+
+  it("is answered by the sign-in handler as a configuration failure, without a redirect", async () => {
+    const { provider } = movingProvider({});
+    const handler = defineSignInHandler(provider, {
+      key,
+      redirectUri: REDIRECT_URI,
+      onSuccess: () => "ok",
+    });
+    const res = { headers: new Headers() };
+    const answer = await handler({ req: new Request(`${EVIL}/auth/custom`), res });
+    expect((answer as Response).status).toBe(500);
+    expect((answer as Response).headers.get("location")).toBeNull();
+    expect(res.headers.getSetCookie()).toEqual([]);
   });
 });
 

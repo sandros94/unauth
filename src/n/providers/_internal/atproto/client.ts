@@ -1,9 +1,10 @@
 import { assertSecureUrl, configError } from "../../../flow/_internal/http/shared.ts";
+import { originOf } from "../../../flow/_internal/redirect.ts";
 
 /** An AT Protocol provider's client. */
 export interface AtprotoClient {
   id: string;
-  /** The callback as registered: the configured one, or its `devHosts` host mapped to `127.0.0.1`. */
+  /** The callback as registered: the configured one, or its `devOrigins` host mapped to `127.0.0.1`. */
   redirectUri: string;
   /** Whether `id` is the atproto development client (`http://localhost?…`), which publishes no metadata document. */
   development: boolean;
@@ -46,20 +47,21 @@ const LOOPBACK_HOSTS = new Set([...LOOPBACK_IPS, "localhost"]);
 /**
  * The provider's client. A published one needs an `https:` client id without a port and an
  * `https:` callback. An `http:` client id on a loopback host, or none with a loopback callback,
- * is the spec's development client, whose callback must be on a loopback IP: a `devHosts` host
- * (`localhost`) is mapped to `127.0.0.1` there.
+ * is the spec's development client, whose callback must be on a loopback IP: a callback on one of
+ * `devOrigins` (`http://localhost:3000`) is mapped to `127.0.0.1` there.
  */
-export function resolveClient(config: AtprotoClientConfig, devHosts: string[]): AtprotoClient {
+export function resolveClient(config: AtprotoClientConfig, devOrigins: string[]): AtprotoClient {
+  const insecureHosts = devOrigins.map((origin) => new URL(origin).hostname);
   const redirect = assertSecureUrl(config.redirectUri, {
     label: `The AT Protocol "redirectUri"`,
-    insecureHosts: devHosts,
+    insecureHosts,
   });
   const id =
     config.clientId === undefined
       ? undefined
       : assertSecureUrl(config.clientId, {
           label: `The AT Protocol "clientId"`,
-          insecureHosts: devHosts,
+          insecureHosts,
         });
   const published = id !== undefined && id.protocol === "https:";
 
@@ -82,7 +84,7 @@ export function resolveClient(config: AtprotoClientConfig, devHosts: string[]): 
     };
   }
 
-  if (id !== undefined && !LOOPBACK_HOSTS.has(id.hostname) && !devHosts.includes(id.hostname)) {
+  if (id !== undefined && !LOOPBACK_HOSTS.has(id.hostname) && !devOrigins.includes(id.origin)) {
     throw configError(
       `The AT Protocol "clientId" must be an https: URL, or an http: one on a loopback host for the development client, got ${JSON.stringify(config.clientId)}.`,
     );
@@ -93,9 +95,9 @@ export function resolveClient(config: AtprotoClientConfig, devHosts: string[]): 
     );
   }
   if (!LOOPBACK_IPS.has(redirect.hostname)) {
-    if (!devHosts.includes(redirect.hostname)) {
+    if (!devOrigins.includes(redirect.origin)) {
       throw configError(
-        `The AT Protocol development client's "redirectUri" must be on 127.0.0.1 or [::1] (the atproto profile refuses "${redirect.hostname}", RFC 8252 §8.3); list it in "devHosts" to have it mapped, got ${JSON.stringify(config.redirectUri)}.`,
+        `The AT Protocol development client's "redirectUri" must be on 127.0.0.1 or [::1] (the atproto profile refuses "${redirect.hostname}", RFC 8252 §8.3); list its origin in "devOrigins" to have it mapped, got ${JSON.stringify(config.redirectUri)}.`,
       );
     }
     redirect.hostname = "127.0.0.1";
@@ -108,29 +110,29 @@ export function resolveClient(config: AtprotoClientConfig, devHosts: string[]): 
 }
 
 /**
- * Where a start on a `devHosts` host is sent first: the same URL on the callback's host, port and
- * all, so the flow cookie is set where the callback returns.
+ * Where a start on one of `devOrigins` is sent first: the same URL on the callback's host, port
+ * and all, so the flow cookie is set where the callback returns.
  */
 export function relocation(
   request: Request,
-  options: { client: AtprotoClient; devHosts: string[] },
+  options: { client: AtprotoClient; devOrigins: string[] },
 ): URL | undefined {
   if (!options.client.development) return undefined;
   const url = new URL(request.url);
   const callback = new URL(options.client.redirectUri);
-  if (url.hostname === callback.hostname || !options.devHosts.includes(url.hostname)) {
+  if (url.hostname === callback.hostname || !options.devOrigins.includes(url.origin)) {
     return undefined;
   }
   url.hostname = callback.hostname;
   return url;
 }
 
-/** Whether `given` is the registered callback, or the same URL on a `devHosts` host. */
-export function sameCallback(given: string, registered: string, devHosts: string[]): boolean {
+/** Whether `given` is the registered callback, or the same URL on one of `devOrigins`. */
+export function sameCallback(given: string, registered: string, devOrigins: string[]): boolean {
   if (given === registered) return true;
   try {
     const url = new URL(given);
-    if (!devHosts.includes(url.hostname)) return false;
+    if (!devOrigins.includes(url.origin)) return false;
     url.hostname = new URL(registered).hostname;
     return url.href === registered;
   } catch {
@@ -159,4 +161,17 @@ function metadataOf(
   if (config.tosUri) document.tos_uri = config.tosUri;
   if (config.policyUri) document.policy_uri = config.policyUri;
   return document;
+}
+
+/** The `devOrigins` entries as origins; `ERR_UNAUTH_CONFIG_INVALID` for one that is not an absolute URL. */
+export function devOriginsOf(entries: string[] | undefined): string[] {
+  return (entries ?? []).map((entry) => {
+    const origin = originOf(entry);
+    if (origin === undefined) {
+      throw configError(
+        `The AT Protocol "devOrigins" entries must be origins such as "http://localhost:3000", got ${JSON.stringify(entry)}.`,
+      );
+    }
+    return origin;
+  });
 }

@@ -4,7 +4,7 @@ import type { CustomProvider } from "../flow/types.ts";
 import type { WebRequestEvent } from "../request-event.ts";
 import { type PresetHandler, type PresetHandlerConfig, presetHandler } from "./_internal/shared.ts";
 import { type AtprotoProfile, complete } from "./_internal/atproto/callback.ts";
-import { type AtprotoClient, resolveClient } from "./_internal/atproto/client.ts";
+import { type AtprotoClient, devOriginsOf, resolveClient } from "./_internal/atproto/client.ts";
 import { resolversOf, start } from "./_internal/atproto/flow.ts";
 
 export type { AtprotoProfile } from "./_internal/atproto/callback.ts";
@@ -19,7 +19,7 @@ export interface AtprotoProviderConfig {
   label?: string;
   /**
    * The URL the client metadata document is published at: `https://`, no port. An `http://` URL
-   * on a loopback or `devHosts` host, or no `clientId` with an `http:` loopback `redirectUri`,
+   * on a loopback host or one of `devOrigins`, or no `clientId` with an `http:` loopback `redirectUri`,
    * selects the atproto development client (`http://localhost?redirect_uri=…&scope=…`), which
    * publishes no document.
    */
@@ -28,19 +28,20 @@ export interface AtprotoProviderConfig {
    * The callback URL, listed in the client metadata; `https:` for a published client. The
    * development client's callback is on a loopback IP (`http://127.0.0.1:3000/…`,
    * `http://[::1]:3000/…`; the atproto profile refuses `localhost`, RFC 8252 §8.3); a callback on
-   * a `devHosts` host is registered on `127.0.0.1`.
+   * one of `devOrigins` is registered on `127.0.0.1`.
    */
   redirectUri: string;
   /**
-   * Development only: hosts the app is also reached on with the development client, such as
-   * `localhost`. A `redirectUri` on one of them is registered on `127.0.0.1`. A sign-in started on
-   * one of them is sent to the same URL on the callback's host before any cookie is set; the sign-in
-   * handler then returns the completed result to the starting host in a sealed, single-use,
-   * one-minute token, and `onSuccess` runs there.
+   * Development only: origins the app is also reached on with the development client, such as
+   * `http://localhost:3000`. A `redirectUri` on one of them is registered on `127.0.0.1`. A sign-in
+   * started on one of them is sent to the same URL on the callback's host before any cookie is
+   * set; the sign-in handler then returns the completed result to the starting origin in a sealed,
+   * single-use, one-minute token, and `onSuccess` runs there. They are trusted origins of every
+   * sign-in on this provider (`trustedOrigins`).
    *
    * @default []
    */
-  devHosts?: string[];
+  devOrigins?: string[];
   /** Must include `atproto`. @default ["atproto"] */
   scopes?: string[];
   /** Shown to the user on the authorization server's consent screen. */
@@ -81,8 +82,8 @@ export interface AtprotoProvider extends CustomProvider<AtprotoProfile> {
  * cannot work (see `clientId`, `redirectUri`, `scopes`).
  */
 export function defineAtprotoProvider(config: AtprotoProviderConfig): AtprotoProvider {
-  const devHosts = config.devHosts ?? [];
-  const client = resolveClient(config, devHosts);
+  const devOrigins = devOriginsOf(config.devOrigins);
+  const client = resolveClient(config, devOrigins);
   const scopes = config.scopes ?? ["atproto"];
   if (!scopes.includes("atproto")) {
     throw configError(`The AT Protocol provider needs the "atproto" scope.`);
@@ -93,7 +94,8 @@ export function defineAtprotoProvider(config: AtprotoProviderConfig): AtprotoPro
     id: config.id ?? "atproto",
     kind: "custom",
     label: config.label ?? "AT Protocol",
-    start: (context) => start(context, { client, scopes, resolvers, devHosts }),
+    trustedOrigins: devOrigins,
+    start: (context) => start(context, { client, scopes, resolvers, devOrigins }),
     complete: (context) => complete(context, { client, resolvers }),
   });
   return { ...provider, redirectUri: client.redirectUri, client, scopes };
@@ -132,7 +134,7 @@ export const defineAtprotoHandler: PresetHandler<AtprotoProviderPart, AtprotoPro
       "label",
       "clientId",
       "redirectUri",
-      "devHosts",
+      "devOrigins",
       "scopes",
       "clientName",
       "clientUri",

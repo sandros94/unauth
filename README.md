@@ -110,7 +110,7 @@ app.all(
 
 - `onStart` names the account (a handle, a DID or a server URL) as `loginHint`; the handler reads nothing from the request. Naming the account picks the server the sign-in is pushed to, so the start is a `POST` form from the application's own pages (`ERR_AUTHN_CROSS_SITE_START` otherwise).
 - The provider's `client.metadata` is the document to serve at `clientId`; define the provider once with `defineAtprotoProvider` and pass it as `provider` to share it with that route.
-- A `clientId` on `http://localhost` is the development client; its callback must be on a loopback IP. `devHosts: ["localhost"]` maps a `localhost` callback to `127.0.0.1` and returns the result to `localhost`.
+- A `clientId` on `http://localhost` is the development client; its callback must be on a loopback IP. `devOrigins: ["http://localhost:3000"]` maps a `localhost:3000` callback to `127.0.0.1:3000` and returns the result to `http://localhost:3000`.
 
 ### Custom providers
 

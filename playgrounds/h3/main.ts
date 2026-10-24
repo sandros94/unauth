@@ -44,7 +44,7 @@ const github = defineGitHubProvider({
 
 const atproto = defineAtprotoProvider({
   redirectUri: `${origin}/auth/atproto`,
-  devHosts: process.env.NODE_ENV === "production" ? undefined : ["localhost"],
+  devOrigins: process.env.NODE_ENV === "production" ? undefined : [origin],
   clientId: `${origin}/oauth-client-metadata.json`,
   clientName: "unauth playground",
   clientUri: origin,

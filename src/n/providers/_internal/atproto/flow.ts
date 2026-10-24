@@ -71,8 +71,8 @@ const RESERVED = new Set([
 
 /**
  * The first leg: the account or server `loginHint` names is resolved, the request is pushed (PAR) with
- * PKCE and a DPoP proof, and the user is sent to the authorization endpoint; a start on a
- * `devHosts` host is relocated first.
+ * PKCE and a DPoP proof, and the user is sent to the authorization endpoint; a start on one of
+ * `devOrigins` is relocated first.
  */
 export async function start(
   context: CustomStartContext,
@@ -80,13 +80,13 @@ export async function start(
     client: AtprotoClient;
     scopes: string[];
     resolvers: Resolvers;
-    devHosts: string[];
+    devOrigins: string[];
   },
 ): Promise<CustomStart> {
   const { client, resolvers } = provider;
-  const relocate = relocation(context.request, { client, devHosts: provider.devHosts });
+  const relocate = relocation(context.request, { client, devOrigins: provider.devOrigins });
   if (relocate) return { relocate };
-  if (!sameCallback(context.redirectUri, client.redirectUri, provider.devHosts)) {
+  if (!sameCallback(context.redirectUri, client.redirectUri, provider.devOrigins)) {
     throw configError(
       `The AT Protocol sign-in runs at ${context.redirectUri}, but the provider's "redirectUri" is ${client.redirectUri}; they must be the same URL.`,
     );
