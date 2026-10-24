@@ -1,5 +1,6 @@
 import { UnauthError, isUnauthError } from "../../../../error.ts";
 import {
+  MAX_URL_LENGTH,
   assertRemoteUrl,
   assertSecureUrl,
   isRecord,
@@ -140,27 +141,15 @@ export function resolveDid(did: string, options: AtprotoResolveOptions): Promise
 
 /** The origin of the PDS a DID document names; `ERR_AUTHN_LOGIN_HINT_INVALID` without one. */
 export function pdsOf(document: DidDocument, options: { allowHttp?: boolean }): string {
-  const services = Array.isArray(document.service) ? document.service : [];
-  for (const entry of services) {
-    if (!isRecord(entry)) continue;
-    const id = entry.id;
-    const endpoint = stringField(entry, "serviceEndpoint");
-    if (
-      (id === "#atproto_pds" || id === `${document.id}#atproto_pds`) &&
-      entry.type === "AtprotoPersonalDataServer" &&
-      endpoint !== undefined
-    ) {
-      try {
-        return assertRemoteUrl(endpoint, {
-          label: `The PDS of ${document.id}`,
-          allowHttp: options.allowHttp,
-        }).origin;
-      } catch (error) {
-        throw loginHintError(`${document.id} names an unusable PDS.`, error);
-      }
-    }
+  if (document.pds === undefined) throw loginHintError(`${document.id} names no PDS.`);
+  try {
+    return assertRemoteUrl(document.pds, {
+      label: `The PDS of ${document.id}`,
+      allowHttp: options.allowHttp,
+    }).origin;
+  } catch (error) {
+    throw loginHintError(`${document.id} names an unusable PDS.`, error);
   }
-  throw loginHintError(`${document.id} names no PDS.`);
 }
 
 export function normalizeHandle(value: string): string {
@@ -255,11 +244,24 @@ async function resolveHandleHttps(handle: string, options: AtprotoResolveOptions
   return did;
 }
 
-export interface DidDocument extends Record<string, unknown> {
+/**
+ * What a sign-in reads from a DID document, and all the cache keeps of it: the handle the account
+ * claims (its first `at://` alias) and the `#atproto_pds` service endpoint. A document is as large
+ * as whoever published it likes; keeping only these two bounded strings keeps the cache's footprint
+ * independent of that size.
+ */
+export interface DidDocument {
   id: string;
+  /** The first `at://` alias, lower-cased, without the scheme. */
+  handle?: string;
+  /** The `#atproto_pds` service endpoint, as the document spells it. */
+  pds?: string;
 }
 
-/** `document` once it is the DID document of `did`. */
+/** The longest handle an `at://` alias may carry, after the scheme. */
+const HANDLE_MAX_LENGTH = 253;
+
+/** The members a sign-in uses of the DID document of `did`; another DID's document is refused. */
 function parseDidDocument(document: unknown, did: string): DidDocument {
   if (!isRecord(document))
     throw providerError(`The DID document of ${did} is not a JSON object.`, {
@@ -270,14 +272,33 @@ function parseDidDocument(document: unknown, did: string): DidDocument {
       reason: "malformed",
     });
   }
-  return { ...document, id: did };
-}
-
-/** The first `at://` alias of `alsoKnownAs`, which is the handle the account claims. */
-function claimedHandle(document: DidDocument): string | undefined {
+  const result: DidDocument = { id: did };
   const aliases = Array.isArray(document.alsoKnownAs) ? document.alsoKnownAs : [];
   const alias = aliases.find(
-    (entry): entry is string => typeof entry === "string" && entry.startsWith("at://"),
+    (entry): entry is string =>
+      typeof entry === "string" &&
+      entry.startsWith("at://") &&
+      entry.length <= "at://".length + HANDLE_MAX_LENGTH,
   );
-  return alias?.slice("at://".length).toLowerCase();
+  if (alias !== undefined) result.handle = alias.slice("at://".length).toLowerCase();
+  const services = Array.isArray(document.service) ? document.service : [];
+  for (const entry of services) {
+    if (!isRecord(entry)) continue;
+    const endpoint = stringField(entry, "serviceEndpoint");
+    if (
+      (entry.id === "#atproto_pds" || entry.id === `${did}#atproto_pds`) &&
+      entry.type === "AtprotoPersonalDataServer" &&
+      endpoint !== undefined &&
+      endpoint.length <= MAX_URL_LENGTH
+    ) {
+      result.pds = endpoint;
+      break;
+    }
+  }
+  return result;
+}
+
+/** The handle the account claims: its first `at://` alias. */
+function claimedHandle(document: DidDocument): string | undefined {
+  return document.handle;
 }

@@ -3,6 +3,7 @@ import { type JWK_oct, generateJWK, verify } from "unjwt";
 import { defineJWESession } from "unjwt/session";
 
 import {
+  type CacheDriver,
   type WebRequestEvent,
   type UnauthError,
   completeFlow,
@@ -258,6 +259,54 @@ describe("a remote document naming a plain-http loopback URL", () => {
     await rejection(begin(provider({ allowHttp: true }), ALICE.handle));
     expect(fake.requests.map((r) => r.url.href)).toContain("http://localhost:2583/oauth/par");
   });
+});
+
+describe("the DID document cache", () => {
+  it("keeps only the handle and the PDS of a document, however large it comes", async () => {
+    const padding = Array.from({ length: 20_000 }, () => ({}));
+    fake.documents.set(ALICE.did, { ...didDocument(ALICE.did, ALICE.handle), padding });
+    const stored = new Map<string, unknown>();
+    const cache: CacheDriver = {
+      get: <T>(name: string) => (stored.get(name) as T | undefined) ?? null,
+      set: (name, value) => void stored.set(name, value),
+    };
+
+    const { result } = await signInWith({ cache });
+    expect(result.identity.profile).toMatchObject({
+      did: ALICE.did,
+      handle: ALICE.handle,
+      pds: PDS,
+    });
+
+    const [entry] = [...stored.entries()].filter(([name]) =>
+      name.startsWith("unauth:atproto-did:"),
+    );
+    expect(entry).toBeDefined();
+    expect(JSON.stringify(entry![1]).length).toBeLessThan(512);
+    expect(entry![1]).toMatchObject({
+      value: { id: ALICE.did, handle: ALICE.handle, pds: PDS },
+    });
+  });
+
+  async function signInWith(extra: Partial<Parameters<typeof startFlow>[2]>) {
+    const atproto = provider();
+    const response = await startFlow(atproto, formStart(REDIRECT_URI), {
+      key,
+      redirectUri: REDIRECT_URI,
+      fetch: fake.fetch,
+      loginHint: ALICE.handle,
+      ...extra,
+    });
+    const back = fake.approve(new URL(response.headers.get("location")!));
+    const request = new Request(back, { headers: { cookie: cookieHeader(response.headers) } });
+    const result = await completeFlow(atproto, request, {
+      key,
+      fetch: fake.fetch,
+      headers: new Headers(),
+      ...extra,
+    });
+    return { result };
+  }
 });
 
 describe("sign-in from a DID", () => {
