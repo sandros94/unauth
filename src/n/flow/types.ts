@@ -207,9 +207,11 @@ export type CustomStart =
     }
   | {
       /**
-       * Where the user starts over; no flow is recorded. The engine seals the request's intent
-       * and origin host beside it, as `unauth_intent`, for the start there to read back, and
-       * returns the user to the origin host once the sign-in completes. Only a request from one
+       * Where the user starts over. The engine records the flow on this host, as for any start,
+       * and seals the request's intent, its host and the flow's `state` beside the URL, as
+       * `unauth_intent`, for the start there to continue under; once the sign-in completes, the
+       * user is returned to this host, where the result is redeemed against that flow, in the
+       * browser that started it. Only a request from one
        * of `trustedOrigins` (the start options' or the provider's) is relocated:
        * `ERR_UNAUTH_CONFIG_INVALID` otherwise, since a `Host` nobody configured must never
        * receive the completed sign-in.

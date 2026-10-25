@@ -212,7 +212,7 @@ describe("a custom provider", () => {
     expect(isUnauthError(error, "ERR_AUTHN_PROFILE_INVALID")).toBe(true);
   });
 
-  it("answers a relocation with a redirect and no flow cookie", async () => {
+  it("answers a relocation with a redirect, recording the flow on this host", async () => {
     const provider = defineProvider<Account>({
       id: "custom",
       kind: "custom",
@@ -229,7 +229,7 @@ describe("a custom provider", () => {
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get("location")!);
     expect(location.origin + location.pathname).toBe("https://ip.test/auth/custom");
-    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(response.headers.getSetCookie().join("\n")).toMatch(/__Host-unauth-flow=/);
   });
 
   it("defineProvider refuses a custom provider without its legs", () => {

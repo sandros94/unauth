@@ -572,7 +572,7 @@ describe("the client", () => {
     expect(() => provider({ scopes: ["transition:generic"] })).toThrow(/"atproto" scope/);
   });
 
-  it("moves a start on a devOrigins origin to the callback's host before setting any cookie", async () => {
+  it("moves a start on a devOrigins origin to the callback's host, recording the flow where it left", async () => {
     const atproto = defineAtprotoProvider({
       redirectUri: "http://localhost:3000/auth/atproto",
       devOrigins: ["http://localhost:3000"],
@@ -593,7 +593,7 @@ describe("the client", () => {
     expect(movedTo.href).toBe(
       `http://127.0.0.1:3000/auth/atproto?login=x&unauth_intent=${encodeURIComponent(intent)}`,
     );
-    expect(moved.headers.getSetCookie()).toEqual([]);
+    expect(moved.headers.getSetCookie().join("\n")).toMatch(/unauth-flow=/);
     expect(fake.requests).toHaveLength(0);
 
     // The same hostname on another port is another origin: the start runs where it is.
@@ -689,18 +689,20 @@ describe("a devOrigins round trip through defineSignInHandler", () => {
       return { answer, res };
     };
 
-    // 1. Start on localhost: moved to 127.0.0.1, nothing set.
+    // 1. Start on localhost: moved to 127.0.0.1, the flow recorded on localhost.
     const moved = await call(
       `http://localhost:3000/auth/atproto?login=${ALICE.handle}`,
       undefined,
       true,
     );
-    const movedTo = new URL((moved.answer as Response).headers.get("location")!);
+    const movedResponse = moved.answer as Response;
+    const movedTo = new URL(movedResponse.headers.get("location")!);
     const intent = movedTo.searchParams.get("unauth_intent")!;
     expect(movedTo.href).toBe(
       `http://127.0.0.1:3000/auth/atproto?login=${ALICE.handle}&unauth_intent=${encodeURIComponent(intent)}`,
     );
-    expect(moved.res.headers.getSetCookie()).toEqual([]);
+    const home = cookieHeader(movedResponse.headers);
+    expect(home).toMatch(/unauth-flow=/);
 
     // 2. Start on 127.0.0.1: the real first leg, flow cookie set there.
     const started = await call(movedTo);
@@ -720,14 +722,21 @@ describe("a devOrigins round trip through defineSignInHandler", () => {
     const cleared = completed.res.headers.getSetCookie().find((l) => l.includes("unauth-flow="));
     expect(cleared && isExpired(cleared)).toBe(true);
 
-    // 4. The handoff on localhost: onSuccess runs there, once.
-    const home = await call(handoff);
-    expect(home.answer).toEqual({ did: ALICE.did });
+    // 4. The handoff on localhost, in the browser that started there: onSuccess runs, once.
+    const stranger = await call(handoff);
+    expect((stranger.answer as Response).status).toBe(401);
+    const handed = await call(handoff, home);
+    expect(handed.answer).toEqual({ did: ALICE.did });
     expect(seen).toEqual([{ host: "localhost", did: ALICE.did }]);
+    const homeCleared = handed.res.headers.getSetCookie().find((l) => l.includes("unauth-flow="));
+    expect(homeCleared && isExpired(homeCleared)).toBe(true);
 
-    const replay = await call(handoff);
+    const replay = await call(handoff, home);
     expect((replay.answer as Response).status).toBe(401);
-    const forged = await call(`http://localhost:3000/auth/atproto?unauth_handoff=eyJ.forged.token`);
+    const forged = await call(
+      `http://localhost:3000/auth/atproto?unauth_handoff=eyJ.forged.token`,
+      home,
+    );
     expect((forged.answer as Response).status).toBe(401);
     expect(seen).toHaveLength(1);
   });
@@ -1088,7 +1097,8 @@ describe("defineAtprotoHandler", () => {
     const completed = await run(handler, back, cookieHeader(start.headers));
     const handoff = new URL((completed.answer as Response).headers.get("location")!);
     expect(handoff.origin).toBe("http://localhost:3000");
-    expect((await run(handler, handoff)).answer).toBe("ok");
+    const home = cookieHeader((moved.answer as Response).headers);
+    expect((await run(handler, handoff, home)).answer).toBe("ok");
     expect(seen).toEqual([`localhost ${ALICE.did}`]);
   });
 

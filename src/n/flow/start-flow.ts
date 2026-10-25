@@ -2,7 +2,7 @@ import type { CacheDriver } from "./_internal/cache/load.ts";
 import { type Fetch, fetchOf, nowOf } from "./_internal/http/shared.ts";
 import { resolveRedirectUri, safeRedirect } from "./_internal/redirect.ts";
 import { assertFormStart } from "./_internal/form-start.ts";
-import { resumeIntent, withSealedIntent } from "./_internal/carrier/intent.ts";
+import { type ResumedIntent, resumeIntent, withSealedIntent } from "./_internal/carrier/intent.ts";
 import { type FlowCarrierOptions, saveFlow } from "./_internal/carrier/transient.ts";
 import { buildAuthorizationUrl } from "./authorization-url.ts";
 import { resolveProvider } from "./discovery.ts";
@@ -56,13 +56,16 @@ export interface StartFlowOptions<TMemo = never> extends FlowCarrierOptions {
  * engine's. A browser holds one flow at a time: a second sign-in started before the first
  * completes replaces it.
  *
- * A custom provider's relocation records nothing: the request's intent (`redirect`, `memo`,
- * `loginHint`, `scopes`, `params`) and its host are sealed into the relocation URL as `unauth_intent`,
- * and the relocated start reads them back, the intent's members winning over the options it was
- * given and the host, when it is another, recorded as `returnHost`. That token opens once, within
- * a minute; one that does not is `ERR_AUTHN_FLOW_EXPIRED`. Only a start from one of
- * `trustedOrigins` is relocated, since the completed sign-in is returned to that origin:
- * `ERR_UNAUTH_CONFIG_INVALID` for any other.
+ * A custom provider's relocation records the flow on the host it leaves, as any start does, and
+ * seals the request's intent (`redirect`, `memo`, `loginHint`, `scopes`, `params`), its host and
+ * the flow's provider and `state` into the relocation URL as `unauth_intent`. The relocated start
+ * reads them back: the intent's members win over the options it was given, the host, when it is
+ * another, is recorded as `returnHost`, and the flow continues under the same `state`, which the
+ * completed sign-in handed back to that host is checked against. The token opens once, within a
+ * minute, for the same provider; one that does not is `ERR_AUTHN_FLOW_EXPIRED`, one sealed for
+ * another provider `ERR_AUTHN_STATE_MISMATCH`. Only a start from one of `trustedOrigins` is
+ * relocated, since the completed sign-in is returned to that origin: `ERR_UNAUTH_CONFIG_INVALID`
+ * for any other.
  *
  * A start that carries a `memo`, or names the account of a custom provider (`loginHint`), is
  * taken only from a form submitted on the application's own pages: a `POST` whose `Origin` is the
@@ -76,7 +79,10 @@ export async function startFlow<TMemo = never>(
   request: Request,
   options: StartFlowOptions<TMemo>,
 ): Promise<Response> {
-  const resumed = provider.kind === "custom" ? await resumeIntent(request, options) : { options };
+  const resumed: ResumedIntent<TMemo> =
+    provider.kind === "custom"
+      ? await resumeIntent(request, { provider: provider.id, options })
+      : { options };
   options = resumed.options;
   if (provider.kind === "custom" && provider.trustedOrigins?.length) {
     options = {
@@ -95,7 +101,11 @@ export async function startFlow<TMemo = never>(
     trustedOrigins: options.trustedOrigins,
   });
   const redirect = safeRedirect(options.redirect);
-  const record: FlowRecord<TMemo> = { provider: provider.id, state: createState(), redirectUri };
+  const record: FlowRecord<TMemo> = {
+    provider: provider.id,
+    state: resumed.state ?? createState(),
+    redirectUri,
+  };
   if (redirect !== undefined) record.redirect = redirect;
   if (options.memo !== undefined) record.memo = options.memo;
   if (resumed.returnHost !== undefined && resumed.returnHost !== new URL(request.url).hostname) {
@@ -108,10 +118,10 @@ export async function startFlow<TMemo = never>(
       : { url: await startOAuth(provider, { record, redirectUri, options }), relocate: false };
 
   const location = started.relocate
-    ? await withSealedIntent(started.url, { request, options })
+    ? await withSealedIntent(started.url, { request, options, record })
     : started.url;
   const headers = new Headers({ "location": location.href, "cache-control": "no-store" });
-  if (!started.relocate) await saveFlow(record, { request, headers, provider, options });
+  await saveFlow(record, { request, headers, provider, options });
   return new Response(null, { status: 302, headers });
 }
 

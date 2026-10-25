@@ -4,6 +4,7 @@ import { type JWK_oct, generateJWK } from "unjwt/session";
 import {
   type CustomProvider,
   type FlowResult,
+  type UnauthError,
   completeFlow,
   defineOAuth2Provider,
   defineProvider,
@@ -72,10 +73,63 @@ function callback(started: Response): Request {
 
 /** The carrier of the intent tokens, to open or forge one as the engine does. */
 function intentCarrier() {
-  return sealedCarrier<{ intent: Record<string, unknown>; returnHost: string }>(key, {
-    typ: "unauth-intent+jwt",
-    name: "unauth-intent",
+  return sealedCarrier<{
+    intent: Record<string, unknown>;
+    returnHost: string;
+    provider: string;
+    state: string;
+  }>(key, { typ: "unauth-intent+jwt", name: "unauth-intent" });
+}
+
+type Handler = (event: { req: Request; res: { headers: Headers } }) => Promise<unknown>;
+
+/** A browser: one cookie jar per host, replayed on every visit to that host, whichever route answers. */
+function browser(handler: Handler) {
+  const jars = new Map<string, string>();
+  return async (to: string | URL | Request, using: Handler = handler) => {
+    const request = to instanceof Request ? to : new Request(to);
+    const host = new URL(request.url).hostname;
+    const headers = new Headers(request.headers);
+    const cookie = jars.get(host);
+    if (cookie) headers.set("cookie", cookie);
+    const res = { headers: new Headers() };
+    const answer = await using({ req: new Request(request, { headers }), res });
+    for (const from of [res.headers, answer instanceof Response ? answer.headers : undefined]) {
+      if (from && from.getSetCookie().length > 0) jars.set(host, cookieHeader(from));
+    }
+    return answer;
+  };
+}
+
+/** The sign-in handler of `provider`, recording where `onSuccess` ran and the errors answered. */
+function app(provider: CustomProvider) {
+  const seen: string[] = [];
+  const errors: UnauthError[] = [];
+  const handler = defineSignInHandler(provider, {
+    key,
+    redirectUri: REDIRECT_URI,
+    onSuccess: (event, result) => {
+      seen.push(`${new URL(event.req.url).hostname} ${result.identity.subject}`);
+      return "ok";
+    },
+    onError: (_event, error) => {
+      errors.push(error);
+      return new Response(error.message, { status: error.status });
+    },
   });
+  return { handler, seen, errors };
+}
+
+/** The relocation round trip in `visit`'s browser, up to the handoff URL the callback host answers with. */
+async function handoffFor(visit: ReturnType<typeof browser>): Promise<URL> {
+  const moved = (await visit(formStart(`${APP}/auth/custom`))) as Response;
+  const started = (await visit(moved.headers.get("location")!)) as Response;
+  const state = new URL(started.headers.get("location")!).searchParams.get("state")!;
+  const completed = (await visit(`${REDIRECT_URI}?state=${state}&code=c-1`)) as Response;
+  const handoff = new URL(completed.headers.get("location")!);
+  expect(handoff.origin).toBe(APP);
+  expect(handoff.searchParams.get("unauth_handoff")).toMatch(/^eyJ/);
+  return handoff;
 }
 
 async function rejection(promise: Promise<unknown>): Promise<unknown> {
@@ -88,7 +142,7 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
 }
 
 describe("a relocated start", () => {
-  it("seals the intent and the origin host into the relocation URL, and records nothing", async () => {
+  it("seals the intent, the origin host and the flow's binding into the relocation URL, recording the flow here", async () => {
     const { provider } = movingProvider();
     const moved = await startFlow<Link>(provider, formStart(`${APP}/auth/custom?x=1`), {
       key,
@@ -102,11 +156,59 @@ describe("a relocated start", () => {
     expect(location.searchParams.get("x")).toBe("1");
     expect(location.searchParams.get("unauth_intent")).toMatch(/^eyJ/);
     expect([...location.searchParams.keys()]).toEqual(["x", "unauth_intent"]);
-    expect(moved.headers.getSetCookie()).toEqual([]);
+    expect(moved.headers.getSetCookie().join("\n")).toMatch(/__Host-unauth-flow=/);
     expect(await intentCarrier().take(location.searchParams.get("unauth_intent")!)).toEqual({
       intent: { memo: { userId: "u1" }, redirect: "/after" },
       returnHost: "app.test",
+      provider: "custom",
+      state: expect.stringMatching(/^[\w-]{43}$/),
     });
+  });
+
+  it("continues the relocated start under the state the origin host recorded", async () => {
+    const { provider } = movingProvider();
+    const moved = await startFlow<Link>(provider, new Request(`${APP}/auth/custom`), {
+      key,
+      redirectUri: REDIRECT_URI,
+    });
+    const location = new URL(moved.headers.get("location")!);
+    const { state } = await intentCarrier().take(location.searchParams.get("unauth_intent")!);
+    const token = await intentCarrier().issue({
+      intent: {},
+      returnHost: "app.test",
+      provider: "custom",
+      state,
+    });
+    location.searchParams.set("unauth_intent", token);
+
+    const started = await startFlow<Link>(provider, new Request(location), {
+      key,
+      redirectUri: REDIRECT_URI,
+    });
+    expect(new URL(started.headers.get("location")!).searchParams.get("state")).toBe(state);
+  });
+
+  it("refuses an intent sealed for another provider", async () => {
+    const { provider } = movingProvider();
+    const other = defineProvider({
+      id: "other",
+      kind: "custom",
+      start: provider.start,
+      complete: provider.complete,
+    });
+    const moved = await startFlow<Link>(provider, new Request(`${APP}/auth/custom`), {
+      key,
+      redirectUri: REDIRECT_URI,
+    });
+
+    const error = await rejection(
+      startFlow(other, new Request(moved.headers.get("location")!), {
+        key,
+        redirectUri: REDIRECT_URI,
+      }),
+    );
+    expect(isUnauthError(error, "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(error).toMatchObject({ status: 401, cause: { provider: "custom" } });
   });
 
   it("records the origin host when the relocated start runs on another host", async () => {
@@ -129,7 +231,12 @@ describe("a relocated start", () => {
 
   it("records no origin host when the token names the host the start runs on", async () => {
     const { provider } = movingProvider();
-    const token = await intentCarrier().issue({ intent: {}, returnHost: "ip.test" });
+    const token = await intentCarrier().issue({
+      intent: {},
+      returnHost: "ip.test",
+      provider: "custom",
+      state: "s".repeat(43),
+    });
     const started = await startFlow<Link>(
       provider,
       new Request(`${REDIRECT_URI}?unauth_intent=${token}`),
@@ -224,8 +331,11 @@ describe("a relocated start", () => {
   it("refuses a handoff token presented as an intent token", async () => {
     const { provider, start } = movingProvider();
     const token = await handoffCarrier<unknown, Link>(key).issue({
-      identity: { provider: "custom", subject: "acct-1", profile: {} },
-      memo: { userId: "u1" },
+      result: {
+        identity: { provider: "custom", subject: "acct-1", profile: {} },
+        memo: { userId: "u1" },
+      },
+      state: "s".repeat(43),
     });
 
     const error = await rejection(
@@ -267,7 +377,7 @@ describe("a start the deployment did not list", () => {
       }),
     );
     expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
-    expect((error as Error).message).toMatch(/evil\.test[\s\S]*"trustedOrigins"/);
+    expect((error as Error).message).toMatch(/evil\.test/);
     expect(start).toHaveBeenCalledTimes(1);
   });
 
@@ -314,6 +424,85 @@ describe("a start the deployment did not list", () => {
   });
 });
 
+describe("the handoff back to the origin host", () => {
+  it("completes in the browser that started the sign-in, once", async () => {
+    const { handler, seen, errors } = app(movingProvider().provider);
+    const visit = browser(handler);
+    const handoff = await handoffFor(visit);
+
+    expect(await visit(handoff)).toBe("ok");
+    expect(seen).toEqual(["app.test acct-1"]);
+
+    const replay = (await visit(handoff)) as Response;
+    expect(replay.status).toBe(401);
+    expect(errors.map((error) => error.code)).toEqual(["ERR_AUTHN_FLOW_EXPIRED"]);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("refuses the handoff in a browser that did not start the sign-in", async () => {
+    const { handler, seen, errors } = app(movingProvider().provider);
+    const handoff = await handoffFor(browser(handler));
+
+    const victim = browser(handler);
+    const answer = (await victim(handoff)) as Response;
+    expect(answer.status).toBe(401);
+    expect(await answer.text()).toMatch(/browser/);
+    expect(errors).toHaveLength(1);
+    expect(isUnauthError(errors[0], "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
+    expect(errors[0]!.cause).toEqual({ reason: "missing" });
+    expect(seen).toEqual([]);
+  });
+
+  it("refuses the handoff in a browser whose own sign-in is in progress", async () => {
+    const { handler, seen, errors } = app(movingProvider().provider);
+    const handoff = await handoffFor(browser(handler));
+
+    const victim = browser(handler);
+    await victim(formStart(`${APP}/auth/custom`));
+    const answer = (await victim(handoff)) as Response;
+    expect(answer.status).toBe(401);
+    expect(errors).toHaveLength(1);
+    expect(isUnauthError(errors[0], "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(errors[0]!.cause).toEqual({ provider: "custom" });
+    expect(seen).toEqual([]);
+  });
+
+  it("refuses the handoff on another provider's route, in the browser that started it", async () => {
+    const { provider } = movingProvider();
+    const mine = app(provider);
+    const other = app(
+      defineProvider({
+        id: "other",
+        kind: "custom",
+        start: provider.start,
+        complete: provider.complete,
+      }),
+    );
+    const visit = browser(mine.handler);
+    const handoff = await handoffFor(visit);
+
+    const answer = (await visit(handoff, other.handler)) as Response;
+    expect(answer.status).toBe(401);
+    expect(other.errors).toHaveLength(1);
+    expect(isUnauthError(other.errors[0], "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(other.errors[0]!.cause).toEqual({ provider: "custom" });
+    expect(mine.seen).toEqual([]);
+    expect(other.seen).toEqual([]);
+  });
+
+  it("no longer opens once another sign-in started on the origin host", async () => {
+    const { handler, seen, errors } = app(movingProvider().provider);
+    const visit = browser(handler);
+    const handoff = await handoffFor(visit);
+    await visit(formStart(`${APP}/auth/custom`));
+
+    const answer = (await visit(handoff)) as Response;
+    expect(answer.status).toBe(401);
+    expect(isUnauthError(errors[0], "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(seen).toEqual([]);
+  });
+});
+
 describe("a provider that cannot relocate", () => {
   it("never reads the two parameters: a stray token on an OAuth route is just a query member", async () => {
     const fake = await createFakeProvider();
@@ -357,14 +546,15 @@ describe("the sealed carriers", () => {
     const handoffs = handoffCarrier<unknown, never>(key);
     const intent = await intents.issue({ loginHint: "alice" });
     const handoff = await handoffs.issue({
-      identity: { provider: "custom", subject: "acct-1", profile: {} },
+      result: { identity: { provider: "custom", subject: "acct-1", profile: {} } },
+      state: "s".repeat(43),
     });
 
     await expect(handoffs.take(intent)).rejects.toThrow(/"typ"/);
     await expect(intents.take(handoff)).rejects.toThrow(/"typ"/);
     expect(await intents.take(intent)).toEqual({ loginHint: "alice" });
     await expect(intents.take(intent)).rejects.toThrow("sealed token already used");
-    expect((await handoffs.take(handoff)).identity.subject).toBe("acct-1");
+    expect((await handoffs.take(handoff)).result.identity.subject).toBe("acct-1");
   });
 
   it("refuses an intent token where the route expects a handoff", async () => {

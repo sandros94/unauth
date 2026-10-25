@@ -43,12 +43,15 @@ export interface CompleteFlowOptions extends FlowCarrierOptions {
 
 export interface CompletedFlow<TProfile, TMemo> {
   result: FlowResult<TProfile, TMemo>;
+  /** The host a relocated start began on, with the `state` of the flow it keeps. */
   returnHost?: string;
+  state?: string;
 }
 
 /**
- * `completeFlow`, with the host a relocated start began on: the sign-in route hands the result back
- * there, and only the route may learn it. The provider's `error` counts only once `state` has
+ * `completeFlow`, with the host a relocated start began on and the flow's `state`: the sign-in
+ * route hands the result back there, where the flow that host recorded is checked against the
+ * `state`, and only the route may learn them. The provider's `error` counts only once `state` has
  * proven the callback belongs to this sign-in (RFC 6749 §4.1.2.1 sends `state` with an error too):
  * a stray link cannot fail a sign-in in progress with an error of its own.
  */
@@ -102,7 +105,9 @@ export async function completeFlowWithReturnHost<TProfile, TMemo = unknown>(
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the record came back under the flow key (sealed, or by a sealed store reference), so `memo` is what this application's `startFlow` put there
   if (record.memo !== undefined) result.memo = record.memo as TMemo;
   if (record.redirect !== undefined) result.redirect = record.redirect;
-  return record.returnHost === undefined ? { result } : { result, returnHost: record.returnHost };
+  return record.returnHost === undefined
+    ? { result }
+    : { result, returnHost: record.returnHost, state: record.state };
 }
 
 async function completeOAuth<TProfile>(

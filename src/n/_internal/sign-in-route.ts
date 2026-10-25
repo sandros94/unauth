@@ -1,9 +1,11 @@
 import type { FlowKey } from "./flow-key.ts";
-import { UnauthError, isUnauthError } from "../../error.ts";
+import type { UnauthError } from "../../error.ts";
+import { isUnauthError } from "../../error.ts";
 import {
   HANDOFF_PARAM,
   type HandoffCarrier,
   handoffCarrier,
+  redeemHandoff,
 } from "../flow/_internal/carrier/handoff.ts";
 import { type StartFlowOptions, startFlow } from "../flow/start-flow.ts";
 import type { FlowResult } from "../flow/types.ts";
@@ -33,10 +35,11 @@ export interface SignInSteps<TProfile, TResult, TMemo> {
  * One route for both legs of a sign-in, answering `GET` and `POST` and refusing any other method
  * with a `405`, so it is mounted without a method filter: without `code`/`error` (or a
  * `form_post` body) it answers the redirect to the provider, otherwise it completes the callback
- * and returns `complete`'s value. A sign-in a relocation moved off its starting host is redirected back there with the
- * result in a sealed, single-use handoff token, and `complete` runs on that host. The consumed flow cookie is expired on the
- * response, error responses included; an `UnauthError` is answered by `onError`, else by a plain
- * response.
+ * and returns `complete`'s value. A sign-in a relocation moved off its starting host is redirected
+ * back there with the result in a sealed, single-use handoff token; that host redeems it against
+ * the flow it recorded when the sign-in left, in the browser that started it, and `complete` runs
+ * there. The consumed flow cookie is expired on the response, error responses included; an
+ * `UnauthError` is answered by `onError`, else by a plain response.
  */
 export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TMemo>(
   provider: Provider<TProfile>,
@@ -66,18 +69,22 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
     const handed =
       provider.kind === "custom" ? new URL(event.req.url).searchParams.get(HANDOFF_PARAM) : null;
     if (handed !== null) {
+      const headers = new Headers();
       let result: FlowResult<TProfile, TMemo>;
       try {
-        result = await handoff.take(handed);
+        result = await redeemHandoff<TProfile, TMemo>(provider, event.req, {
+          token: handed,
+          carrier: handoff,
+          headers,
+          options: { ...flow, key, context: event.context },
+        });
       } catch (error) {
-        return fail(
-          new UnauthError(
-            "[unauth/n] The sign-in handed over to this host is invalid, expired or already used.",
-            "ERR_AUTHN_FLOW_EXPIRED",
-            { status: 401, cause: { reason: "consumed", error } },
-          ),
-        );
+        if (!isUnauthError(error)) throw error;
+        if (!onError) return failureResponse(error, headers);
+        copySetCookie(headers, event.res.headers);
+        return onError(error);
       }
+      copySetCookie(headers, event.res.headers);
       return complete(result);
     }
 
@@ -112,12 +119,13 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
       return onError(error);
     }
     copySetCookie(headers, event.res.headers);
-    const { result, returnHost } = completed;
+    const { result, returnHost, state } = completed;
     const here = new URL(event.req.url);
-    if (returnHost !== undefined && returnHost !== here.hostname) {
+    if (returnHost !== undefined && state !== undefined && returnHost !== here.hostname) {
       const target = new URL(here);
       target.hostname = returnHost;
-      target.search = `?${HANDOFF_PARAM}=${encodeURIComponent(await handoff.issue(result))}`;
+      const token = await handoff.issue({ result, state });
+      target.search = `?${HANDOFF_PARAM}=${encodeURIComponent(token)}`;
       return new Response(null, {
         status: 302,
         headers: { "location": target.href, "cache-control": "no-store" },
