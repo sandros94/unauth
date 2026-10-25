@@ -87,6 +87,20 @@ describe("defineProvider", () => {
     ["basic auth without a secret", { client: { id: CLIENT_ID } }],
     ["oidc without an issuer", { kind: "oidc" as const }],
     ["an empty id", { id: "" }],
+    ["an unknown tokenAuth", { tokenAuth: "client_secret_post" as never }],
+    ["an unknown pkce", { pkce: "s256" as never }],
+    ["an unknown responseMode", { responseMode: "fragment" as never }],
+    ["an unknown scopeSeparator", { scopeSeparator: "+" as never }],
+    [
+      "private_key_jwt with a key naming no alg",
+      {
+        tokenAuth: "private_key_jwt" as const,
+        client: {
+          id: CLIENT_ID,
+          privateKey: { kty: "EC", crv: "P-256", x: "x", y: "y", d: "d" } as never,
+        },
+      },
+    ],
   ])("refuses %s with ERR_UNAUTH_CONFIG_INVALID", (_label, overrides) => {
     let error: unknown;
     try {
@@ -498,6 +512,27 @@ describe("client secret", () => {
     await exchangeCode(provider, { code: "c2", redirectUri: "https://app.test/cb", fetch });
 
     expect(bodies.map((body) => body.get("client_secret"))).toEqual(["minted-1", "minted-2"]);
+  });
+
+  it("refuses a secret function resolving to nothing, instead of sending an empty secret", async () => {
+    const calls: URLSearchParams[] = [];
+    const fetch = async (_input: unknown, init?: RequestInit) => {
+      calls.push(init?.body as URLSearchParams);
+      return Response.json({ access_token: "at-1", token_type: "Bearer" });
+    };
+    for (const secret of [async () => "", () => undefined as unknown as string]) {
+      const provider = github({ tokenAuth: "body", client: { id: CLIENT_ID, secret } });
+      const error = await exchangeCode(provider, {
+        code: "c1",
+        redirectUri: "https://app.test/cb",
+        fetch,
+      }).then(
+        () => undefined,
+        (rejected: unknown) => rejected,
+      );
+      expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+    }
+    expect(calls).toEqual([]);
   });
 });
 

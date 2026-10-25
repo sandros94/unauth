@@ -50,6 +50,10 @@ export function assertProvider(provider: OAuthProvider<unknown>): void {
   const label = `Provider ${JSON.stringify(provider.id)}`;
   if (!provider.id) throw configError(`A provider needs a non-empty "id".`);
   if (!provider.client.id) throw configError(`${label} needs "client.id".`);
+  assertOneOf(provider, "tokenAuth", TOKEN_AUTH_METHODS, label);
+  assertOneOf(provider, "pkce", PKCE_METHODS, label);
+  assertOneOf(provider, "responseMode", RESPONSE_MODES, label);
+  assertOneOf(provider, "scopeSeparator", SCOPE_SEPARATORS, label);
 
   for (const name of ["authorization", "token", "userinfo", "jwks", "issuer"] as const) {
     const value = provider[name];
@@ -87,9 +91,37 @@ export function assertProvider(provider: OAuthProvider<unknown>): void {
   if ((tokenAuth === "basic" || tokenAuth === "body") && !client.secret) {
     throw configError(`${label} authenticates with "${tokenAuth}" and needs "client.secret".`);
   }
-  if (tokenAuth === "private_key_jwt" && !client.privateKey) {
+  if (tokenAuth === "private_key_jwt") {
+    if (!client.privateKey) {
+      throw configError(
+        `${label} authenticates with "private_key_jwt" and needs "client.privateKey".`,
+      );
+    }
+    if (!client.privateKey.alg) {
+      throw configError(
+        `${label} authenticates with "private_key_jwt" and needs a "client.privateKey" naming its "alg".`,
+      );
+    }
+  }
+}
+
+const TOKEN_AUTH_METHODS: readonly TokenAuthMethod[] = ["basic", "body", "private_key_jwt", "none"];
+const PKCE_METHODS: readonly OAuthProvider["pkce"][] = [false, "S256", "plain"];
+const RESPONSE_MODES: readonly OAuthProvider["responseMode"][] = ["query", "form_post"];
+const SCOPE_SEPARATORS: readonly OAuthProvider["scopeSeparator"][] = [" ", ","];
+
+/** `ERR_UNAUTH_CONFIG_INVALID` unless `provider[name]` is one of `allowed`: a misspelling must not silently mean something else. */
+function assertOneOf(
+  provider: OAuthProvider<unknown>,
+  name: "tokenAuth" | "pkce" | "responseMode" | "scopeSeparator",
+  allowed: readonly unknown[],
+  label: string,
+): void {
+  const value: unknown = provider[name];
+  if (!allowed.includes(value)) {
+    const options = allowed.map((option) => JSON.stringify(option)).join(", ");
     throw configError(
-      `${label} authenticates with "private_key_jwt" and needs "client.privateKey".`,
+      `${label} has an unknown "${name}" ${JSON.stringify(value)}; one of ${options}.`,
     );
   }
 }

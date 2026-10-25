@@ -53,9 +53,16 @@ export async function authenticateClient(
   }
 }
 
+/** The client secret, from its value or its function; `ERR_UNAUTH_CONFIG_INVALID` for an empty one. */
 async function secretOf(client: OAuthProvider<unknown>["client"]): Promise<string> {
   const { secret } = client;
-  return typeof secret === "function" ? secret() : (secret ?? "");
+  const value = typeof secret === "function" ? await secret() : secret;
+  if (typeof value !== "string" || value === "") {
+    throw configError(
+      `The client ${JSON.stringify(client.id)} authenticates with a secret and "client.secret" gave none.`,
+    );
+  }
+  return value;
 }
 
 function formEncode(value: string): string {
