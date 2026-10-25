@@ -22,6 +22,7 @@ import {
   defineOAuth2Provider,
 } from "../../src/n/index.ts";
 import { cookieJar } from "./_cookies.ts";
+import { isExpired } from "./_session.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "./flow/_fake-provider.ts";
 
 vi.mock(import("unsecure/hkdf"), async (original) => {
@@ -253,6 +254,32 @@ describe("defineSignInHandler without a session", () => {
     expect(result).toEqual({ failed: "ERR_AUTHN_PROVIDER_REFUSED" });
     expect(onError).toHaveBeenCalledOnce();
     expect(event.res.headers.getSetCookie().join("\n")).toMatch(/unauth-flow=/);
+  });
+
+  it("expires the flow cookie on the event's errHeaders too, when the framework keeps them apart", async () => {
+    const { handler } = await setup({
+      onError: (_event, error) => new Response(error.message, { status: error.status }),
+    });
+    const jar = cookieJar();
+    const start = await call(handler, "/auth/fake");
+    jar.update(start.headers);
+    const back = fake.approve(start.headers.get("location")!);
+    back.searchParams.set("error", "access_denied");
+
+    const res = { headers: new Headers(), errHeaders: new Headers() };
+    const request = new Request(back, { headers: { cookie: jar.toString() } });
+    const answer = await handler({ req: request, res, context: {} });
+
+    expect((answer as Response).status).toBe(401);
+    const expired = (lines: string[]) =>
+      lines.filter((l) => l.startsWith("unauth-flow=") && isExpired(l));
+    expect(expired(res.headers.getSetCookie())).toHaveLength(1);
+    expect(expired(res.errHeaders.getSetCookie())).toHaveLength(1);
+
+    // Without `errHeaders`, the event's headers alone carry it, as before.
+    const plain = eventFor(new Request(back, { headers: { cookie: jar.toString() } }));
+    await handler(plain);
+    expect(expired(plain.res.headers.getSetCookie())).toHaveLength(1);
   });
 
   it("hides configuration details behind a 500", async () => {

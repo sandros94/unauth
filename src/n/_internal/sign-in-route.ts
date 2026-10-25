@@ -39,8 +39,9 @@ export interface SignInSteps<TProfile, TResult, TMemo> {
  * and returns `complete`'s value. A sign-in a relocation moved off its starting host is redirected
  * back there with the result in a sealed, single-use handoff token; that host redeems it against
  * the flow it recorded when the sign-in left, in the browser that started it, and `complete` runs
- * there. The consumed flow cookie is expired on the response, error responses included; an
- * `UnauthError` is answered by `onError`, else by a plain response.
+ * there. The consumed flow cookie is expired on the response, error responses included (on the
+ * event's `errHeaders` too, for a framework that keeps those apart); an `UnauthError` is answered
+ * by `onError`, else by a plain response.
  */
 export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TMemo>(
   provider: Provider<TProfile>,
@@ -82,10 +83,10 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
       } catch (error) {
         if (!isUnauthError(error)) throw error;
         if (!onError) return failureResponse(error, headers);
-        copySetCookie(headers, event.res.headers);
+        copySetCookie(headers, event.res);
         return onError(error);
       }
-      copySetCookie(headers, event.res.headers);
+      copySetCookie(headers, event.res);
       return complete(result);
     }
 
@@ -116,10 +117,10 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
     } catch (error) {
       if (!isUnauthError(error)) throw error;
       if (!onError) return failureResponse(error, headers);
-      copySetCookie(headers, event.res.headers);
+      copySetCookie(headers, event.res);
       return onError(error);
     }
-    copySetCookie(headers, event.res.headers);
+    copySetCookie(headers, event.res);
     const { result, returnHost, state } = completed;
     const here = new URL(event.req.url);
     if (returnHost !== undefined && state !== undefined && returnHost !== here.hostname) {
@@ -148,6 +149,14 @@ function failureResponse(error: UnauthError, headers?: Headers): Response {
   });
 }
 
-function copySetCookie(from: Headers, to: Headers): void {
-  for (const line of from.getSetCookie()) to.append("set-cookie", line);
+/**
+ * Appends `from`'s `Set-Cookie` lines to the event's response headers and, when the framework
+ * keeps error responses' headers apart (`errHeaders`), to those too: the expiry of a consumed flow
+ * cookie must reach the browser whether the hook answers a success, an error or throws.
+ */
+function copySetCookie(from: Headers, to: WebRequestEvent["res"]): void {
+  for (const line of from.getSetCookie()) {
+    to.headers.append("set-cookie", line);
+    to.errHeaders?.append("set-cookie", line);
+  }
 }

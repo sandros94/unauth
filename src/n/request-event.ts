@@ -7,7 +7,15 @@ import type { Provider } from "./flow/types.ts";
  */
 export interface WebRequestEvent {
   readonly req: Request;
-  readonly res: { readonly headers: Headers };
+  readonly res: {
+    readonly headers: Headers;
+    /**
+     * The headers the framework applies to an error response (a `Response` of status 400 or
+     * above, or a thrown error) when it keeps them apart from `headers`, as h3 does: what unauth
+     * must set whatever the outcome, the consumed flow cookie's expiry, is written to both.
+     */
+    readonly errHeaders?: Headers;
+  };
   /** Per-request state, handed to the flow session as is; never created. */
   readonly context?: Record<string, unknown>;
 }

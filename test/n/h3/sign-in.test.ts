@@ -117,6 +117,39 @@ describe("h3 v2", () => {
     expect(res.headers.getSetCookie().join("\n")).toMatch(/__Host-unauth-flow=/);
   });
 
+  it("expires the flow cookie when onError answers an error Response or throws: h3 keeps those headers apart", async () => {
+    fake = await createFakeProvider();
+    const errors = new H3();
+    errors.all(
+      "/auth/fake",
+      defineSignInHandler(fakeProvider(), {
+        key: flowKey,
+        redirectUri: REDIRECT_URI,
+        fetch: fake.fetch,
+        onSuccess: () => "ok",
+        onError: (event: H3Event, error) => {
+          if (event.url.searchParams.has("throw")) throw new HTTPError({ status: 401 });
+          return new Response(error.message, { status: error.status });
+        },
+      }),
+    );
+    for (const mode of ["", "&throw=1"]) {
+      const jar = cookieJar();
+      const start = await errors.request("/auth/fake");
+      jar.update(start.headers);
+      const back = fake.approve(start.headers.get("location")!);
+      back.searchParams.set("state", "forged");
+
+      const res = await errors.request(`${back.pathname}${back.search}${mode}`, {
+        headers: { cookie: jar.toString() },
+      });
+
+      expect(res.status).toBe(401);
+      const lines = res.headers.getSetCookie();
+      expect(lines.filter((l) => l.startsWith("__Host-unauth-flow=;"))).toHaveLength(1);
+    }
+  });
+
   it("writes the session through a util typed on the h3 event", async () => {
     fake = await createFakeProvider();
     const auth = defineJWESession<SignedIn, "1h", H3Event>({
