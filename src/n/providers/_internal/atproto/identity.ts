@@ -63,10 +63,17 @@ const loadDid = /* @__PURE__ */ defineMetadataLoader<DidDocument, AtprotoResolve
   label: "DID document",
   url: (did, options) =>
     did.startsWith("did:plc:")
-      ? `${options.plcDirectory.replace(/\/$/, "")}/${did}`
+      ? `${plcOrigin(options)}/${did}`
       : `https://${did.slice("did:web:".length)}/.well-known/did.json`,
+  partition: (options) => plcOrigin(options),
   parse: parseDidDocument,
+  revive: reviveDidDocument,
 });
+
+/** The `did:plc` directory as a URL without its trailing slash, the half of a `did:plc` document's location the configuration chooses. */
+function plcOrigin(options: AtprotoResolveOptions): string {
+  return options.plcDirectory.replace(/\/$/, "");
+}
 
 /** `ERR_AUTHN_LOGIN_HINT_INVALID` (400): `loginHint` names no usable account. */
 export function loginHintError(
@@ -298,6 +305,27 @@ function parseDidDocument(document: unknown, did: string): DidDocument {
       result.pds = endpoint;
       break;
     }
+  }
+  return result;
+}
+
+/** A {@link DidDocument} a cache driver handed back, within the bounds `parseDidDocument` keeps; anything else is refused as malformed. */
+function reviveDidDocument(value: unknown, did: string): DidDocument {
+  const malformed = () =>
+    providerError(`The cached DID document of ${did} is not one this version keeps.`, {
+      reason: "malformed",
+    });
+  if (!isRecord(value) || value.id !== did) throw malformed();
+  const result: DidDocument = { id: did };
+  const handle = stringField(value, "handle");
+  const pds = stringField(value, "pds");
+  if (handle !== undefined) {
+    if (handle.length > HANDLE_MAX_LENGTH) throw malformed();
+    result.handle = handle;
+  }
+  if (pds !== undefined) {
+    if (pds.length > MAX_URL_LENGTH) throw malformed();
+    result.pds = pds;
   }
   return result;
 }

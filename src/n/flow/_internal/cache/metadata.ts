@@ -31,10 +31,21 @@ export interface MetadataDefinition<T, TOptions extends MetadataOptions> {
   /** Where `key`'s document is. */
   url: (key: string, options: TOptions) => string;
   /**
-   * The value `document` holds for `key`, whether it just arrived or a cache driver handed it
-   * back; throws `ERR_AUTHN_PROVIDER_ERROR` on anything it would not have loaded.
+   * What in `options` changes where `key`'s document is (a directory): documents are kept apart
+   * per value, in memory and in a cache driver, so two configurations never read each other's.
+   */
+  partition?: (options: TOptions) => string;
+  /**
+   * The value `document` holds for `key`, as it arrived from its URL; throws
+   * `ERR_AUTHN_PROVIDER_ERROR` on anything it would not have loaded.
    */
   parse: (document: unknown, key: string) => T;
+  /**
+   * The value a cache driver handed back for `key`, checked the same way; `parse` by default,
+   * which fits a loader that keeps the document whole. A loader that keeps a projection of it
+   * checks that projection here.
+   */
+  revive?: (value: unknown, key: string) => T;
   /** How old (ms) a held document must be before `force` may fetch it again; any age without one. */
   cooldown?: number;
 }
@@ -43,10 +54,14 @@ export interface MetadataDefinition<T, TOptions extends MetadataOptions> {
 export function defineMetadataLoader<T, TOptions extends MetadataOptions = MetadataOptions>(
   definition: MetadataDefinition<T, TOptions>,
 ): MetadataLoader<T, TOptions> {
-  const cache = loadCache<T>({ name: definition.name, check: definition.parse });
+  const revive = definition.revive ?? definition.parse;
+  const cache = loadCache<T>({
+    name: definition.name,
+    check: (value, entry) => revive(value, keyOf(entry)),
+  });
   return (key, options) =>
     cache.get(
-      key,
+      entryOf(key, definition.partition?.(options)),
       () =>
         getObject(definition.url(key, options), {
           fetch: options.fetch,
@@ -103,4 +118,17 @@ export function requiredMember(
     });
   }
   return value;
+}
+
+/** Keeps a partition and a key apart in one cache entry name; neither carries a newline. */
+const PARTITION_SEPARATOR = "\n";
+
+function entryOf(key: string, partition: string | undefined): string {
+  return partition === undefined ? key : `${partition}${PARTITION_SEPARATOR}${key}`;
+}
+
+/** The key of a cache entry name, its partition dropped. */
+function keyOf(entry: string): string {
+  const at = entry.indexOf(PARTITION_SEPARATOR);
+  return at === -1 ? entry : entry.slice(at + 1);
 }

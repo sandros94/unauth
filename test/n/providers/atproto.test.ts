@@ -17,6 +17,7 @@ import {
   defineAtprotoHandler,
   defineAtprotoProvider,
 } from "../../../src/n/providers/atproto.ts";
+import { resolveDid } from "../../../src/n/providers/_internal/atproto/identity.ts";
 import { type CookieJar, cookieJar } from "../_cookies.ts";
 import { cookieHeader, formStart, isExpired } from "../_session.ts";
 import { s256 } from "../flow/_fake-provider.ts";
@@ -316,6 +317,48 @@ describe("the DID document cache", () => {
     expect(entry![1]).toMatchObject({
       value: { id: ALICE.did, handle: ALICE.handle, pds: PDS },
     });
+  });
+
+  it("keeps DID documents apart per PLC directory, in memory and in a shared cache driver", async () => {
+    const OTHER_PLC = "https://plc-mirror.test";
+    const other = {
+      ...fake.documents.get(ALICE.did)!,
+      service: [
+        {
+          id: "#atproto_pds",
+          type: "AtprotoPersonalDataServer",
+          serviceEndpoint: "https://other-pds.test",
+        },
+      ],
+    };
+    const inner = fake.fetch;
+    const fetch: typeof inner = (input, init) => {
+      const url = new URL(String(input instanceof Request ? input.url : input));
+      if (url.origin !== OTHER_PLC) return inner(input, init);
+      return Promise.resolve(
+        url.pathname === `/${ALICE.did}`
+          ? Response.json(other)
+          : new Response("no", { status: 404 }),
+      );
+    };
+    const stored = new Map<string, unknown>();
+    const cache: CacheDriver = {
+      get: <T>(name: string) => (stored.get(name) as T | undefined) ?? null,
+      set: (name, value) => void stored.set(name, value),
+    };
+    const resolve = (plcDirectory: string) =>
+      resolveDid(ALICE.did, { fetch, now: Date.now, cache, dnsResolver: DNS, plcDirectory });
+
+    const first = await resolve(PLC);
+    const second = await resolve(OTHER_PLC);
+    const firstAgain = await resolve(PLC);
+
+    expect(first.pds).toBe(PDS);
+    expect(second.pds).toBe("https://other-pds.test");
+    expect(firstAgain.pds).toBe(PDS);
+    const didEntries = [...stored.keys()].filter((name) => name.startsWith("unauth:atproto-did:"));
+    expect(didEntries).toHaveLength(2);
+    expect(served(`/${ALICE.did}`)).toBe(1);
   });
 
   async function signInWith(extra: Partial<Parameters<typeof startFlow>[2]>) {
