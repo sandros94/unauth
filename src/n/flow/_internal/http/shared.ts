@@ -12,10 +12,16 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 /** A `fetch` the caller injects; the global one otherwise. */
 export type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-/** The injected `fetch`, else the global one called unbound. */
+/**
+ * The injected `fetch`, else {@link globalFetch}: one function for every caller that injects none,
+ * since the document caches keep their entries apart per `fetch`.
+ */
 export function fetchOf(options: { fetch?: Fetch } | undefined): Fetch {
-  return options?.fetch ?? ((input, init) => globalThis.fetch(input, init));
+  return options?.fetch ?? globalFetch;
 }
+
+/** The global `fetch`, looked up at each call (a test may stub it) and called unbound. */
+const globalFetch: Fetch = (input, init) => globalThis.fetch(input, init);
 
 /** The injected clock in ms, else `Date.now`. */
 export function nowOf(options: { now?: () => number } | undefined): () => number {

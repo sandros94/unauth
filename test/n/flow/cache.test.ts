@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   LOAD_FAILURE_COOLDOWN,
@@ -200,5 +200,50 @@ describe("force", () => {
     expect(await cache.get("a", load, { now: at(30_000), force: true, cooldown: 30_000 })).toBe(
       "v2",
     );
+  });
+});
+
+describe("callers that inject no fetch", () => {
+  it("share one cache: the global fetch is asked once per document", async () => {
+    const issuer = "https://global-scope.idp.test";
+    const calls: string[] = [];
+    const stub: Fetch = async (input) => {
+      calls.push(String(input instanceof Request ? input.url : input));
+      return Response.json({
+        issuer,
+        authorization_endpoint: `${issuer}/a`,
+        token_endpoint: `${issuer}/t`,
+        jwks_uri: `${issuer}/j`,
+      });
+    };
+    vi.stubGlobal("fetch", stub);
+    try {
+      const first = await discover(issuer, { now: at(0) });
+      const second = await discover(issuer, { now: at(1_000) });
+      expect(first.token_endpoint).toBe(`${issuer}/t`);
+      expect(second).toEqual(first);
+      expect(calls).toEqual([`${issuer}/.well-known/openid-configuration`]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rethrow a failed load for the cooldown without asking the global fetch again", async () => {
+    const issuer = "https://global-failure.idp.test";
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => {
+      calls += 1;
+      return new Response("down", { status: 503 });
+    });
+    try {
+      const first = await rejection(discover(issuer, { now: at(0) }));
+      const second = await rejection(discover(issuer, { now: at(LOAD_FAILURE_COOLDOWN - 1) }));
+      expect(second).toBe(first);
+      expect(calls).toBe(1);
+      await rejection(discover(issuer, { now: at(LOAD_FAILURE_COOLDOWN) }));
+      expect(calls).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
