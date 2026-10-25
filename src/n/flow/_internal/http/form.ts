@@ -46,7 +46,7 @@ export async function postForm(
 
   let answer: Awaited<ReturnType<typeof readObject>>;
   try {
-    answer = await raced(readObject(response, { signal }), signal);
+    answer = await raced(readObject(response, { signal, maxBytes: options.maxBytes }), signal);
   } catch (error) {
     throw deadline(error, response.status);
   }

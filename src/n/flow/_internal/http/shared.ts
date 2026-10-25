@@ -33,13 +33,13 @@ export type ObjectBody = { object: Record<string, unknown> | undefined } | { too
 
 /**
  * A JSON or form-encoded object body, without prototype-polluting keys; a body longer than
- * {@link PROVIDER_DOCUMENT_MAX_BYTES} is reported as `tooLarge`, unread.
+ * `maxBytes` ({@link PROVIDER_DOCUMENT_MAX_BYTES} by default) is reported as `tooLarge`, unread.
  */
 export async function readObject(
   response: Response,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; maxBytes?: number } = {},
 ): Promise<ObjectBody> {
-  const maxBytes = PROVIDER_DOCUMENT_MAX_BYTES;
+  const maxBytes = options.maxBytes ?? PROVIDER_DOCUMENT_MAX_BYTES;
   const text = await readText(response, { maxBytes, signal: options.signal }).catch(() => "");
   if (text === undefined) return { tooLarge: maxBytes };
   const type = response.headers.get("content-type") ?? "";

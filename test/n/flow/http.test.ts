@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import { type Fetch, readObject } from "../../../src/n/flow/_internal/http/shared.ts";
 import { getJson } from "../../../src/n/flow/_internal/http/json.ts";
 import { postForm, postText } from "../../../src/n/flow/_internal/http/form.ts";
-import { PROVIDER_DOCUMENT_MAX_BYTES } from "../../../src/n/flow/_internal/http/body.ts";
+import {
+  PROVIDER_DOCUMENT_MAX_BYTES,
+  raced,
+  readText,
+} from "../../../src/n/flow/_internal/http/body.ts";
 import { defineOAuth2Provider, exchangeCode, isUnauthError } from "../../../src/n/index.ts";
 
 const URL_ = "https://idp.test/doc";
@@ -339,5 +343,51 @@ describe("postText", () => {
     expect(isUnauthError(bad, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
     expect((bad as Error).message).toMatch(/did not answer text/);
     expect((bad as Error).cause).toMatchObject({ reason: "malformed", status: 200 });
+  });
+});
+
+describe("the readers under an abort", () => {
+  it("never hand out a partial body once their signal aborted", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("did:plc:partial"));
+      },
+    });
+    const signal = AbortSignal.timeout(20);
+
+    const error = await rejection(readText(new Response(body), { maxBytes: 1024, signal }));
+    expect((error as Error).name).toBe("TimeoutError");
+  });
+
+  it("drop the body of a Response that arrives after the deadline, releasing its connection", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const late = new Promise<Response>((resolve) =>
+      setTimeout(() => resolve(new Response(body)), 40),
+    );
+    const signal = AbortSignal.timeout(10);
+
+    const error = await rejection(raced(late, signal));
+    expect((error as Error).name).toBe("TimeoutError");
+    await late;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cancelled).toBe(true);
+  });
+});
+
+describe("postForm with its own cap", () => {
+  it("refuses a body over the maxBytes it was given, below the document cap", async () => {
+    const { fetch } = recording(async () => Response.json({ pad: "x".repeat(200) }));
+
+    const error = await rejection(
+      postForm(URL_, new URLSearchParams({ a: "1" }), { fetch, label: "token", maxBytes: 64 }),
+    );
+
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
+    expect((error as { cause?: { reason?: string } }).cause?.reason).toBe("too-large");
   });
 });

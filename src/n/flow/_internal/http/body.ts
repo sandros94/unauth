@@ -13,7 +13,8 @@ export const PROVIDER_FETCH_TIMEOUT: number = 10_000;
 /**
  * The body's bytes, or `undefined` once it is longer than `maxBytes`: a `content-length` over
  * the cap refuses it unread, a stream over it is cancelled at the first chunk past the cap.
- * An aborting `signal` cancels the read.
+ * An aborting `signal` cancels the read and rejects with its reason: what arrived before is
+ * never handed out as the body.
  */
 export async function readBytes(
   response: BodySource,
@@ -42,6 +43,7 @@ export async function readBytes(
       }
       chunks.push(value);
     }
+    if (signal?.aborted) throw signal.reason;
     const bytes = new Uint8Array(total);
     let offset = 0;
     for (const chunk of chunks) {
@@ -73,21 +75,35 @@ export function discardBody(response: BodySource): void {
 
 /**
  * `promise`, or a rejection with the signal's reason as soon as `signal` aborts: a `fetch` that
- * ignores its signal still releases its callers at the deadline, and its late result goes nowhere.
+ * ignores its signal still releases its callers at the deadline. Its late result goes nowhere,
+ * and a late `Response` has its body dropped, so the connection is released rather than held
+ * until garbage collection.
  */
 export function raced<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(signal.reason);
+    let settled = false;
+    const abort = () => {
+      settled = true;
+      reject(signal.reason);
+    };
     if (signal.aborted) abort();
     else signal.addEventListener("abort", abort, { once: true });
     promise.then(
       (value) => {
         signal.removeEventListener("abort", abort);
+        if (settled) {
+          if (value instanceof Response) discardBody(value);
+          return;
+        }
+        settled = true;
         resolve(value);
       },
       (error: unknown) => {
         signal.removeEventListener("abort", abort);
-        reject(error);
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
       },
     );
   });

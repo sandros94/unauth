@@ -9,9 +9,10 @@ import {
 } from "../../../flow/_internal/http/shared.ts";
 import {
   PROVIDER_FETCH_TIMEOUT,
+  discardBody,
   isAbort,
-  raced,
   readText,
+  raced,
 } from "../../../flow/_internal/http/body.ts";
 import { getObject } from "../../../flow/_internal/http/json.ts";
 import {
@@ -235,7 +236,10 @@ async function resolveHandleHttps(handle: string, options: AtprotoResolveOptions
       error,
     );
   }
-  if (!response.ok) throw loginHintError(`The handle ${handle} does not resolve.`);
+  if (!response.ok) {
+    discardBody(response);
+    throw loginHintError(`The handle ${handle} does not resolve.`);
+  }
   const text = await readText(response, { maxBytes: HANDLE_DOCUMENT_MAX_BYTES, signal }).catch(
     () => undefined,
   );

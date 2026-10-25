@@ -157,6 +157,36 @@ describe("sign-in from a handle", () => {
     expect(result.identity.subject).toBe(ALICE.did);
   });
 
+  it("drops the body of a failing well-known answer, releasing its connection", async () => {
+    let cancelled = false;
+    const inner = fake.fetch;
+    const fetch: typeof inner = (input, init) => {
+      if (
+        new URL(String(input instanceof Request ? input.url : input)).pathname !==
+        "/.well-known/atproto-did"
+      ) {
+        return inner(input, init);
+      }
+      const body = new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelled = true;
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 404 }));
+    };
+
+    const error = await rejection(
+      startFlow(provider(), formStart(REDIRECT_URI), {
+        key,
+        redirectUri: REDIRECT_URI,
+        fetch,
+        loginHint: "nobody.test",
+      }),
+    );
+    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
+    expect(cancelled).toBe(true);
+  });
+
   it("refuses a handle whose DNS names two DIDs, without asking the well-known document", async () => {
     fake.dns.set("two.test", [ALICE.did, BOB.did]);
 
