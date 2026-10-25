@@ -187,6 +187,36 @@ describe("defineSignInHandler without a session", () => {
     expect(await done.json()).toEqual({ subject: "user-1", redirect: "/dashboard" });
   });
 
+  it("takes only the intent from onStart: the route's own options stay as configured", async () => {
+    const { handler } = await setup({
+      onStart: () =>
+        ({
+          redirect: "/dashboard",
+          redirectUri: "https://evil.test/cb",
+          cookie: { secure: true },
+          key: undefined,
+          fetch: undefined,
+        }) as unknown as { redirect: string },
+    });
+    const start = await call(handler, "/auth/fake");
+
+    expect(start.status).toBe(302);
+    const location = new URL(start.headers.get("location")!);
+    expect(location.searchParams.get("redirect_uri")).toBe(REDIRECT_URI);
+    expect(start.headers.getSetCookie().join("\n")).toMatch(/^unauth-flow=/);
+  });
+
+  it("answers failures as plain text that a browser may not sniff", async () => {
+    const { handler } = await setup();
+    const start = await call(handler, "/auth/fake");
+    const back = fake.approve(start.headers.get("location")!);
+    const response = await call(handler, `${back.pathname}${back.search}`);
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
   it("answers an UnauthError with its status and message, the flow cookie expired on that response", async () => {
     const { handler } = await setup();
     const jar = cookieJar();

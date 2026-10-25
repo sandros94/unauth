@@ -12,6 +12,8 @@ const RESERVED = new Set([
   "code_challenge",
   "code_challenge_method",
   "response_mode",
+  "request",
+  "request_uri",
 ]);
 
 /** What one authorization request carries besides the provider's own parameters. */

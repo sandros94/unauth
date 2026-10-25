@@ -240,11 +240,19 @@ describe("buildAuthorizationUrl", () => {
       {
         redirectUri: "https://app.test/cb",
         state: "s1",
-        params: { client_id: "evil", response_type: "token", code_challenge: "x" },
+        params: {
+          client_id: "evil",
+          response_type: "token",
+          code_challenge: "x",
+          request: "eyJ.jar.request",
+          request_uri: "urn:ietf:params:oauth:request_uri:evil",
+        },
       },
     );
 
     expect(url.searchParams.getAll("state")).toEqual(["s1"]);
+    expect(url.searchParams.has("request")).toBe(false);
+    expect(url.searchParams.has("request_uri")).toBe(false);
     expect(url.searchParams.getAll("redirect_uri")).toEqual(["https://app.test/cb"]);
     expect(url.searchParams.getAll("client_id")).toEqual([CLIENT_ID]);
     expect(url.searchParams.getAll("response_type")).toEqual(["code"]);

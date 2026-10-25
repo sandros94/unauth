@@ -7,6 +7,7 @@ import {
   handoffCarrier,
   redeemHandoff,
 } from "../flow/_internal/carrier/handoff.ts";
+import { definedIntent } from "../flow/_internal/carrier/intent.ts";
 import { type StartFlowOptions, startFlow } from "../flow/start-flow.ts";
 import type { FlowResult } from "../flow/types.ts";
 import { type CompletedFlow, completeFlowWithReturnHost } from "../flow/_internal/complete.ts";
@@ -95,7 +96,7 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
           ...flow,
           key,
           context: event.context,
-          ...intent,
+          ...definedIntent(intent),
         });
       } catch (error) {
         if (!isUnauthError(error)) throw error;
@@ -135,12 +136,15 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
   };
 }
 
-/** A plain response for an `UnauthError`: its status (500 when it has none) and, below 500, its message; a 5xx carries a generic body. */
+/** A plain-text response for an `UnauthError`: its status (500 when it has none) and, below 500, its message; a 5xx carries a generic body. */
 function failureResponse(error: UnauthError, headers?: Headers): Response {
   const status = error.status ?? 500;
+  const plain = new Headers(headers);
+  plain.set("content-type", "text/plain; charset=utf-8");
+  plain.set("x-content-type-options", "nosniff");
   return new Response(status >= 500 ? "Sign-in is unavailable." : error.message, {
     status,
-    headers: new Headers(headers),
+    headers: plain,
   });
 }
 

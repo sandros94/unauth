@@ -107,7 +107,7 @@ function carrierOf<TMemo>(key: FlowKey): SealedCarrier<SealedIntent<TMemo>> {
 }
 
 /** The members of `from`'s intent that have a value. */
-function definedIntent<TMemo>(from: StartIntent<TMemo>): StartIntent<TMemo> {
+export function definedIntent<TMemo>(from: StartIntent<TMemo>): StartIntent<TMemo> {
   const intent: Record<string, unknown> = {};
   for (const key of INTENT_KEYS) {
     if (from[key] !== undefined) intent[key] = from[key];
