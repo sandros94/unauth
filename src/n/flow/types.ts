@@ -146,6 +146,9 @@ export interface OAuthProvider<TProfile = Record<string, unknown>> {
  * return path, the application's memo and the sealed record, parses the callback and checks
  * `state` and the provider's `error`; the provider builds the URL the user is sent to and turns
  * the callback into an identity, keeping what it needs between the legs in the record's `data`.
+ * The engine's checks prove only that the callback came back to the browser that started the
+ * sign-in, and that browser may be anyone's: the identity must come from a proof the provider
+ * issued and verifies in `complete`.
  */
 export interface CustomProvider<TProfile = Record<string, unknown>> {
   id: string;
@@ -162,7 +165,13 @@ export interface CustomProvider<TProfile = Record<string, unknown>> {
   responseMode?: "query" | "form_post";
   /** The first leg: where to send the user, and what to seal in the record for `complete`. */
   start: (context: CustomStartContext) => Promise<CustomStart>;
-  /** The second leg: the callback, with the record `start` sealed, into the proven identity. */
+  /**
+   * The second leg: the callback, with the record `start` sealed, into the proven identity. `state`
+   * only binds the callback to the browser that started the flow, which may be the attacker's: the
+   * identity comes from a proof the provider issued and verifies here (an assertion it checks, a
+   * code it redeems, a one-time token it opens), never from `record.data` or `loginHint` alone. A
+   * callback without such a proof throws.
+   */
   complete: (context: CustomCompleteContext) => Promise<CustomFlowResult<TProfile>>;
 }
 
@@ -183,7 +192,10 @@ export interface CustomFlowContext {
 export interface CustomStartContext extends CustomFlowContext {
   /** The callback URL, replayed by the engine as `record.redirectUri`. */
   redirectUri: string;
-  /** Which account signs in (a handle, an email, a username), when the application named one. */
+  /**
+   * Which account signs in (a handle, an email, a username), when the application named one. What
+   * the user typed: it picks where to send them, it proves nothing about who they are.
+   */
   loginHint?: string;
   /** Replaces the provider's scopes. */
   scopes?: string[];
@@ -193,9 +205,9 @@ export interface CustomStartContext extends CustomFlowContext {
 
 /**
  * What `CustomProvider.start` returns: the started flow, with where the user is sent and what to
- * seal; or a relocation, which sends the user to start over at another URL and records no flow.
- * The engine seals the request's intent and origin host beside a relocation and returns the user
- * to that host once the sign-in completes.
+ * seal; or a relocation, which sends the user to start over at another URL. The engine records
+ * the flow here, seals the request's intent, origin host and the flow's `state` beside the
+ * relocation, and returns the user to that host once the sign-in completes.
  */
 export type CustomStart =
   | {
@@ -221,7 +233,11 @@ export type CustomStart =
 
 /** What `CustomProvider.complete` receives. */
 export interface CustomCompleteContext extends CustomFlowContext {
-  /** The callback's query or form parameters, `state` already checked. Untrusted beyond that. */
+  /**
+   * The callback's query or form parameters, `state` already checked against the record. Untrusted
+   * beyond that: whoever started the flow in this browser chose them, and the identity is proven
+   * only by what `complete` verifies among them.
+   */
   params: Record<string, string>;
 }
 

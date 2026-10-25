@@ -114,24 +114,59 @@ app.all(
 
 ### Custom providers
 
+A custom provider runs its own two legs over the engine's flow. `state` and the flow cookie only prove that the callback came back to the browser that started the sign-in, and that browser may be anyone's: `complete` must take the identity from a proof the provider issued and verifies there, never from what `start` was told. A magic link, with the proof a one-time token sent to the address:
+
 ```ts
-import { defineProvider } from "unauth/n";
+import { UnauthError, defineOneTimeToken, defineProvider } from "unauth/n";
+
+const magicLinks = defineOneTimeToken<{ email: string; state: string }>({
+  key: signingKey,
+  maxAge: "15m",
+  purpose: "magic-link",
+  consume: ({ jti, expiresAt }) => usedLinks.add(jti, expiresAt),
+});
 
 const magic = defineProvider<{ email: string }>({
   id: "magic",
   kind: "custom",
-  start: async ({ record, redirectUri, loginHint }) => ({
-    url: `https://magic.example/send?email=${loginHint}&state=${record.state}&return=${redirectUri}`,
-    data: { email: loginHint },
-  }),
-  complete: async ({ params, record }) => ({
-    identity: {
-      subject: String(record.data?.email),
-      profile: { email: String(record.data?.email) },
-    },
-  }),
+  start: async ({ record, redirectUri, loginHint }) => {
+    if (!loginHint) {
+      throw new UnauthError("Enter your email to sign in.", "ERR_AUTHN_LOGIN_HINT_REQUIRED", {
+        status: 400,
+      });
+    }
+    const link = new URL(redirectUri);
+    link.searchParams.set("state", record.state);
+    link.searchParams.set(
+      "code",
+      await magicLinks.issue({ email: loginHint, state: record.state }),
+    );
+    await sendMail(loginHint, link.href);
+    return { url: new URL("/check-your-inbox", redirectUri) };
+  },
+  complete: async ({ params, record }) => {
+    const claim = await magicLinks.open(params.code ?? "");
+    if (claim.state !== record.state) {
+      throw new UnauthError("This link belongs to another sign-in.", "ERR_AUTHN_STATE_MISMATCH", {
+        status: 401,
+        cause: { provider: "magic" },
+      });
+    }
+    return {
+      identity: {
+        subject: claim.email,
+        email: claim.email,
+        emailVerified: true,
+        profile: { email: claim.email },
+      },
+    };
+  },
 });
 ```
+
+- `start` sends the user somewhere and may seal `data` in the record for `complete`; it is the application's input, sealed, not a proof. Here the proof is the token: only the inbox receives it, and it names the `state` of the sign-in it was issued for.
+- `complete` receives the callback's `params` with `state` already checked against the record, and returns the identity it verified. A callback without a usable proof must throw: the engine never completes on its own.
+- `consume` records each token's `jti` until `expiresAt` and answers whether this was its first use; `usedLinks` is whatever store the deployment has.
 
 ### Frameworks
 
