@@ -9,6 +9,7 @@ import {
   providerError,
 } from "./http/shared.ts";
 import type { CacheDriver } from "./cache/load.ts";
+import { CALLBACK_BODY_MAX_BYTES, readText } from "./http/body.ts";
 import { type FlowCarrierOptions, takeFlow } from "./carrier/transient.ts";
 import { resolveProvider } from "../discovery.ts";
 import { verifyIdToken } from "../id-token.ts";
@@ -61,8 +62,6 @@ export async function completeFlowWithReturnHost<TProfile, TMemo = unknown>(
   options: CompleteFlowOptions,
 ): Promise<CompletedFlow<TProfile, TMemo>> {
   const taken = await takeFlow({ request, headers: options.headers, provider, options });
-  const params = await callbackParams(request);
-
   if (!taken.record) {
     throw new UnauthError(
       taken.reason === "missing"
@@ -73,6 +72,7 @@ export async function completeFlowWithReturnHost<TProfile, TMemo = unknown>(
     );
   }
   const { record } = taken;
+  const params = await callbackParams(provider, request);
   if (record.provider !== provider.id || !secureCompare(record.state, params.state)) {
     throw new UnauthError(
       "[unauth/n] The callback does not belong to this sign-in.",
@@ -259,11 +259,29 @@ function assertProfile<TProfile>(
   return profile;
 }
 
-/** The redirect's parameters: the query, or a `form_post` body (OAuth 2.0 Form Post Response Mode). */
-async function callbackParams(request: Request): Promise<Record<string, string>> {
+/**
+ * The redirect's parameters: the query, or, on a `form_post` provider only (OAuth 2.0 Form Post
+ * Response Mode), the posted form, read up to {@link CALLBACK_BODY_MAX_BYTES} and
+ * `ERR_AUTHN_CALLBACK_INVALID` past it. Read once the flow is known to exist: a request from
+ * nowhere costs no body.
+ */
+async function callbackParams(
+  provider: Provider<unknown>,
+  request: Request,
+): Promise<Record<string, string>> {
   const type = request.headers.get("content-type") ?? "";
-  if (request.method === "POST" && type.includes("application/x-www-form-urlencoded")) {
-    return formObject(new URLSearchParams(await request.text()));
+  const posted =
+    provider.responseMode === "form_post" &&
+    request.method === "POST" &&
+    type.includes("application/x-www-form-urlencoded");
+  if (!posted) return formObject(new URL(request.url).searchParams);
+  const text = await readText(request, { maxBytes: CALLBACK_BODY_MAX_BYTES });
+  if (text === undefined) {
+    throw new UnauthError(
+      "[unauth/n] The sign-in callback could not be read.",
+      "ERR_AUTHN_CALLBACK_INVALID",
+      { status: 400, cause: { reason: "too-large" } },
+    );
   }
-  return formObject(new URL(request.url).searchParams);
+  return formObject(new URLSearchParams(text));
 }

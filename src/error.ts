@@ -10,6 +10,7 @@ export type KnownUnauthErrorCode =
   | "ERR_AUTHN_LOGIN_HINT_INVALID" // `loginHint` names no usable account at the provider
   | "ERR_AUTHN_FLOW_EXPIRED" // no sign-in flow to complete: never started, expired or already used
   | "ERR_AUTHN_STATE_MISMATCH" // the callback does not belong to the flow this browser started
+  | "ERR_AUTHN_CALLBACK_INVALID" // the callback request is not one the provider sends (a form body over the cap)
   | "ERR_AUTHN_CROSS_SITE_START" // a start that links an account or names the account was not a form submission from the application's own pages
   | "ERR_AUTHN_PROVIDER_REFUSED" // the provider answered the authorization request with an error
   | "ERR_AUTHN_TOKEN_EXCHANGE" // the token endpoint refused or failed a code or refresh grant
@@ -41,6 +42,8 @@ export interface UnauthErrorCauseMap {
    * application's own origin.
    */
   ERR_AUTHN_CROSS_SITE_START: { reason: "method" | "origin" | "cross-site" };
+  /** Why the callback request was refused unread: `too-large`, a `form_post` body over the cap. */
+  ERR_AUTHN_CALLBACK_INVALID: { reason: "too-large" };
   /**
    * The error the provider answered the authorization request with: at the redirect URI (RFC 6749
    * §4.1.2.1) or at the pushed authorization request endpoint (RFC 9126 §2.3).

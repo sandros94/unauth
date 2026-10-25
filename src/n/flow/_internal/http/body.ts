@@ -1,6 +1,12 @@
 /** The most bytes a provider document or token response may have. */
 export const PROVIDER_DOCUMENT_MAX_BYTES: number = 262_144;
 
+/** The most bytes a `form_post` callback body may have: a code, a state, an id_token, a profile. */
+export const CALLBACK_BODY_MAX_BYTES: number = 65_536;
+
+/** What a body is read from: a response, or an inbound request. */
+export type BodySource = Pick<Response, "headers" | "body" | "bodyUsed">;
+
 /** How long a provider document may take to arrive, request and body together, in ms. */
 export const PROVIDER_FETCH_TIMEOUT: number = 10_000;
 
@@ -10,7 +16,7 @@ export const PROVIDER_FETCH_TIMEOUT: number = 10_000;
  * An aborting `signal` cancels the read.
  */
 export async function readBytes(
-  response: Response,
+  response: BodySource,
   options: { maxBytes: number; signal?: AbortSignal },
 ): Promise<Uint8Array | undefined> {
   const { maxBytes, signal } = options;
@@ -53,7 +59,7 @@ export async function readBytes(
  * {@link readBytes}.
  */
 export async function readText(
-  response: Response,
+  response: BodySource,
   options: { maxBytes: number; signal?: AbortSignal; fatal?: boolean },
 ): Promise<string | undefined> {
   const bytes = await readBytes(response, options);
@@ -61,7 +67,7 @@ export async function readText(
 }
 
 /** Drops a body nobody will read, so its connection is released. */
-export function discardBody(response: Response): void {
+export function discardBody(response: BodySource): void {
   if (response.body && !response.bodyUsed) void response.body.cancel().catch(() => undefined);
 }
 
