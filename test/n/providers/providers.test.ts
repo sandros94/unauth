@@ -287,6 +287,25 @@ describe("Apple", () => {
     expect(payload.exp! - payload.iat!).toBeLessThanOrEqual(300);
   });
 
+  it("does not keep a failed key import: the next secret imports again", async () => {
+    const keys = await generateJWK("ES256");
+    const options = {
+      clientId: "com.example.web",
+      teamId: "TEAM",
+      keyId: "KEY",
+      privateKey: "-----BEGIN PRIVATE KEY-----\nnot a key\n-----END PRIVATE KEY-----" as
+        | string
+        | typeof keys.privateKey,
+    };
+    const mint = appleClientSecret(options);
+
+    await expect(mint()).rejects.toBeInstanceOf(Error);
+    await expect(mint()).rejects.toBeInstanceOf(Error);
+    options.privateKey = keys.privateKey;
+    const token = await mint();
+    await verify(token, keys.publicKey, { issuer: "TEAM", audience: "https://appleid.apple.com" });
+  });
+
   it("takes the name from the first-login user field and the email from the id_token", async () => {
     const keys = await generateJWK("ES256");
     const provider = defineAppleProvider({

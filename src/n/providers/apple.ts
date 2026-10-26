@@ -106,19 +106,29 @@ export const defineAppleHandler: PresetHandler<AppleProviderConfig, AppleProfile
     ],
   });
 
-/** Mints Apple's client secret: an ES256 JWT from the team to `appleid.apple.com`. */
+/**
+ * Mints Apple's client secret: an ES256 JWT from the team to `appleid.apple.com`. The private key
+ * is imported once, on the first secret; an import that fails is not kept, so the next secret
+ * tries again.
+ */
 export function appleClientSecret(
   options: Pick<AppleProviderConfig, "clientId" | "teamId" | "keyId" | "privateKey">,
 ): () => Promise<string> {
   let key: Promise<JWSSignJWK> | undefined;
   return async () => {
-    key ??=
-      typeof options.privateKey === "string"
-        ? importPEM(options.privateKey, "ES256", {
-            pemType: "pkcs8",
-            jwkParams: { kid: options.keyId },
-          })
-        : Promise.resolve({ ...options.privateKey, kid: options.keyId });
+    if (key === undefined) {
+      const importing =
+        typeof options.privateKey === "string"
+          ? importPEM(options.privateKey, "ES256", {
+              pemType: "pkcs8",
+              jwkParams: { kid: options.keyId },
+            })
+          : Promise.resolve({ ...options.privateKey, kid: options.keyId });
+      key = importing;
+      importing.catch(() => {
+        if (key === importing) key = undefined;
+      });
+    }
     const iat = Math.floor(Date.now() / 1000);
     return sign(
       { iss: options.teamId, sub: options.clientId, aud: APPLE, iat, exp: iat + SECRET_LIFETIME },
