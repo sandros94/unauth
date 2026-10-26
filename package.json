@@ -14,66 +14,76 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./base/h3": {
-      "types": "./dist/base/h3v2/index.d.mts",
-      "default": "./dist/base/h3v2/index.mjs"
+    "./n": {
+      "types": "./dist/n/index.d.mts",
+      "default": "./dist/n/index.mjs"
     },
-    "./base/h3v1": {
-      "types": "./dist/base/h3v1/index.d.mts",
-      "default": "./dist/base/h3v1/index.mjs"
+    "./n/providers/*": {
+      "types": "./dist/n/providers/*.d.mts",
+      "default": "./dist/n/providers/*.mjs"
     },
-    "./base/h3v2": {
-      "types": "./dist/base/h3v2/index.d.mts",
-      "default": "./dist/base/h3v2/index.mjs"
+    "./jwk": {
+      "types": "./dist/jwk.d.mts",
+      "default": "./dist/jwk.mjs"
+    },
+    "./jws": {
+      "types": "./dist/jws.d.mts",
+      "default": "./dist/jws.mjs"
+    },
+    "./jwe": {
+      "types": "./dist/jwe.d.mts",
+      "default": "./dist/jwe.mjs"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.mts",
+      "default": "./dist/utils.mjs"
+    },
+    "./session": {
+      "types": "./dist/session.d.mts",
+      "default": "./dist/session.mjs"
+    },
+    "./error": {
+      "types": "./dist/error.d.mts",
+      "default": "./dist/error.mjs"
+    },
+    "./argon2": {
+      "types": "./dist/argon2.d.mts",
+      "default": "./dist/argon2.mjs"
     }
   },
   "scripts": {
     "build": "obuild",
     "stub": "obuild --stub",
-    "dev": "pnpm -F unauth-playground dev",
-    "dev:prepare": "obuild --stub && pnpm simple-git-hooks",
+    "dev": "pnpm --dir playgrounds/h3 dev",
+    "dev:nuxt": "pnpm --dir playgrounds/nuxt-4 dev",
+    "dev:nitro": "pnpm --dir playgrounds/nitro dev",
+    "dev:prepare": "obuild --stub && pnpm --dir playgrounds/nuxt-4 prepare && pnpm simple-git-hooks",
     "lint": "oxlint --deny-warnings . && oxfmt --check .",
     "fmt": "automd && oxlint --fix . && oxfmt .",
     "prepack": "pnpm build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc -b",
-    "bench": "vitest bench --run"
+    "typecheck": "tsc --noEmit",
+    "bench": "vitest bench --run",
+    "typecheck:playgrounds": "tsc -p playgrounds/h3 && tsc -p playgrounds/nitro && pnpm --dir playgrounds/nuxt-4 typecheck"
   },
   "dependencies": {
-    "unsecure": "^0.3.2"
+    "unjwt": "catalog:",
+    "unsecure": "^0.3.3"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^5.0.4",
     "automd": "^0.4.3",
+    "h3": "^2.0.5",
     "obuild": "^0.4.45",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
     "oxlint-tsgolint": "^7.0.2004",
     "rolldown": "1.2.14",
     "simple-git-hooks": "^2.14.0",
-    "supertest": "^7.3.1",
     "typescript": "^7.0.2",
-    "unjwt": "catalog:",
     "vitest": "^5.0.4"
-  },
-  "peerDependencies": {
-    "cookie-es": "^1.2.3 || ^3.1.1",
-    "h3": "^1.15.4 || ^2.0.1",
-    "unjwt": "^0.8.1"
-  },
-  "peerDependenciesMeta": {
-    "cookie-es": {
-      "optional": true
-    },
-    "h3": {
-      "optional": true
-    },
-    "unjwt": {
-      "optional": true
-    }
   },
   "resolutions": {
     "unauth": "link:."

@@ -2,28 +2,26 @@
 
 [![npm version](https://npmx.dev/api/registry/badge/version/unauth?name=true)](https://npmx.dev/package/unauth) [![npm downloads](https://npmx.dev/api/registry/badge/downloads/unauth)](https://npmx.dev/package/unauth) [![bundle size](https://npmx.dev/api/registry/badge/size/unauth)](https://npmx.dev/package/unauth)
 
-A collection of low-level and high-level, server-agnostic, Authentication and Authorization utilities.
+A collection of low-level and high-level, server-agnostic, Authentication and Authorization (soon) utilities.
 
 > [!WARNING]
-> This package is in active development. It is not recommended for production use yet unless you are willing to help with testing and feedback. Expect breaking changes, as I prioritize usability and correctness over stability at this stage.
+> This package is in active development. It is not recommended for production use yet unless you are willing to help with testing and feedback. Expect breaking changes.
 
 ## Features
 
-- **Session management** — Encrypted JWE sessions with rolling expiry
-- **Token pairs** — Access (JWS) + Refresh (JWE) token lifecycle with coordinated login/logout
-- **CSRF protection** — Double-submit cookie pattern with HMAC
-- **Middleware** — `requireSession`, `optionalSession`, `requireAuth`, `optionalAuth`
-- **Runtime-agnostic** — Built on Web Crypto API
-- **OAuth 2.1 and OIDC** — Planned
+- **OAuth 2.1 and OpenID Connect** — one handler for both legs of a sign-in, presets for GitHub, Google, Apple, Microsoft, Discord, GitLab, LinkedIn, Facebook, Twitch, X, Spotify, TikTok, Netlify, Vercel and Cloudflare Access, generic `defineOAuth2Provider` and `defineOidcProvider`
+- **AT Protocol** — sign in with any PDS account: handle resolution, PAR, PKCE, DPoP, the account verified against its PDS automatically
+- **Custom providers** — any protocol over the same engine, with `start` and `complete` legs
+- **One-time tokens** — signed, single-use, expiring tokens
+- **Web-standard** — handlers take a request event `{ req, res: { headers } }`; `startFlow` and `completeFlow` take a `Request`
+- **unjwt included** — `unauth/jwk`, `unauth/jws`, `unauth/jwe`, `unauth/utils` and `unauth/session` are unjwt's subpaths, one dependency to install
 
-Built on top of minimal dependencies:
+Built on:
 
-- [`unjwt`](https://github.com/sandros94/unjwt) — Low-level JWT (JWS/JWE/JWK) via Web Crypto
-- [`unsecure`](https://github.com/sandros94/unsecure) — Cryptographic utilities (HMAC, secure compare, etc.)
+- [`unjwt`](https://github.com/sandros94/unjwt) — JWT (JWS/JWE/JWK) and cookie sessions via Web Crypto
+- [`unsecure`](https://github.com/sandros94/unsecure) — cryptographic utilities
 
 ## Usage
-
-Install the package:
 
 ```sh
 npx nypm install unauth
@@ -31,165 +29,148 @@ npx nypm install unauth
 
 ### Session
 
-Encrypted session cookies (JWE) with rolling expiry.
+The session is the application's own `unauth/session` definition (unjwt's `defineJWESession`, re-exported). A sign-in writes to it in `onSuccess`.
 
 ```ts
-import { defineSession, generateJWK, requireSession } from "unauth/base/h3";
+import { defineJWESession } from "unauth/session";
 
-const sessionKey = await generateJWK("A256GCM");
+const session = defineJWESession<SessionData, "1h">({ key, maxAge: "1h", rolling: "15m" });
+export const useAuthSession = (event: WebSessionEvent) => session.use(event);
+```
 
-const useSession = defineSession<{ userId: string; role: string }>({
-  key: sessionKey,
-  maxAge: "7D",
-  hooks: {
-    async onRead({ session }) {
-      // The live session manager: sync it with your database, or end it
-      const user = await db.users.findById(session.data.userId);
-      if (!user) return session.clear();
-      if (user.role !== session.data.role) await session.update({ role: user.role });
+### Sign in with a provider
+
+One route serves both legs: without `code` or `error` it redirects to the provider with a sealed flow cookie; with one it completes the callback and calls `onSuccess` with the proven identity.
+
+```ts
+import type { H3Event } from "h3";
+import { deriveKey } from "unauth/n";
+import { defineGitHubHandler } from "unauth/n/providers/github";
+
+app.get(
+  "/auth/github",
+  defineGitHubHandler({
+    clientId: process.env.GITHUB_CLIENT_ID!,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    key: () => deriveKey(process.env.AUTH_SECRET!, { info: "unauth:flow" }),
+    origin: "https://app.example",
+    onSuccess: async (event: H3Event, { identity }) => {
+      const session = await useAuthSession(event);
+      await session.clear();
+      await session.update({ provider: identity.provider, subject: identity.subject });
     },
-  },
+  }),
+);
+```
+
+- `key`: a symmetric JWE key, or a callback returning one, called once on the first request. `deriveKey(secret, { info })` derives an `A256GCM` key from a random secret of 32+ characters. A key pair is refused: a token sealed to a public key could be minted by anyone holding it.
+- `origin`: the callback is this route on that origin, and its forms may start a sign-in that links an account or names it; `redirectUri` names the callback outright instead.
+- `onStart(event)`: optional; returns `{ redirect, memo, loginHint, scopes, params }` for this request. `memo` is anything the application wants back at the callback, sealed; `loginHint` names the account (OAuth's `login_hint`, an AT Protocol handle). A start that returns either `memo`, or `loginHint` for a custom provider, is taken only as a `POST` from the application's own origin (`ERR_AUTHN_CROSS_SITE_START` otherwise): start those sign-ins from a form.
+- `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `memo` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.
+- `fetch`: optional; replaces the global `fetch` for every request a sign-in makes to a provider, where a deployment refuses private network ranges.
+- `onError(event, error)`: optional; `error` is an `UnauthError` with `code`, `cause` and `status`. Without it the failure is answered with a plain `Response` of that status.
+- Annotate the `event` of the first hook you write with the framework's event type: every hook and the handler take it, `result` and `memo` stay inferred.
+- `defineSignInHandler(provider, options)` is the same handler for any provider. It answers `GET` and `POST` and refuses other methods with a `405`: mount it without a method filter (`app.all(...)`, a `routes/auth/github.ts` rather than `.get.ts`).
+
+### Linking another account
+
+`onStart` notes the signed-in user in `memo`; it comes back as `result.memo`, sealed, and `onSuccess` decides what to do with it. Such a start comes from a form on the application's own pages, never from a link: a cross-site navigation must not attach the signed-in user's account to an identity the navigator chose.
+
+```ts
+onStart: async (event: H3Event) => {
+  const session = await useAuthSession(event);
+  return session.id ? { memo: { userId: session.data.userId } } : undefined;
+},
+onSuccess: async (event, { identity, memo }) => {
+  if (memo) return linkIdentity(memo.userId, identity);
+  // a plain sign-in otherwise
+},
+```
+
+```html
+<form method="post" action="/auth/github"><button>Link a GitHub account</button></form>
+```
+
+### Sign in with AT Protocol
+
+```ts
+import { defineAtprotoHandler } from "unauth/n/providers/atproto";
+
+app.all(
+  "/auth/atproto",
+  defineAtprotoHandler({
+    clientId: "https://app.example/oauth-client-metadata.json",
+    redirectUri: "https://app.example/auth/atproto",
+    key,
+    onStart: async (event: H3Event) => ({ loginHint: (await event.req.formData()).get("login") }),
+    onSuccess,
+  }),
+);
+```
+
+- `onStart` names the account (a handle, a DID or a server URL) as `loginHint`; the handler reads nothing from the request. Naming the account picks the server the sign-in is pushed to, so the start is a `POST` form from the application's own pages (`ERR_AUTHN_CROSS_SITE_START` otherwise).
+- The provider's `client.metadata` is the document to serve at `clientId`; define the provider once with `defineAtprotoProvider` and pass it as `provider` to share it with that route.
+- A `clientId` on `http://localhost` is the development client; its callback must be on a loopback IP. `devOrigins: ["http://localhost:3000"]` maps a `localhost:3000` callback to `127.0.0.1:3000` and returns the result to `http://localhost:3000`.
+
+### Custom providers
+
+A custom provider runs its own two legs over the engine's flow. `state` and the flow cookie only prove that the callback came back to the browser that started the sign-in, and that browser may be anyone's: `complete` must take the identity from a proof the provider issued and verifies there, never from what `start` was told. A magic link, with the proof a one-time token sent to the address:
+
+```ts
+import { UnauthError, defineOneTimeToken, defineProvider } from "unauth/n";
+
+const magicLinks = defineOneTimeToken<{ email: string; state: string }>({
+  key: signingKey,
+  maxAge: "15m",
+  purpose: "magic-link",
+  consume: ({ jti, expiresAt }) => usedLinks.add(jti, expiresAt),
 });
 
-const app = new H3()
-  .post("/login", async (event) => {
-    const session = await useSession(event);
-    await session.update({ userId: "u1", role: "admin" });
-    return { ok: true };
-  })
-  .get(
-    "/me",
-    async (event) => {
-      const session = await useSession(event);
-      return { user: session.data };
-    },
-    { middleware: [requireSession(useSession)] },
-  )
-  .post("/logout", async (event) => {
-    const session = await useSession(event);
-    await session.clear();
-    return { ok: true };
-  });
-```
-
-The session is reissued on read once less than a quarter of `maxAge` remains, so `exp` slides with activity. Tune it with `rolling`: a duration (`rolling: "1D"`) sets the remaining-time window, `true` reissues on every read, `false` never. A roll fires `onUpdate` with `trigger: "rolling"`.
-
-Hooks are [unjwt's session hooks](https://unjwt.s94.dev/adapters/hooks); `session` is the live manager, so `onRead` can `update()` or `clear()` the session it is looking at.
-
-### Token Pair
-
-Access token (JWS, short-lived, client-readable) + refresh token (JWE, long-lived, encrypted) with coordinated lifecycle.
-
-```ts
-import { defineTokenPair, generateJWK, requireAuth } from "unauth/base/h3";
-
-const atKeys = await generateJWK("ES256");
-const rtKey = await generateJWK("A256GCM");
-
-const useAuth = defineTokenPair<
-  { sub: string; permissions: string[] },
-  { sub: string; family: string }
->({
-  access: { key: atKeys, maxAge: "15m" },
-  refresh: { key: rtKey, maxAge: "30D" },
-  hooks: {
-    async onRefresh({ refresh, issue }) {
-      const user = await db.users.findById(refresh.data.sub);
-      if (!user || user.suspended) return; // don't issue — AT stays empty
-      await issue({
-        accessData: { sub: user.id, permissions: user.permissions },
-        // refreshData is optional — omit to rotate with current data
+const magic = defineProvider<{ email: string }>({
+  id: "magic",
+  kind: "custom",
+  start: async ({ record, redirectUri, loginHint }) => {
+    if (!loginHint) {
+      throw new UnauthError("Enter your email to sign in.", "ERR_AUTHN_LOGIN_HINT_REQUIRED", {
+        status: 400,
       });
-    },
-    onAfterRefresh({ access, refresh, previousRefresh }) {
-      logger.info("token_refresh", {
-        sub: access.data.sub,
-        newAtId: access.id,
-        oldRtId: previousRefresh.id,
-        newRtId: refresh.id,
-      });
-    },
+    }
+    const link = new URL(redirectUri);
+    link.searchParams.set("state", record.state);
+    link.searchParams.set(
+      "code",
+      await magicLinks.issue({ email: loginHint, state: record.state }),
+    );
+    await sendMail(loginHint, link.href);
+    return { url: new URL("/check-your-inbox", redirectUri) };
   },
-});
-
-const app = new H3()
-  .post("/login", async (event) => {
-    const auth = await useAuth(event);
-    await auth.issue({
-      accessData: { sub: user.id, permissions: user.permissions },
-      refreshData: { sub: user.id, family: crypto.randomUUID() },
-    });
-    return { ok: true };
-  })
-  .get(
-    "/me",
-    async (event) => {
-      const { access } = await useAuth(event);
-      return { user: access.data };
-    },
-    { middleware: [requireAuth(useAuth)] },
-  )
-  .post("/logout", async (event) => {
-    const auth = await useAuth(event);
-    await auth.revoke();
-    return { ok: true };
-  });
-```
-
-When the access token expires:
-
-- `onRefresh` fires with the valid refresh token
-- Call `issue({ accessData, refreshData? })` to re-issue the AT and rotate the RT
-- Call `revoke()` to clear both tokens (e.g., user banned, family revoked)
-- Don't call either to skip (AT stays empty, RT preserved)
-- Throw to forward errors to `onError` without destroying tokens
-
-`onReadAccess` fires whenever a valid access token is read, with or without a refresh token beside it: `refresh` is `undefined` when the refresh cookie is missing, so a revocation check there cannot be bypassed by dropping that cookie.
-
-Both `access` and `refresh` are unjwt session managers exposed directly — call `.update()` or `.clear()` on them for escape-hatch scenarios that bypass hooks.
-
-### CSRF
-
-Double-submit cookie pattern with HMAC-generated tokens.
-
-```ts
-import { defineCsrf } from "unauth/base/h3";
-
-const csrf = defineCsrf({ secret: process.env.CSRF_SECRET! });
-
-const app = new H3()
-  .get("/form", handler, { middleware: [csrf] })
-  .post("/form", handler, { middleware: [csrf] });
-```
-
-### Middleware
-
-Separate middleware for sessions and token pairs:
-
-```ts
-import { requireSession, optionalSession, requireAuth, optionalAuth } from "unauth/base/h3";
-
-// Session middleware
-app.get("/me", handler, { middleware: [requireSession(useSession)] });
-app.get("/feed", handler, { middleware: [optionalSession(useSession)] });
-
-// Token pair middleware
-app.get("/me", handler, { middleware: [requireAuth(useAuth)] });
-app.get("/feed", handler, { middleware: [optionalAuth(useAuth)] });
-
-// With authorization checks
-app.delete("/admin/users/:id", handler, {
-  middleware: [
-    requireAuth(useAuth, {
-      onAuthenticated({ session }) {
-        if (!session.data.permissions.includes("admin:users:delete")) {
-          throw new HTTPError("Forbidden", { status: 403 });
-        }
+  complete: async ({ params, record }) => {
+    const claim = await magicLinks.open(params.code ?? "");
+    if (claim.state !== record.state) {
+      throw new UnauthError("This link belongs to another sign-in.", "ERR_AUTHN_STATE_MISMATCH", {
+        status: 401,
+        cause: { provider: "magic" },
+      });
+    }
+    return {
+      identity: {
+        subject: claim.email,
+        email: claim.email,
+        emailVerified: true,
+        profile: { email: claim.email },
       },
-    }),
-  ],
+    };
+  },
 });
 ```
+
+- `start` sends the user somewhere and may seal `data` in the record for `complete`; it is the application's input, sealed, not a proof. Here the proof is the token: only the inbox receives it, and it names the `state` of the sign-in it was issued for.
+- `complete` receives the callback's `params` with `state` already checked against the record, and returns the identity it verified. A callback without a usable proof must throw: the engine never completes on its own.
+- `consume` records each token's `jti` until `expiresAt` and answers whether this was its first use; `usedLinks` is whatever store the deployment has.
+
+### Frameworks
+
+The [`playgrounds/`](./playgrounds) run the same application on h3, Nitro 3 and Nuxt 4.
 
 ## Development
 
@@ -201,13 +182,13 @@ app.delete("/admin/users/:id", handler, {
 - Install latest LTS version of [Node.js](https://nodejs.org/en/)
 - Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable`
 - Install dependencies using `pnpm install`
-- Run interactive tests using `pnpm dev`
+- Run `pnpm dev:prepare` once, then `pnpm dev` (h3), `pnpm dev:nitro` or `pnpm dev:nuxt`
 
 </details>
 
 ## Why unauth?
 
-I started by building `unjwt`, as I needed a cryptographically secure way to transmit sensitive information between various programming languages and servers. Not long after I started requiring some standardization, in particular on how to prepare and expect authorization data to be shared between parties (client and servers), but as I was testing various libraries I've never been satisfied by their DX (although most of them were great for someone that already knows the topic). So I started building `unauth` as a collection of low-level primitives that then can be wrapped in higher-level abstractions, via adapters, to provide a "batteries included" experience while retaining control and flexibility of using your preferred storage, database and web frameworks.
+I started by building `unjwt`, as I needed a cryptographically secure way to transmit sensitive information between various programming languages and servers. Not long after I started requiring some standardization, in particular on how to handle authentication flows, but as I was testing various libraries I've never been satisfied by their DX (either too basic or too complex to maintain). So I started building `unauth` as a collection of low-level primitives that get wrapped in high-level abstractions for every day use.
 
 ## Credits
 

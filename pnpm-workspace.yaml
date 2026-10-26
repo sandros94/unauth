@@ -1,11 +1,8 @@
 packages:
-  - playground
-  # One framework world per package: `h3`, `cookie-es` and an `unjwt` copy whose peers
-  # resolve to that h3 major. Tests and type-checking resolve from them, not the root.
-  - test/env-*
+  - playgrounds/*
 
 catalog:
-  unjwt: https://pkg.pr.new/sandros94/unjwt@7b32b79
+  unjwt: https://pkg.pr.new/sandros94/unjwt@1913c73
 
 allowBuilds:
   "@parcel/watcher": false

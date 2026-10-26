@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>unauth on Nitro 3</title>
+  </head>
+  <body>
+    <main style="font-family: system-ui; max-width: 40rem; margin: 2rem auto">
+      <h1>unauth on Nitro 3</h1>
+      <section id="signed-out" hidden>
+        <form>
+          <input name="user" placeholder="alice" autocomplete="username" />
+          <input name="password" type="password" autocomplete="current-password" />
+          <button type="button" data-call="POST /register">register</button>
+          <button type="button" data-call="POST /login">login</button>
+        </form>
+        <p><a href="/auth/github">sign in with GitHub</a></p>
+        <form action="/auth/atproto" method="post">
+          <input name="login" placeholder="alice.bsky.social" autocomplete="username" required />
+          <button type="submit">sign in with AT Protocol</button>
+        </form>
+      </section>
+      <section id="signed-in" hidden>
+        <p>Signed in as <strong id="who"></strong>.</p>
+        <p>Connected accounts:</p>
+        <ul id="identities"></ul>
+        <form action="/auth/github" method="post">
+          <button type="submit">connect GitHub</button>
+        </form>
+        <form action="/auth/atproto" method="post">
+          <input name="login" placeholder="alice.bsky.social" autocomplete="username" required />
+          <button type="submit">connect AT Protocol</button>
+        </form>
+        <p>
+          <button data-call="GET /me">me</button>
+          <button data-call="POST /logout">logout</button>
+          <button data-socket>websocket</button>
+          <button data-call="GET /throw-after-clear">throw after clear</button>
+        </p>
+      </section>
+      <div id="log"></div>
+    </main>
+    <script type="module">
+      const log = document.querySelector("#log");
+      const say = (line) => {
+        const pre = document.createElement("pre");
+        pre.textContent = line;
+        log.prepend(pre);
+      };
+
+      async function call(method, path, body) {
+        const response = await fetch(path, {
+          method,
+          headers: body ? { "content-type": "application/json" } : {},
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const text = await response.text();
+        say(`${method} ${path} → ${response.status} ${text}`);
+        await refresh();
+      }
+
+      async function refresh() {
+        const response = await fetch("/me");
+        const session = response.status === 401 ? null : await response.json();
+        document.querySelector("#signed-out").hidden = Boolean(session);
+        document.querySelector("#signed-in").hidden = !session;
+        if (!session) return;
+        document.querySelector("#who").textContent = session.name ?? session.userId;
+        const list = document.querySelector("#identities");
+        list.replaceChildren();
+        for (const entry of session.identities) {
+          const item = document.createElement("li");
+          item.textContent = `${entry.provider}: ${entry.name ?? entry.subject}`;
+          const action = document.createElement("button");
+          if (session.identities.length > 1) {
+            action.textContent = "unlink";
+            action.addEventListener("click", () =>
+              call("POST", "/unlink", { provider: entry.provider, subject: entry.subject }),
+            );
+          } else {
+            action.textContent = "delete account";
+            action.addEventListener("click", () => call("POST", "/delete"));
+          }
+          item.append(" ", action);
+          list.append(item);
+        }
+      }
+
+      function openSocket() {
+        const ws = new WebSocket(`${location.origin.replace("http", "ws")}/ws`);
+        ws.addEventListener("open", () => ws.send("ping"));
+        ws.addEventListener("message", (event) => say(`ws ← ${event.data}`));
+        ws.addEventListener("error", () => say("ws → refused"));
+        ws.addEventListener("close", (event) => say(`ws closed (${event.code})`));
+      }
+
+      for (const button of document.querySelectorAll("[data-call]")) {
+        const [method, path] = button.dataset.call.split(" ");
+        button.addEventListener("click", () =>
+          call(
+            method,
+            path,
+            button.form ? Object.fromEntries(new FormData(button.form)) : undefined,
+          ),
+        );
+      }
+      document.querySelector("[data-socket]").addEventListener("click", openSocket);
+      await refresh();
+    </script>
+  </body>
+</html>
