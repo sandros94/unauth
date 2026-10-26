@@ -69,7 +69,7 @@
   },
   "dependencies": {
     "unjwt": "catalog:",
-    "unsecure": "^0.3.3"
+    "unsecure": "^0.3.4"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

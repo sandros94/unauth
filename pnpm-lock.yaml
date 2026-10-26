@@ -165,8 +165,8 @@ settings:
 catalogs:
   default:
     unjwt:
-      specifier: https://pkg.pr.new/sandros94/unjwt@1913c73
-      version: https://pkg.pr.new/sandros94/unjwt@1913c73
+      specifier: ^0.8.5
+      version: 0.8.5
 
 importers:
 
@@ -174,10 +174,10 @@ importers:
     dependencies:
       unjwt:
         specifier: 'catalog:'
-        version: https://pkg.pr.new/sandros94/unjwt@1913c73(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
+        version: 0.8.5(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0))
       unsecure:
-        specifier: ^0.3.3
-        version: 0.3.3
+        specifier: ^0.3.4
+        version: 0.3.4
     devDependencies:
       '@types/node':
         specifier: ^26.6.5
@@ -3656,9 +3656,8 @@ packages:
       rolldown:
         optional: true
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@1913c73:
-    resolution: {integrity: sha512-y0rH24GacTGhK5xAkwzXkd13PyVUoTkfaNp5cEKjEbvjFFHBfwEVvkQrIidIqFfRtpIQj/Nr2ymxIRaKAadwAQ==, tarball: https://pkg.pr.new/sandros94/unjwt@1913c73}
-    version: 0.8.4
+  unjwt@0.8.5:
+    resolution: {integrity: sha512-+hIqPaH80sYmgeDWeJj0EFMbYsLbvDTDNMIkDwS8Gt7JQe3D5jYQ6JZOlR+nyPkMC30aW6tc4TyyY3Alik7CzA==}
     peerDependencies:
       elysia: ^1.4.29
       h3: ^1.15.4 || ^2.0.1
@@ -3715,8 +3714,8 @@ packages:
   unrouting@0.2.3:
     resolution: {integrity: sha512-8wOFT/fBh8YeeDr1aVmkXCqYVTMbQ6vzfNzwzybKmSfXdRhGCq1Y2B1e9YeB0JEf85gbvSwJHAMu3D2IEcLGKA==}
 
-  unsecure@0.3.3:
-    resolution: {integrity: sha512-VwVIsqa/h/nVlF0Ki+oxSlBz16kEf05MjrI+npuUVqXQyc8QhBGsRY953otcvp/fhS+6nvKii5xTAi+xWM/kBg==}
+  unsecure@0.3.4:
+    resolution: {integrity: sha512-JavZovhf16b3JmUIxTFFmKZmTwJ82Mi5aKDuwJKHpvtbdlPonecq5tagii4Ingk5IT9H9JiUDrbqzZiELVTU1Q==}
 
   unstorage@1.17.6:
     resolution: {integrity: sha512-gjKtcmn/KwZuJZO9o2sc0esAQnhmTw0LviDHwevTXbJMYs0dRTp8ZEEWXHU0vTpzbN3cA0yxlTeyXssMp3zDqw==}
@@ -7631,7 +7630,7 @@ snapshots:
       - vite
       - webpack
 
-  unjwt@https://pkg.pr.new/sandros94/unjwt@1913c73(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)):
+  unjwt@0.8.5(h3@2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)):
     optionalDependencies:
       h3: 2.0.5(crossws@0.4.15(srvx@1.0.6))(ocache@0.3.0)
 
@@ -7663,7 +7662,7 @@ snapshots:
       escape-string-regexp: 5.0.0
       ufo: 1.6.4
 
-  unsecure@0.3.3: {}
+  unsecure@0.3.4: {}
 
   unstorage@1.17.6(db0@0.3.4)(ioredis@5.11.1(supports-color@10.2.2)):
     dependencies:

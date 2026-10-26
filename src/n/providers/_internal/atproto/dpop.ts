@@ -1,6 +1,5 @@
+import { createDPoPProof } from "unjwt/dpop";
 import { type JWK_EC_Private, generateJWK, toPublicJWK } from "unjwt/jwk";
-import { sign } from "unjwt/jws";
-import { digestUrl } from "unjwt/utils";
 import { type Fetch, providerError, stringField } from "../../../flow/_internal/http/shared.ts";
 import { type FormAnswer, postForm } from "../../../flow/_internal/http/form.ts";
 import { createJti } from "../../../flow/random.ts";
@@ -34,23 +33,23 @@ export interface DpopProofOptions {
 }
 
 /**
- * An RFC 9449 proof JWT for one request, signed with `key` and carrying its public half (§4.2).
+ * An RFC 9449 proof JWT for one request, signed with `key` and carrying its public half (§4.2):
+ * unjwt's `createDPoPProof`, with the method upper-cased and the URL's query and fragment dropped.
  * For exploration: not a stable part of the API, and may change or go without notice.
  */
-export async function createDpopProof(key: DpopKey, options: DpopProofOptions): Promise<string> {
+export function createDpopProof(key: DpopKey, options: DpopProofOptions): Promise<string> {
   const url = new URL(options.htu);
-  const claims: Record<string, unknown> = {
-    jti: createJti(),
-    htm: options.htm.toUpperCase(),
-    htu: url.origin + url.pathname,
-  };
-  if (options.nonce !== undefined) claims.nonce = options.nonce;
-  if (options.accessToken !== undefined) claims.ath = await digestUrl(options.accessToken);
-  return sign(claims, key, {
-    alg: "ES256",
-    protectedHeader: { typ: "dpop+jwt", jwk: toPublicJWK(key) },
-    issuedAt: new Date((options.now ?? Date.now)()),
-  });
+  return createDPoPProof(
+    { method: options.htm.toUpperCase(), url: url.origin + url.pathname },
+    {
+      keyPair: { privateKey: key, publicKey: toPublicJWK(key) },
+      algorithm: "ES256",
+      jti: createJti(),
+      iat: Math.floor((options.now ?? Date.now)() / 1000),
+      nonce: options.nonce,
+      accessToken: options.accessToken === undefined ? undefined : { token: options.accessToken },
+    },
+  );
 }
 
 /** What a DPoP form POST answered. */

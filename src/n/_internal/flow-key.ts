@@ -1,22 +1,17 @@
-import type {
-  JWK_AES_CBC_HMAC,
-  JWK_AES_GCM,
-  JWK_AES_GCM_KW,
-  JWK_AES_KW,
-  JWK_PBES2,
-  JWK_Symmetric,
-} from "unjwt/session";
+import type { JWEAsymmetricPublicJWK, SessionConfigJWE } from "unjwt/session";
 import { configError } from "../flow/_internal/http/shared.ts";
 
 /**
- * A key that seals a sign-in's flow, intent and handoff tokens: a symmetric JWK naming its `alg`
- * (what `deriveKey` or `generateJWK("A256GCM")` returns), or a secret `CryptoKey`. Never a key
- * pair: a JWE sealed to a public key proves nothing about who sealed it, so anyone holding that
- * public key could mint a token the sign-in would trust.
+ * A key that seals a sign-in's flow, intent and handoff tokens: the symmetric members of unjwt's
+ * JWE session key, a symmetric JWK naming its `alg` (what `deriveKey` or `generateJWK("A256GCM")`
+ * returns) or a secret `CryptoKey`. Never a key pair, nor a public JWK: a JWE sealed to a public
+ * key proves nothing about who sealed it, so anyone holding that public key could mint a token the
+ * sign-in would trust.
  */
-export type FlowKey =
-  | JWK_Symmetric<JWK_AES_GCM | JWK_AES_KW | JWK_AES_GCM_KW | JWK_AES_CBC_HMAC | JWK_PBES2 | "dir">
-  | CryptoKey;
+export type FlowKey = Exclude<
+  SessionConfigJWE["key"],
+  JWEAsymmetricPublicJWK | { privateKey: unknown }
+>;
 
 /** The flow key, or a callback returning it, resolved on the first request and kept. */
 export type FlowKeyInput = FlowKey | (() => FlowKey | Promise<FlowKey>);
