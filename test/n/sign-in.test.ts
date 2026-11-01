@@ -7,6 +7,7 @@ import {
   importPEM,
   toPublicJWK,
 } from "unjwt/session";
+import { isJWTError } from "unjwt/error";
 import { hkdf } from "unsecure/hkdf";
 
 import {
@@ -17,7 +18,7 @@ import {
   type UnauthError,
   defineOidcProvider,
   defineSignInHandler,
-  deriveKey,
+  deriveJWK,
   isUnauthError,
   defineOAuth2Provider,
 } from "../../src/n/index.ts";
@@ -135,6 +136,7 @@ describe("defineSignInHandler without a session", () => {
       },
     };
     const oidc = defineOidcProvider({
+      id: "oidc",
       issuer: ISSUER,
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -218,22 +220,46 @@ describe("defineSignInHandler without a session", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("answers an UnauthError with its status and message, the flow cookie expired on that response", async () => {
+  it("answers a stray callback with its status and message, the flow cookie left for the real one", async () => {
     const { handler } = await setup();
     const jar = cookieJar();
     const start = await call(handler, "/auth/fake");
     jar.update(start.headers);
     const back = fake.approve(start.headers.get("location")!);
-    back.searchParams.set("state", "forged");
+    const stray = new URL(back);
+    stray.searchParams.set("state", "forged");
 
-    const event = eventFor(new Request(back, { headers: { cookie: jar.toString() } }));
+    const event = eventFor(new Request(stray, { headers: { cookie: jar.toString() } }));
     const res = await handler(event);
 
     expect(res).toBeInstanceOf(Response);
     const response = res as Response;
     expect(response.status).toBe(401);
     expect(await response.text()).toMatch(/does not belong/);
-    expect(response.headers.getSetCookie().join("\n")).toMatch(/unauth-flow=/);
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(event.res.headers.getSetCookie()).toEqual([]);
+
+    const done = await call(handler, `${back.pathname}${back.search}`, {
+      headers: { cookie: jar.toString() },
+    });
+    expect(done.status).toBe(200);
+    expect(await done.json()).toMatchObject({ subject: "user-1" });
+  });
+
+  it("expires the flow cookie on the plain failure response once the callback is this sign-in's", async () => {
+    const { handler } = await setup();
+    const jar = cookieJar();
+    const start = await call(handler, "/auth/fake");
+    jar.update(start.headers);
+    const back = fake.approve(start.headers.get("location")!);
+    back.searchParams.set("error", "access_denied");
+
+    const event = eventFor(new Request(back, { headers: { cookie: jar.toString() } }));
+    const response = (await handler(event)) as Response;
+
+    expect(response.status).toBe(401);
+    const lines = response.headers.getSetCookie();
+    expect(lines.filter((l) => l.startsWith("unauth-flow=") && isExpired(l))).toHaveLength(1);
     expect(event.res.headers.getSetCookie()).toEqual([]);
   });
 
@@ -527,7 +553,7 @@ describe("defineSignInHandler with a session", () => {
     vi.mocked(hkdf).mockClear();
     const handler = defineSignInHandler(fakeProvider(), {
       ...base(),
-      key: () => deriveKey(SECRET, { info: FLOW_INFO }),
+      key: () => deriveJWK(SECRET, { info: FLOW_INFO }),
       onSuccess: signIn,
     });
 
@@ -561,7 +587,7 @@ describe("defineSignInHandler with a session", () => {
     expect(start.status).toBe(500);
     expect(start.headers.get("location")).toBeNull();
     expect(errors.map((error) => error.code)).toEqual(["ERR_UNAUTH_CONFIG_INVALID"]);
-    expect(errors[0]!.message).toMatch(/not a string[\s\S]*deriveKey\(secret, \{ info \}\)/);
+    expect(errors[0]!.message).toMatch(/not a string[\s\S]*deriveJWK\(secret, \{ info \}\)/);
   });
 
   it("refuses an asymmetric pair imported from a PEM: its public half could forge tokens", async () => {
@@ -590,6 +616,31 @@ describe("defineSignInHandler with a session", () => {
     expect(start.headers.getSetCookie()).toEqual([]);
     expect(errors.map((error) => error.code)).toEqual(["ERR_UNAUTH_CONFIG_INVALID"]);
     expect(errors[0]!.message).toMatch(/symmetric[\s\S]*public half/);
+  });
+
+  it("refuses a JWK Set unjwt refuses, as a configuration error: where the route is defined, or a callback's key on the first request", async () => {
+    const generated = await Promise.all(Array.from({ length: 9 }, () => generateJWK("A256GCM")));
+    const keys = generated.map(({ kty, k, alg }) => ({ kty, k, alg }));
+    let error: unknown;
+    try {
+      defineSignInHandler(fakeProvider(), { ...base(), key: { keys }, onSuccess: signIn });
+    } catch (thrown) {
+      error = thrown;
+    }
+    expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+    expect(isJWTError((error as Error).cause, "ERR_SESSION_CONFIG_INVALID")).toBe(true);
+    expect((error as Error).message).not.toContain("[unjwt");
+
+    const handler = defineSignInHandler(fakeProvider(), {
+      ...base(),
+      key: () => ({ keys }),
+      onSuccess: signIn,
+    });
+    const start = await call(handler, "/auth/fake");
+
+    expect(start.status).toBe(500);
+    expect(start.headers.get("location")).toBeNull();
+    expect(start.headers.getSetCookie()).toEqual([]);
   });
 
   it("derives redirect_uri from a request on `origin`, and refuses another origin", async () => {
@@ -681,7 +732,7 @@ describe("defineSignInHandler types", () => {
   it("infers TResult from onSuccess, nothing adding no member, onError answering within it", () => {
     expectTypeOf(
       defineSignInHandler(fakeProvider(), {
-        key: () => deriveKey(SECRET, { info: FLOW_INFO }),
+        key: () => deriveJWK(SECRET, { info: FLOW_INFO }),
         onSuccess: () => "ok",
       }),
     ).returns.resolves.toEqualTypeOf<Response | string>();

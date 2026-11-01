@@ -4,6 +4,7 @@ import { type JWK_oct, generateJWK } from "unjwt/session";
 import {
   type CustomProvider,
   type FlowResult,
+  type SignInHandlerOptions,
   type UnauthError,
   completeFlow,
   defineOAuth2Provider,
@@ -102,11 +103,15 @@ function browser(handler: Handler) {
 }
 
 /** The sign-in handler of `provider`, recording where `onSuccess` ran and the errors answered. */
-function app(provider: CustomProvider) {
+function app(
+  provider: CustomProvider,
+  sealing: Partial<Pick<SignInHandlerOptions, "key" | "jwe" | "onKeyLookup">> = {},
+) {
   const seen: string[] = [];
   const errors: UnauthError[] = [];
   const handler = defineSignInHandler(provider, {
     key,
+    ...sealing,
     redirectUri: REDIRECT_URI,
     onSuccess: (event, result) => {
       seen.push(`${new URL(event.req.url).hostname} ${result.identity.subject}`);
@@ -158,10 +163,13 @@ describe("a relocated start", () => {
     expect([...location.searchParams.keys()]).toEqual(["x", "unauth_intent"]);
     expect(moved.headers.getSetCookie().join("\n")).toMatch(/__Host-unauth-flow=/);
     expect(await intentCarrier().take(location.searchParams.get("unauth_intent")!)).toEqual({
-      intent: { memo: { userId: "u1" }, redirect: "/after" },
-      returnHost: "app.test",
-      provider: "custom",
-      state: expect.stringMatching(/^[\w-]{43}$/),
+      ok: true,
+      value: {
+        intent: { memo: { userId: "u1" }, redirect: "/after" },
+        returnHost: "app.test",
+        provider: "custom",
+        state: expect.stringMatching(/^[\w-]{43}$/),
+      },
     });
   });
 
@@ -172,7 +180,9 @@ describe("a relocated start", () => {
       redirectUri: REDIRECT_URI,
     });
     const location = new URL(moved.headers.get("location")!);
-    const { state } = await intentCarrier().take(location.searchParams.get("unauth_intent")!);
+    const taken = await intentCarrier().take(location.searchParams.get("unauth_intent")!);
+    if (!taken.ok) throw new Error("the intent does not open", { cause: taken.refused });
+    const { state } = taken.value;
     const token = await intentCarrier().issue({
       intent: {},
       returnHost: "app.test",
@@ -490,6 +500,31 @@ describe("the handoff back to the origin host", () => {
     expect(other.seen).toEqual([]);
   });
 
+  it("leaves the origin host's flow to the right handoff after one for another flow", async () => {
+    const { handler, seen, errors } = app(movingProvider().provider);
+    const visit = browser(handler);
+    const handoff = await handoffFor(visit);
+    const foreign = new URL(handoff);
+    const token = await handoffCarrier(key).issue({
+      result: { identity: { provider: "custom", subject: "acct-2", profile: {} } },
+      state: "another-flow",
+    });
+    foreign.searchParams.set("unauth_handoff", token);
+
+    let sent = new Headers();
+    const answer = (await visit(foreign, (event) => {
+      sent = event.res.headers;
+      return handler(event);
+    })) as Response;
+    expect(answer.status).toBe(401);
+    expect(isUnauthError(errors[0], "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(answer.headers.getSetCookie()).toEqual([]);
+    expect(sent.getSetCookie()).toEqual([]);
+
+    expect(await visit(handoff)).toBe("ok");
+    expect(seen).toEqual(["app.test acct-1"]);
+  });
+
   it("no longer opens once another sign-in started on the origin host", async () => {
     const { handler, seen, errors } = app(movingProvider().provider);
     const visit = browser(handler);
@@ -500,6 +535,159 @@ describe("the handoff back to the origin host", () => {
     expect(answer.status).toBe(401);
     expect(isUnauthError(errors[0], "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
     expect(seen).toEqual([]);
+  });
+});
+
+describe("the relocation's sealed tokens across key shapes", () => {
+  it("hands off under a CryptoKey key whose `jwe` names its algorithms", async () => {
+    const cryptoKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const { handler, seen, errors } = app(movingProvider().provider, {
+      key: cryptoKey,
+      jwe: { alg: "dir", enc: "A256GCM" },
+    });
+    const visit = browser(handler);
+    const handoff = await handoffFor(visit);
+
+    expect(await visit(handoff)).toBe("ok");
+    expect(errors).toEqual([]);
+    expect(seen).toEqual(["app.test acct-1"]);
+  });
+
+  it("completes across a key rotation: the intent and the origin's flow cookie sealed under the old key open under the set", async () => {
+    const { provider } = movingProvider();
+    const before = app(provider);
+    const after = app(provider, { key: { keys: [await generateJWK("A256GCM"), key] } });
+    const visit = browser(before.handler);
+
+    const moved = (await visit(formStart(`${APP}/auth/custom`))) as Response;
+    const started = (await visit(moved.headers.get("location")!, after.handler)) as Response;
+    const state = new URL(started.headers.get("location")!).searchParams.get("state")!;
+    const completed = (await visit(
+      `${REDIRECT_URI}?state=${state}&code=c-1`,
+      after.handler,
+    )) as Response;
+    const handoff = new URL(completed.headers.get("location")!);
+    expect(handoff.origin).toBe(APP);
+
+    expect(await visit(handoff, after.handler)).toBe("ok");
+    expect(after.errors).toEqual([]);
+    expect(after.seen).toEqual(["app.test acct-1"]);
+  });
+
+  it("seals the handoff with the set's first key: the old key alone no longer opens it", async () => {
+    const next = await generateJWK("A256GCM");
+    const sealed = handoffCarrier<unknown, never>({ keys: [next, key] });
+    const token = await sealed.issue({ result: {} as FlowResult<unknown>, state: "s-1" });
+
+    expect(await handoffCarrier<unknown, never>(key).take(token)).toMatchObject({ ok: false });
+    expect(await handoffCarrier<unknown, never>(next).take(token)).toMatchObject({
+      value: { state: "s-1" },
+    });
+  });
+
+  it("opens the handoff under the key `onKeyLookup` picks by the token's `kid`", async () => {
+    const other = await generateJWK("A256GCM");
+    const token = await handoffCarrier<unknown, never>(key).issue({
+      result: {} as FlowResult<unknown>,
+      state: "s-1",
+    });
+    const kids: unknown[] = [];
+    const looked = handoffCarrier<unknown, never>(other, {
+      onKeyLookup: ({ header }) => {
+        kids.push(header.kid);
+        return { keys: [key] };
+      },
+    });
+
+    expect(await looked.take(token)).toMatchObject({ value: { state: "s-1" } });
+    expect(kids).toEqual([key.kid]);
+    expect(await handoffCarrier<unknown, never>(other).take(token)).toMatchObject({ ok: false });
+  });
+
+  it("completes a relocated sign-in whose intent, flow cookies and handoff open under `onKeyLookup`'s keys", async () => {
+    const { provider } = movingProvider();
+    const next = await generateJWK("A256GCM");
+    const kids: unknown[] = [];
+    const before = app(provider);
+    const after = app(provider, {
+      key: next,
+      onKeyLookup: ({ header }) => {
+        kids.push(header.kid);
+        return { keys: [next, key] };
+      },
+    });
+    const visit = browser(before.handler);
+
+    const moved = (await visit(formStart(`${APP}/auth/custom`))) as Response;
+    const started = (await visit(moved.headers.get("location")!, after.handler)) as Response;
+    const state = new URL(started.headers.get("location")!).searchParams.get("state")!;
+    const completed = (await visit(
+      `${REDIRECT_URI}?state=${state}&code=c-1`,
+      after.handler,
+    )) as Response;
+    const handoff = new URL(completed.headers.get("location")!);
+
+    expect(await visit(handoff, after.handler)).toBe("ok");
+    expect(after.errors).toEqual([]);
+    expect(after.seen).toEqual(["app.test acct-1"]);
+    expect(kids).toEqual([key.kid, next.kid, key.kid, next.kid]);
+  });
+
+  it("propagates what `onKeyLookup` throws opening a handoff or an intent, the flow and the token left alive", async () => {
+    const { provider } = movingProvider();
+    const down = new Error("kms down");
+    const failingOn = (typ: string) =>
+      app(provider, {
+        onKeyLookup: ({ header }) => {
+          if (header.typ === typ) throw down;
+          return key;
+        },
+      });
+
+    const handoffs = failingOn("unauth-handoff+jwt");
+    const visit = browser(handoffs.handler);
+    const handoff = await handoffFor(visit);
+    const responses: Headers[] = [];
+    const recorded: Handler = (event) => {
+      responses.push(event.res.headers);
+      return handoffs.handler(event);
+    };
+    expect(await rejection(visit(handoff, recorded))).toBe(down);
+    expect(responses[0]!.getSetCookie()).toEqual([]);
+    expect(handoffs.errors).toEqual([]);
+    expect(handoffs.seen).toEqual([]);
+    expect(await visit(handoff, app(provider).handler)).toBe("ok");
+
+    const intents = failingOn("unauth-intent+jwt");
+    const moved = (await browser(intents.handler)(formStart(`${APP}/auth/custom`))) as Response;
+    const relocated = {
+      req: new Request(moved.headers.get("location")!),
+      res: { headers: new Headers() },
+    };
+    expect(await rejection(intents.handler(relocated))).toBe(down);
+    expect(intents.errors).toEqual([]);
+  });
+
+  it("hands `onKeyLookup` an intent's and a handoff's header alone, without an event", async () => {
+    const { provider } = movingProvider();
+    const lookups: Record<string, string[]> = {};
+    const looked = app(provider, {
+      onKeyLookup: (args) => {
+        lookups[String(args.header.typ)] = Object.keys(args);
+        return key;
+      },
+    });
+    const visit = browser(looked.handler);
+
+    expect(await visit(await handoffFor(visit))).toBe("ok");
+    expect(lookups).toEqual({
+      "unauth-intent+jwt": ["header"],
+      "unauth-flow+jwt": ["header", "event"],
+      "unauth-handoff+jwt": ["header"],
+    });
   });
 });
 
@@ -550,11 +738,17 @@ describe("the sealed carriers", () => {
       state: "s".repeat(43),
     });
 
-    await expect(handoffs.take(intent)).rejects.toThrow(/"typ"/);
-    await expect(intents.take(handoff)).rejects.toThrow(/"typ"/);
-    expect(await intents.take(intent)).toEqual({ loginHint: "alice" });
-    await expect(intents.take(intent)).rejects.toThrow("sealed token already used");
-    expect((await handoffs.take(handoff)).result.identity.subject).toBe("acct-1");
+    const refused = (message: string | RegExp) => ({
+      ok: false,
+      refused: expect.objectContaining({ message: expect.stringMatching(message) }),
+    });
+    expect(await handoffs.take(intent)).toEqual(refused(/"typ"/));
+    expect(await intents.take(handoff)).toEqual(refused(/"typ"/));
+    expect(await intents.take(intent)).toEqual({ ok: true, value: { loginHint: "alice" } });
+    expect(await intents.take(intent)).toEqual(refused("sealed token already used"));
+    expect(await handoffs.take(handoff)).toMatchObject({
+      value: { result: { identity: { subject: "acct-1" } } },
+    });
   });
 
   it("refuses an intent token where the route expects a handoff", async () => {

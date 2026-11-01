@@ -101,7 +101,7 @@ describe("h3 v2", () => {
     expect(await me.json()).toMatchObject({ userId: "user-1" });
   });
 
-  it("answers a failed callback with the error's status, the flow cookie expired", async () => {
+  it("answers a stray callback with the error's status, the flow cookie left alone", async () => {
     await setup();
     const jar = cookieJar();
     const start = await app.request("/auth/fake");
@@ -114,7 +114,7 @@ describe("h3 v2", () => {
     });
 
     expect(res.status).toBe(401);
-    expect(res.headers.getSetCookie().join("\n")).toMatch(/__Host-unauth-flow=/);
+    expect(res.headers.getSetCookie().join("\n")).not.toMatch(/__Host-unauth-flow=/);
   });
 
   it("expires the flow cookie when onError answers an error Response or throws: h3 keeps those headers apart", async () => {
@@ -138,7 +138,7 @@ describe("h3 v2", () => {
       const start = await errors.request("/auth/fake");
       jar.update(start.headers);
       const back = fake.approve(start.headers.get("location")!);
-      back.searchParams.set("state", "forged");
+      back.searchParams.set("error", "access_denied");
 
       const res = await errors.request(`${back.pathname}${back.search}${mode}`, {
         headers: { cookie: jar.toString() },

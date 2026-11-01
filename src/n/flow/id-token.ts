@@ -3,7 +3,7 @@ import { type JWSAlgorithm, type JWSVerifyResult, verify } from "unjwt/jws";
 import { type DigestAlgorithm, hash } from "unsecure/hash";
 import { base64Stringify } from "unsecure/utils";
 import { secureCompare } from "unsecure/compare";
-import { UnauthError, isUnauthError } from "../../error.ts";
+import { type UnauthErrorCauseMap, UnauthError, isUnauthError } from "../../error.ts";
 import { type Fetch, nowOf } from "./_internal/http/shared.ts";
 import type { CacheDriver } from "./_internal/cache/load.ts";
 import { fetchJwks } from "./jwks.ts";
@@ -30,8 +30,13 @@ export interface VerifyIdTokenOptions {
   issuer: string;
   /** The `client_id` the token must name in `aud` (and `azp` when present). */
   clientId: string;
-  /** The nonce sent with the authorization request; the token must carry it. */
+  /**
+   * The nonce sent with the authorization request; the token must carry it. Unset, `nonce` is not
+   * checked: a refreshed id_token need not carry one (OIDC Core §12.2).
+   */
   nonce?: string;
+  /** The `sub` the token must name, as a refreshed id_token names the account it was first issued for. */
+  subject?: string;
   /**
    * The JWKS URL (cached, refetched for an unknown `kid` once the cached set is 30 seconds old) or
    * a key set in hand.
@@ -51,8 +56,9 @@ export interface VerifyIdTokenOptions {
 
 /**
  * Verifies an OpenID Connect id_token (OIDC Core §3.1.3.7): an asymmetric signature from the
- * issuer's keys, `iss`, `aud`/`azp`, `exp`, `iat`, `nonce` and, when present, `at_hash`. Failures
- * throw `ERR_AUTHN_ID_TOKEN_INVALID` (401); an unreachable key set throws `ERR_AUTHN_PROVIDER_ERROR`.
+ * issuer's keys, `iss`, `aud`/`azp`, `exp`, `iat`, `sub`, `nonce` and, when present, `at_hash`.
+ * Failures throw `ERR_AUTHN_ID_TOKEN_INVALID` (401); an unreachable key set throws
+ * `ERR_AUTHN_PROVIDER_ERROR`.
  */
 export async function verifyIdToken(
   idToken: string,
@@ -60,7 +66,7 @@ export async function verifyIdToken(
 ): Promise<IdTokenClaims> {
   const { jwks, issuer, clientId } = options;
   const now = nowOf(options);
-  const lookup = async (header: { kid?: string }): Promise<JWKSet> => {
+  const lookup = async ({ header }: { header: { kid?: string } }): Promise<JWKSet> => {
     if (typeof jwks !== "string") return jwks;
     const set = await fetchJwks(jwks, options);
     if (header.kid === undefined || set.keys.some((key) => key.kid === header.kid)) return set;
@@ -78,7 +84,7 @@ export async function verifyIdToken(
       clockTolerance: options.clockTolerance ?? 30,
     });
   } catch (error) {
-    throw unauthCause(error) ?? invalid("The id_token failed verification.", error);
+    throw unauthCause(error) ?? invalid("The id_token failed verification.", { cause: error });
   }
 
   const claims = verified.payload;
@@ -92,6 +98,9 @@ export async function verifyIdToken(
   const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
   if (claims.azp === undefined ? audiences.length > 1 : claims.azp !== clientId) {
     throw invalid("The id_token was issued to another party.", { claim: "azp" });
+  }
+  if (options.subject !== undefined && claims.sub !== options.subject) {
+    throw invalid("The id_token names another account.", { claim: "sub", reason: "subject" });
   }
   if (options.nonce !== undefined && !secureCompare(options.nonce, stringClaim(claims.nonce))) {
     throw invalid("The id_token does not belong to this sign-in.", { claim: "nonce" });
@@ -129,7 +138,10 @@ function unauthCause(error: unknown): UnauthError | undefined {
   return undefined;
 }
 
-function invalid(message: string, cause: unknown): UnauthError<"ERR_AUTHN_ID_TOKEN_INVALID"> {
+function invalid(
+  message: string,
+  cause: UnauthErrorCauseMap["ERR_AUTHN_ID_TOKEN_INVALID"],
+): UnauthError<"ERR_AUTHN_ID_TOKEN_INVALID"> {
   return new UnauthError(`[unauth/n] ${message}`, "ERR_AUTHN_ID_TOKEN_INVALID", {
     status: 401,
     cause,

@@ -39,8 +39,11 @@ export interface OidcProviderConfig extends Pick<
   issuer: string;
   clientId: string;
   clientSecret?: OAuthClientSecret;
-  /** @default "oidc" */
-  id?: string;
+  /**
+   * What applications key accounts by, next to the subject: each provider needs its own, or two
+   * issuers merge their accounts.
+   */
+  id: string;
   /** @default ["openid", "profile", "email"] */
   scopes?: string[];
 }
@@ -48,7 +51,8 @@ export interface OidcProviderConfig extends Pick<
 /**
  * A generic OpenID Connect provider: discovery, PKCE, a nonce, id_token verification and the
  * userinfo endpoint when the issuer has one. Without `profile`, the account is the id_token claims
- * merged over userinfo.
+ * merged over userinfo. `id` is required and must differ per provider: applications key accounts by
+ * it. Throws `ERR_UNAUTH_CONFIG_INVALID` on an empty `id`.
  */
 export function defineOidcProvider(options: OidcProviderConfig): OAuthProvider<OidcProfile>;
 export function defineOidcProvider<TProfile>(
@@ -61,13 +65,11 @@ export function defineOidcProvider(
     clientId,
     clientSecret,
     profile,
-    id = "oidc",
     scopes = ["openid", "profile", "email"],
     ...rest
   } = options;
   return defineProvider<unknown>({
     ...rest,
-    id,
     scopes,
     kind: "oidc",
     discovery: true,

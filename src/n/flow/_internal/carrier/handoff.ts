@@ -2,7 +2,7 @@ import { secureCompare } from "unsecure/compare";
 import type { FlowKey } from "../../../_internal/flow-key.ts";
 import { UnauthError } from "../../../../error.ts";
 import { type SealedCarrier, sealedCarrier } from "./sealed.ts";
-import { type FlowCarrierOptions, takeFlow } from "./transient.ts";
+import { type FlowCarrierOptions, openFlow } from "./transient.ts";
 import type { FlowResult, Provider } from "../../types.ts";
 
 /** The query parameter carrying a sealed sign-in result back to the host the user started on. */
@@ -19,21 +19,29 @@ export type HandoffCarrier<TProfile, TMemo> = SealedCarrier<Handoff<TProfile, TM
 
 /**
  * Seals a sign-in result for the host the user started on, under the flow key with its own
- * `typ`; a token opens once, within a minute, in this process.
+ * `typ`; a token opens once, within a minute, in this process, under the key `onKeyLookup` picks
+ * when it is given. `ERR_UNAUTH_CONFIG_INVALID` for a key naming no algorithm without `jwe`.
  */
-export function handoffCarrier<TProfile, TMemo>(key: FlowKey): HandoffCarrier<TProfile, TMemo> {
+export function handoffCarrier<TProfile, TMemo>(
+  key: FlowKey,
+  options: Pick<FlowCarrierOptions, "jwe" | "onKeyLookup"> = {},
+): HandoffCarrier<TProfile, TMemo> {
   return sealedCarrier<Handoff<TProfile, TMemo>>(key, {
     typ: HANDOFF_TYP,
     name: "unauth-handoff",
+    jwe: options.jwe,
+    onKeyLookup: options.onKeyLookup,
   });
 }
 
 /**
  * The result a handoff token brings back to the host the sign-in started on, redeemed as a
- * callback is: the flow this browser recorded there is taken (its cookie expired on `headers`,
- * whatever the outcome), and the token must open and name that flow's provider and `state`.
+ * callback is: the token must open and name the provider and `state` of the flow this browser
+ * recorded there, which is then consumed (its cookie expired on `headers`).
  * `ERR_AUTHN_FLOW_EXPIRED` without a flow or for a token that does not open;
- * `ERR_AUTHN_STATE_MISMATCH` for a token of another flow or provider.
+ * `ERR_AUTHN_STATE_MISMATCH` for a token of another flow or provider. A refused token leaves a
+ * cookie-carried flow alive; a store-backed one is taken on opening, whatever the token. What
+ * `onKeyLookup` throws propagates as it is.
  */
 export async function redeemHandoff<TProfile, TMemo>(
   provider: Provider<TProfile>,
@@ -46,27 +54,26 @@ export async function redeemHandoff<TProfile, TMemo>(
   },
 ): Promise<FlowResult<TProfile, TMemo>> {
   const { token, carrier, headers, options } = context;
-  const taken = await takeFlow({ request, headers, provider, options });
-  if (!taken.record) {
+  const opened = await openFlow({ request, headers, provider, options });
+  if (!opened.record) {
     throw new UnauthError(
-      taken.reason === "missing"
+      opened.reason === "missing"
         ? "[unauth/n] Finish the sign-in in the browser it was started in."
         : "[unauth/n] No sign-in in progress: it expired or was already completed.",
       "ERR_AUTHN_FLOW_EXPIRED",
-      { status: 401, cause: { reason: taken.reason } },
+      { status: 401, cause: { reason: opened.reason } },
     );
   }
-  let handoff: Handoff<TProfile, TMemo>;
-  try {
-    handoff = await carrier.take(token);
-  } catch (error) {
+  const taken = await carrier.take(token);
+  if (!taken.ok) {
     throw new UnauthError(
       "[unauth/n] The sign-in handed over to this host is invalid, expired or already used.",
       "ERR_AUTHN_FLOW_EXPIRED",
-      { status: 401, cause: { reason: "consumed", error } },
+      { status: 401, cause: { reason: "consumed", error: taken.refused } },
     );
   }
-  const { record } = taken;
+  const { record } = opened;
+  const handoff = taken.value;
   if (record.provider !== provider.id || !secureCompare(record.state, handoff.state)) {
     throw new UnauthError(
       "[unauth/n] The sign-in handed over to this host does not belong to the one in progress.",
@@ -74,6 +81,7 @@ export async function redeemHandoff<TProfile, TMemo>(
       { status: 401, cause: { provider: record.provider } },
     );
   }
+  await opened.consume();
   return handoff.result;
 }
 

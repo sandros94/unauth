@@ -15,6 +15,7 @@ import {
   defineOAuth2Provider,
   defineOidcProvider,
 } from "../../../src/n/index.ts";
+import { cookieJar } from "../_cookies.ts";
 import { cookieHeader, formStart, isExpired } from "../_session.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "./_fake-provider.ts";
 
@@ -51,7 +52,12 @@ function fakeOAuth2(): OAuthProvider {
 async function oidcSetup() {
   const issuer = `https://${crypto.randomUUID()}.idp.test`;
   const fake = await createFakeProvider({ issuer });
-  const provider = defineOidcProvider({ issuer, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
+  const provider = defineOidcProvider({
+    id: "oidc",
+    issuer,
+    clientId: CLIENT_ID,
+    clientSecret: CLIENT_SECRET,
+  });
   return { fake, provider };
 }
 
@@ -117,7 +123,7 @@ describe("startFlow", () => {
       fetch: fake.fetch,
       context,
     });
-    expect(Object.keys(context)).toEqual(["sessions"]);
+    expect(Object.keys(context)).toEqual(["unjwt"]);
 
     const bare = await startFlow(fakeOAuth2(), new Request(REDIRECT_URI), {
       key,
@@ -282,6 +288,7 @@ describe("completeFlow", () => {
     const issuer = "http://callback-insecure.lan";
     const fake = await createFakeProvider({ issuer });
     const provider = defineOidcProvider({
+      id: "oidc",
       issuer,
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -324,7 +331,7 @@ describe("completeFlow", () => {
     expect(result.redirect).toBeUndefined();
   });
 
-  it("throws ERR_AUTHN_STATE_MISMATCH on another state, and still clears the cookie", async () => {
+  it("throws ERR_AUTHN_STATE_MISMATCH on another state, leaving the flow cookie alone", async () => {
     const fake = await createFakeProvider();
     const { back, request } = await beginSignIn(fakeOAuth2(), fake);
     back.searchParams.set("state", "forged");
@@ -340,7 +347,38 @@ describe("completeFlow", () => {
 
     expect(isUnauthError(error, "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
     expect(isUnauthError(error) && error.status).toBe(401);
-    expect(flowCookieCleared(headers)).toBe(true);
+    expect(headers.getSetCookie()).toEqual([]);
+  });
+
+  it("leaves the flow to the real callback after a stray one, which then completes once", async () => {
+    const fake = await createFakeProvider();
+    const { response, back } = await beginSignIn(fakeOAuth2(), fake);
+    const jar = cookieJar();
+    jar.update(response.headers);
+    const visit = async (url: URL) => {
+      const headers = new Headers();
+      const request = new Request(url, { headers: { cookie: jar.toString() } });
+      const outcome = await completeFlow(fakeOAuth2(), request, {
+        key,
+        headers,
+        fetch: fake.fetch,
+      }).catch((error: unknown) => error);
+      jar.update(headers);
+      return { outcome, headers };
+    };
+    const stray = new URL(back);
+    stray.searchParams.set("state", "forged");
+
+    const refused = await visit(stray);
+    expect(isUnauthError(refused.outcome, "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(refused.headers.getSetCookie()).toEqual([]);
+
+    const done = await visit(back);
+    expect(done.outcome).toMatchObject({ identity: { subject: "user-1" } });
+    expect(flowCookieCleared(done.headers)).toBe(true);
+
+    const replayed = await visit(back);
+    expect(isUnauthError(replayed.outcome, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
   });
 
   it("throws ERR_AUTHN_STATE_MISMATCH when the flow was started for another provider", async () => {
@@ -420,6 +458,7 @@ describe("completeFlow", () => {
     );
 
     expect(isUnauthError(error, "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(headers.getSetCookie()).toEqual([]);
   });
 
   it("throws ERR_AUTHN_PROVIDER_REFUSED on ?error=, with the provider's error in cause", async () => {
@@ -608,6 +647,7 @@ describe("RFC 9207 iss parameter", () => {
     const issuer = `https://${crypto.randomUUID()}.idp.test`;
     const fake = await createFakeProvider({ issuer });
     const provider = defineOidcProvider({
+      id: "oidc",
       issuer,
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -771,6 +811,36 @@ describe("FlowStore", () => {
       fetch: fake.fetch,
     });
     expect(result.memo).toEqual(memo);
+  });
+
+  it("takes the record on a stray callback: the real one then finds the sign-in consumed", async () => {
+    const fake = await createFakeProvider();
+    const { store, records } = memoryStore();
+    const { back, request } = await beginSignIn(fakeOAuth2(), fake, { store });
+    const stray = new URL(back);
+    stray.searchParams.set("state", "forged");
+
+    const refused = await rejection(
+      completeFlow(fakeOAuth2(), new Request(stray, { headers: request.headers }), {
+        key,
+        store,
+        headers: new Headers(),
+        fetch: fake.fetch,
+      }),
+    );
+    expect(isUnauthError(refused, "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(records.size).toBe(0);
+
+    const error = await rejection(
+      completeFlow(fakeOAuth2(), request, {
+        key,
+        store,
+        headers: new Headers(),
+        fetch: fake.fetch,
+      }),
+    );
+    expect(isUnauthError(error, "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
+    expect(isUnauthError(error) && error.cause).toEqual({ reason: "consumed" });
   });
 
   it("throws ERR_AUTHN_FLOW_EXPIRED when the store no longer has the record", async () => {

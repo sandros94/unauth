@@ -10,9 +10,9 @@ import {
 } from "./http/shared.ts";
 import type { CacheDriver } from "./cache/load.ts";
 import { CALLBACK_BODY_MAX_BYTES, readText } from "./http/body.ts";
-import { type FlowCarrierOptions, takeFlow } from "./carrier/transient.ts";
+import { type FlowCarrierOptions, openFlow } from "./carrier/transient.ts";
 import { resolveProvider } from "../discovery.ts";
-import { verifyIdToken } from "../id-token.ts";
+import { verifyProviderIdToken } from "./provider-id-token.ts";
 import { exchangeCode } from "../token.ts";
 import type {
   CustomProvider,
@@ -53,25 +53,29 @@ export interface CompletedFlow<TProfile, TMemo> {
  * `completeFlow`, with the host a relocated start began on and the flow's `state`: the sign-in
  * route hands the result back there, where the flow that host recorded is checked against the
  * `state`, and only the route may learn them. The provider's `error` counts only once `state` has
- * proven the callback belongs to this sign-in (RFC 6749 §4.1.2.1 sends `state` with an error too):
- * a stray link cannot fail a sign-in in progress with an error of its own.
+ * proven the callback belongs to this sign-in (RFC 6749 §4.1.2.1 sends `state` with an error too).
+ * A callback naming another `state` or provider is refused with `ERR_AUTHN_STATE_MISMATCH`:
+ * without a store the flow cookie is left as it was, so the real callback can still complete;
+ * with a store the record was already taken (its `take` is single-use) and that sign-in is over.
+ * A matching callback consumes the flow before anything else, whatever the outcome: the provider's
+ * refusal, a failed exchange or profile all end it, the flow cookie expired on `headers`.
  */
 export async function completeFlowWithReturnHost<TProfile, TMemo = unknown>(
   provider: Provider<TProfile>,
   request: Request,
   options: CompleteFlowOptions,
 ): Promise<CompletedFlow<TProfile, TMemo>> {
-  const taken = await takeFlow({ request, headers: options.headers, provider, options });
-  if (!taken.record) {
+  const opened = await openFlow({ request, headers: options.headers, provider, options });
+  if (!opened.record) {
     throw new UnauthError(
-      taken.reason === "missing"
+      opened.reason === "missing"
         ? "[unauth/n] No sign-in cookie came back with the callback: the sign-in must start on the host the callback URL names, with cookies on."
         : "[unauth/n] No sign-in in progress: it expired or was already completed.",
       "ERR_AUTHN_FLOW_EXPIRED",
-      { status: 401, cause: { reason: taken.reason } },
+      { status: 401, cause: { reason: opened.reason } },
     );
   }
-  const { record } = taken;
+  const { record } = opened;
   const params = await callbackParams(provider, request);
   if (record.provider !== provider.id || !secureCompare(record.state, params.state)) {
     throw new UnauthError(
@@ -83,6 +87,7 @@ export async function completeFlowWithReturnHost<TProfile, TMemo = unknown>(
       },
     );
   }
+  await opened.consume();
 
   const error = params.error;
   if (error !== undefined) {
@@ -206,23 +211,20 @@ async function idTokenClaims(
   },
 ): Promise<IdTokenClaims> {
   const { tokens } = options;
-  if (!tokens.id_token || !provider.issuer || !provider.jwks) {
+  if (!tokens.id_token) {
     throw new UnauthError(
       "[unauth/n] The provider returned no id_token.",
       "ERR_AUTHN_ID_TOKEN_INVALID",
-      { status: 401 },
+      { status: 401, cause: { reason: "missing" } },
     );
   }
-  return verifyIdToken(tokens.id_token, {
-    issuer: provider.issuer,
-    clientId: provider.client.id,
-    nonce: options.nonce,
-    jwks: provider.jwks,
+  return verifyProviderIdToken(provider, {
+    idToken: tokens.id_token,
     accessToken: tokens.access_token,
+    nonce: options.nonce,
     fetch: options.fetch,
     now: options.now,
     cache: options.cache,
-    insecureHosts: provider.insecureHosts,
   });
 }
 

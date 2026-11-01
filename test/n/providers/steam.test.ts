@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { type JWK_oct, generateJWK } from "unjwt/session";
 
 import { isUnauthError } from "../../../src/n/index.ts";
 import type { CustomProvider, CustomStart, FlowRecord } from "../../../src/n/flow/types.ts";
@@ -7,6 +8,7 @@ import {
   defineSteamHandler,
   defineSteamProvider,
 } from "../../../src/n/providers/steam.ts";
+import { cookieHeader, isExpired } from "../_session.ts";
 
 const OP_ENDPOINT = "https://steamcommunity.com/openid/login";
 const NS = "http://specs.openid.net/auth/2.0";
@@ -404,5 +406,48 @@ describe("defineSteamProvider", () => {
 
   it("has a handler", () => {
     expect(defineSteamHandler).toBeTypeOf("function");
+  });
+});
+
+describe("defineSteamHandler", () => {
+  let key: JWK_oct<"A256GCM">;
+
+  beforeAll(async () => {
+    key = await generateJWK("A256GCM");
+  });
+
+  it("completes Steam's return on the same route instead of starting over", async () => {
+    const { fetch, requests } = fake();
+    const onSuccess = vi.fn((_event: unknown, _result: unknown) => "signed-in");
+    const handler = defineSteamHandler({ key, redirectUri: REDIRECT_URI, fetch, onSuccess });
+
+    const first = { req: new Request(REDIRECT_URI), res: { headers: new Headers() } };
+    const start = await handler(first);
+    expect(start).toBeInstanceOf(Response);
+    const location = new URL((start as Response).headers.get("location")!);
+    expect(location.origin + location.pathname).toBe(OP_ENDPOINT);
+    const returnTo = location.searchParams.get("openid.return_to")!;
+    const state = new URL(returnTo).searchParams.get("state")!;
+
+    const back = new URL(returnTo);
+    for (const [name, value] of Object.entries(assertion({ "openid.return_to": returnTo }))) {
+      if (name !== "state") back.searchParams.set(name, value);
+    }
+    expect(back.searchParams.get("state")).toBe(state);
+    const second = {
+      req: new Request(back, { headers: { cookie: cookieHeader((start as Response).headers) } }),
+      res: { headers: new Headers() },
+    };
+    const answer = await handler(second);
+
+    expect(answer).toBe("signed-in");
+    expect(onSuccess).toHaveBeenCalledOnce();
+    expect(onSuccess.mock.calls[0]![1]).toMatchObject({
+      identity: { provider: "steam", subject: STEAMID },
+    });
+    expect(requests.map((request) => request.url.href)).toEqual([OP_ENDPOINT]);
+    const flow = second.res.headers.getSetCookie().find((line) => line.includes("unauth-flow="));
+    expect(flow).toBeDefined();
+    expect(isExpired(flow!)).toBe(true);
   });
 });

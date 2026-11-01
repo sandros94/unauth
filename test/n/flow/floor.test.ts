@@ -547,6 +547,19 @@ describe("refreshTokens", () => {
     expect(new URLSearchParams(fake.requests.at(-1)!.body).get("grant_type")).toBe("refresh_token");
   });
 
+  it("returns an OAuth 2.0 provider's id_token as is, fetching no discovery document or keys", async () => {
+    const fake = await createFakeProvider();
+    fake.nextTokenResponse(
+      Response.json({ access_token: "at-2", token_type: "bearer", id_token: "not-a-jwt" }),
+    );
+
+    const tokens = await refreshTokens(github(), { refreshToken: "rt-1", fetch: fake.fetch });
+
+    expect(tokens).toMatchObject({ access_token: "at-2", id_token: "not-a-jwt" });
+    expect(tokens).not.toHaveProperty("claims");
+    expect(fake.requests.map((request) => request.url.pathname)).toEqual(["/token"]);
+  });
+
   it("throws ERR_AUTHN_TOKEN_EXCHANGE on a refused refresh token", async () => {
     const fake = await createFakeProvider();
 

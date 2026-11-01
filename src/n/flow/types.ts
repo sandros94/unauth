@@ -21,6 +21,10 @@ export interface OAuthTokens {
   expires_in?: number;
   refresh_token?: string;
   scope?: string;
+  /**
+   * As received. `completeFlow` and `refreshTokens` verify it for an OpenID Connect provider;
+   * `refreshTokens` returns its claims beside the tokens.
+   */
   id_token?: string;
   /** The token endpoint's response body as received. */
   raw: Record<string, unknown>;
@@ -163,6 +167,13 @@ export interface CustomProvider<TProfile = Record<string, unknown>> {
   trustedOrigins?: string[];
   /** How the provider sends the user back; a `form_post` callback is a `POST` to the same route. @default "query" */
   responseMode?: "query" | "form_post";
+  /**
+   * Whether a request to the sign-in route is the callback leg, from its query. The engine's own
+   * test applies either way (`code` or `error` in the query, or a `POST` to a `form_post` route):
+   * a provider whose callback carries other parameters names them here. Only the query is passed,
+   * never a posted body, which is read after the flow record is checked.
+   */
+  isCallback?: (params: URLSearchParams) => boolean;
   /** The first leg: where to send the user, and what to seal in the record for `complete`. */
   start: (context: CustomStartContext) => Promise<CustomStart>;
   /**
@@ -303,6 +314,9 @@ export interface FlowResult<TProfile = Record<string, unknown>, TMemo = never> {
 /**
  * A server-side store of flow records; the sealed cookie then carries only the record's id. `put`
  * takes a `ttl` in seconds; `take` returns a record once and deletes it, `undefined` when absent.
+ * `take` is the single-use guarantee, so a callback takes the record before its `state` is
+ * compared: a stray callback ends a store-backed sign-in. Without a store, a callback whose `state`
+ * does not match leaves the flow alive.
  */
 export interface FlowStore {
   put: (id: string, record: FlowRecord, options: { ttl: number }) => Promise<void>;

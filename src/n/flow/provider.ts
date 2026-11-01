@@ -138,6 +138,9 @@ function assertCustomProvider(provider: CustomProvider<unknown>): void {
   ) {
     throw configError(`${label} has an unknown "responseMode".`);
   }
+  if (provider.isCallback !== undefined && typeof provider.isCallback !== "function") {
+    throw configError(`${label} has an "isCallback" that is not a function.`);
+  }
 }
 
 function defaultTokenAuth(client: ProviderConfig["client"]): TokenAuthMethod {

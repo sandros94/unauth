@@ -16,7 +16,7 @@ describe("oauth2 / oidc typing", () => {
       token: "https://idp.test/t",
       userinfo: "https://idp.test/u",
     });
-    const generic = defineOidcProvider({ issuer: "https://idp.test", clientId: "c" });
+    const generic = defineOidcProvider({ id: "idp", issuer: "https://idp.test", clientId: "c" });
 
     expectTypeOf(plain).toEqualTypeOf<OAuthProvider>();
     expectTypeOf(generic).toEqualTypeOf<OAuthProvider<OidcProfile>>();
@@ -39,7 +39,7 @@ describe("oauth2 / oidc typing", () => {
   });
 
   it("maps OIDC claims merged with userinfo into OidcProfile", async () => {
-    const provider = defineOidcProvider({ issuer: "https://idp.test", clientId: "c" });
+    const provider = defineOidcProvider({ id: "idp", issuer: "https://idp.test", clientId: "c" });
     const identity = await provider.profile({
       tokens: { access_token: "a", token_type: "Bearer", raw: {} },
       claims: { iss: "https://idp.test", sub: "u1", aud: "c", exp: 2, iat: 1, email: "a@b.c" },

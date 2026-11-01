@@ -6,6 +6,7 @@ import {
   type FlowRecord,
   completeFlow,
   defineProvider,
+  defineSignInHandler,
   isUnauthError,
   startFlow,
 } from "../../../src/n/index.ts";
@@ -237,5 +238,87 @@ describe("a custom provider", () => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the shape under test
       defineProvider({ id: "custom", kind: "custom", start: async () => ({ url: "" }) } as never),
     ).toThrow(/"start" and "complete"/);
+  });
+});
+
+describe("a custom provider's isCallback", () => {
+  /** A provider whose callback carries `assertion` and `state`, never `code` or `error`. */
+  function assertionProvider() {
+    const isCallback = vi.fn((params: URLSearchParams) => params.has("assertion"));
+    const complete = vi.fn(async (context: Parameters<CustomProvider<Account>["complete"]>[0]) => {
+      if (context.params.assertion !== context.record.data?.expected) {
+        throw new TypeError("another assertion");
+      }
+      return { identity: { subject: "acct-a", profile: { id: "acct-a", handle: "a" } } };
+    });
+    const provider = defineProvider<Account>({
+      id: "custom",
+      kind: "custom",
+      isCallback,
+      start: async ({ record, redirectUri }) => {
+        const back = new URL(redirectUri);
+        back.searchParams.set("state", record.state);
+        return {
+          url: `${IDP}/login?return_to=${encodeURIComponent(back.href)}`,
+          data: { expected: "a-1" },
+        };
+      },
+      complete,
+    });
+    const onSuccess = vi.fn(() => "signed-in");
+    const handler = defineSignInHandler(provider, { key, redirectUri: REDIRECT_URI, onSuccess });
+    return { handler, isCallback, complete, onSuccess };
+  }
+
+  async function begin(handler: ReturnType<typeof assertionProvider>["handler"]) {
+    const start = await handler({
+      req: new Request(REDIRECT_URI),
+      res: { headers: new Headers() },
+    });
+    if (!(start instanceof Response)) throw new Error("expected a redirect");
+    const location = new URL(start.headers.get("location")!);
+    return { start, back: new URL(location.searchParams.get("return_to")!) };
+  }
+
+  it("dispatches a request it accepts to complete", async () => {
+    const { handler, isCallback, complete, onSuccess } = assertionProvider();
+    const { start, back } = await begin(handler);
+    back.searchParams.set("assertion", "a-1");
+    const event = {
+      req: new Request(back, { headers: { cookie: cookieHeader(start.headers) } }),
+      res: { headers: new Headers() },
+    };
+
+    expect(await handler(event)).toBe("signed-in");
+    expect(isCallback).toHaveBeenLastCalledWith(back.searchParams);
+    expect(complete).toHaveBeenCalledOnce();
+    expect(onSuccess).toHaveBeenCalledOnce();
+  });
+
+  it("starts a flow on a request it refuses, without code or error", async () => {
+    const { handler, isCallback, complete } = assertionProvider();
+    const { start, back } = await begin(handler);
+    const answer = await handler({
+      req: new Request(back, { headers: { cookie: cookieHeader(start.headers) } }),
+      res: { headers: new Headers() },
+    });
+
+    expect(answer).toBeInstanceOf(Response);
+    expect(new URL((answer as Response).headers.get("location")!).origin).toBe(IDP);
+    expect(isCallback).toHaveBeenCalledTimes(2);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("defineProvider refuses one that is not a function", () => {
+    expect(() =>
+      defineProvider({
+        id: "custom",
+        kind: "custom",
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the shape under test
+        isCallback: "yes" as never,
+        start: async () => ({ url: IDP }),
+        complete: async () => ({ identity: { subject: "x", profile: {} } }),
+      }),
+    ).toThrow(/"isCallback"/);
   });
 });

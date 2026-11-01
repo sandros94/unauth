@@ -1,4 +1,3 @@
-import type { FlowKey } from "../../../_internal/flow-key.ts";
 import { UnauthError } from "../../../../error.ts";
 import { configError } from "../http/shared.ts";
 import { originOf } from "../redirect.ts";
@@ -51,7 +50,7 @@ export async function withSealedIntent<TMemo>(
     throw configError(`A sign-in started on ${from.origin} cannot be relocated.`);
   }
   const sealed = new URL(url);
-  const token = await carrierOf<TMemo>(options.key).issue({
+  const token = await carrierOf<TMemo>(options).issue({
     intent: definedIntent(options),
     returnHost: from.hostname,
     provider: record.provider,
@@ -66,7 +65,7 @@ export async function withSealedIntent<TMemo>(
  * member, the sealed member winning where both have a value; beside them, the host the relocated
  * start was made on and the `state` of the flow it keeps. `ERR_AUTHN_FLOW_EXPIRED` when the token
  * does not open, expired or was already used; `ERR_AUTHN_STATE_MISMATCH` when it was sealed for
- * another provider.
+ * another provider. What `onKeyLookup` throws propagates as it is.
  */
 export async function resumeIntent<TMemo>(
   request: Request,
@@ -75,16 +74,15 @@ export async function resumeIntent<TMemo>(
   const { provider, options } = context;
   const token = new URL(request.url).searchParams.get(INTENT_PARAM);
   if (token === null) return { options };
-  let sealed: SealedIntent<TMemo>;
-  try {
-    sealed = await carrierOf<TMemo>(options.key).take(token);
-  } catch (error) {
+  const taken = await carrierOf<TMemo>(options).take(token);
+  if (!taken.ok) {
     throw new UnauthError(
       "[unauth/n] The sign-in relocated to this host is invalid, expired or already used: start it again.",
       "ERR_AUTHN_FLOW_EXPIRED",
-      { status: 401, cause: { reason: "consumed", error } },
+      { status: 401, cause: { reason: "consumed", error: taken.refused } },
     );
   }
+  const sealed = taken.value;
   if (sealed.provider !== provider) {
     throw new UnauthError(
       "[unauth/n] The sign-in relocated to this host belongs to another provider.",
@@ -102,8 +100,15 @@ export async function resumeIntent<TMemo>(
 /** The intent token's `typ`: never a session, flow or handoff token. */
 const INTENT_TYP = "unauth-intent+jwt";
 
-function carrierOf<TMemo>(key: FlowKey): SealedCarrier<SealedIntent<TMemo>> {
-  return sealedCarrier<SealedIntent<TMemo>>(key, { typ: INTENT_TYP, name: "unauth-intent" });
+function carrierOf<TMemo>(
+  options: Pick<StartFlowOptions<TMemo>, "key" | "jwe" | "onKeyLookup">,
+): SealedCarrier<SealedIntent<TMemo>> {
+  return sealedCarrier<SealedIntent<TMemo>>(options.key, {
+    typ: INTENT_TYP,
+    name: "unauth-intent",
+    jwe: options.jwe,
+    onKeyLookup: options.onKeyLookup,
+  });
 }
 
 /** The members of `from`'s intent that have a value. */

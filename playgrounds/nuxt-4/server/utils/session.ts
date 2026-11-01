@@ -7,9 +7,9 @@ import {
 } from "unauth/session";
 import { base64UrlStringify } from "unauth/utils";
 
-let definition: Promise<SessionDefinition<SessionData, "1h", WebSessionEvent>> | undefined;
+let definition: Promise<SessionDefinition<SessionData, "1h">> | undefined;
 
-async function define(): Promise<SessionDefinition<SessionData, "1h", WebSessionEvent>> {
+async function define(): Promise<SessionDefinition<SessionData, "1h">> {
   const secret = await deriveSecret("unauth:session");
   const bytes = Uint8Array.from(secret.match(/../g)!, (pair) => Number.parseInt(pair, 16));
 

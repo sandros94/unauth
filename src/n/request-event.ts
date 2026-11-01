@@ -23,12 +23,16 @@ export interface WebRequestEvent {
 /** What a request may add to the authorization leg: where to return, a memo, the account, extra scopes. */
 export type FlowIntent<TMemo = never> = StartIntent<TMemo>;
 
-/** Whether `request` is the callback leg: a query with `code` or `error`, or a `POST` to a `form_post` provider's route. */
+/**
+ * Whether `request` is the callback leg: a query with `code` or `error`, a `POST` to a
+ * `form_post` provider's route, or a query a custom provider's own `isCallback` accepts.
+ */
 export function isCallback(
   provider: Provider<unknown>,
   request: { url: string; method: string },
 ): boolean {
   const query = new URL(request.url).searchParams;
   if (query.has("code") || query.has("error")) return true;
-  return provider.responseMode === "form_post" && request.method === "POST";
+  if (provider.responseMode === "form_post" && request.method === "POST") return true;
+  return provider.kind === "custom" && provider.isCallback?.(query) === true;
 }

@@ -1,5 +1,6 @@
 import type { UnauthError } from "../error.ts";
 import { type SignInKey, flowKeyResolver } from "./_internal/flow-key.ts";
+import { handoffCarrier } from "./flow/_internal/carrier/handoff.ts";
 import { configError } from "./flow/_internal/http/shared.ts";
 import { safeRedirect } from "./flow/_internal/redirect.ts";
 import type { FlowResult } from "./flow/types.ts";
@@ -67,19 +68,22 @@ export type SignInAnswer<TResult> = Exclude<TResult, void>;
 /**
  * One route for both legs of a sign-in: a handler taking a web-standard request event, mounted
  * without a method filter (it answers `GET` and `POST`, `405` otherwise). A request without
- * `code` or `error` (or a `form_post` body) starts the flow with `onStart`'s intent and answers
- * the redirect to the provider; the callback completes it and calls `onSuccess`, which writes the
- * application's session. The handler returns `onSuccess`'s value, or a `302` to the landing path
- * when that is `undefined`. A failed flow is an `UnauthError`, answered by `onError` or by a plain
- * `Response` with its status.
+ * `code` or `error` (or a `form_post` body, or what a custom provider's `isCallback` accepts)
+ * starts the flow with `onStart`'s intent and answers the redirect to the provider; the callback
+ * completes it and calls `onSuccess`, which writes the application's session. The handler returns
+ * `onSuccess`'s value, or a `302` to the landing path when that is `undefined`. A failed flow is an
+ * `UnauthError`, answered by `onError` or by a plain `Response` with its status.
  *
  * Every hook takes the event first. The annotation on the first hook's `event` types every hook
  * and the handler: put the framework's event type on the first hook written; `result` and `memo`
  * stay inferred.
  *
  * @throws `ERR_UNAUTH_CONFIG_INVALID` without `onSuccess`, for a `redirect` that is not a
- * same-origin path, an `origin` that is not an absolute URL, or a `key` that is missing, a string
- * or not symmetric.
+ * same-origin path, an `origin` that is not an absolute URL, or a `key` that is missing, a string,
+ * not symmetric, an empty JWK Set or one holding a key that is not an `oct` JWK, or a key (or set
+ * entry) naming no algorithm given without `jwe`, or a key unjwt refuses (such as a JWK Set whose
+ * entries without `kid` are more than a token may be tried against), unjwt's error as `cause`; a
+ * key callback's key is checked when it resolves, on the first request.
  *
  * @example
  * import type { H3Event } from "h3";
@@ -119,9 +123,12 @@ export function defineSignInHandler<
   }
   const trustedOrigins =
     origin === undefined ? flow.trustedOrigins : [...(flow.trustedOrigins ?? []), originOf(origin)];
+  const resolveKey = flowKeyResolver(key);
+  if (typeof key !== "function")
+    handoffCarrier(key, { jwe: flow.jwe, onKeyLookup: flow.onKeyLookup });
   return signInRoute<TProfile, SignInAnswer<TResult>, TEvent, TMemo>(provider, {
     flow: { ...flow, trustedOrigins },
-    key: flowKeyResolver(key),
+    key: resolveKey,
     steps: (event) => ({
       onStart: onStart && (() => onStart(event)),
       onError: onError && ((error) => onError(event, error)),

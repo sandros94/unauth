@@ -159,7 +159,7 @@ describe("the callback body", () => {
     expect(error.status).toBe(400);
     expect(error.cause).toEqual({ reason: "too-large" });
     expect(pulled()).toBeLessThanOrEqual(CAP + CHUNK + prefetch);
-    expect(headers.getSetCookie().join("\n")).toMatch(/__Host-unauth-flow=;/);
+    expect(headers.getSetCookie()).toEqual([]);
   });
 
   it("refuses a declared length over the cap without reading", async () => {

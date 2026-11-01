@@ -37,6 +37,7 @@ export { type AuthorizationParams, buildAuthorizationUrl } from "./flow/authoriz
 export {
   type ExchangeCodeOptions,
   type RefreshTokensOptions,
+  type RefreshedTokens,
   exchangeCode,
   refreshTokens,
 } from "./flow/token.ts";
@@ -61,11 +62,18 @@ export {
 export { type OidcProfile, type OidcProviderConfig, defineOidcProvider } from "./flow/oidc.ts";
 export { type FlowIntent, type WebRequestEvent, isCallback } from "./request-event.ts";
 export { type SignInAnswer, type SignInHandlerOptions, defineSignInHandler } from "./sign-in.ts";
-export type { FlowKey, FlowKeyInput, SignInKey } from "./_internal/flow-key.ts";
-export { deriveKey } from "./derive-key.ts";
+export type {
+  FlowKey,
+  FlowKeyAlgorithms,
+  FlowKeyInput,
+  FlowKeyLookup,
+  SignInKey,
+} from "./_internal/flow-key.ts";
+export { deriveJWK } from "./derive-jwk.ts";
 export {
   type OneTimeToken,
   type OneTimeTokenConfig,
+  type OneTimeTokenKeyLookup,
   type OneTimeTokenUse,
   createOpaqueToken,
   defineOneTimeToken,

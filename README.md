@@ -14,7 +14,7 @@ A collection of low-level and high-level, server-agnostic, Authentication and Au
 - **Custom providers** — any protocol over the same engine, with `start` and `complete` legs
 - **One-time tokens** — signed, single-use, expiring tokens
 - **Web-standard** — handlers take a request event `{ req, res: { headers } }`; `startFlow` and `completeFlow` take a `Request`
-- **unjwt included** — `unauth/jwk`, `unauth/jws`, `unauth/jwe`, `unauth/utils` and `unauth/session` are unjwt's subpaths, one dependency to install
+- **unjwt included** — `unauth/jwk`, `unauth/jws`, `unauth/jwe`, `unauth/utils`, `unauth/session` and `unauth/dpop` are unjwt's subpaths, one dependency to install
 
 Built on:
 
@@ -44,7 +44,7 @@ One route serves both legs: without `code` or `error` it redirects to the provid
 
 ```ts
 import type { H3Event } from "h3";
-import { deriveKey } from "unauth/n";
+import { deriveJWK } from "unauth/n";
 import { defineGitHubHandler } from "unauth/n/providers/github";
 
 app.get(
@@ -52,7 +52,7 @@ app.get(
   defineGitHubHandler({
     clientId: process.env.GITHUB_CLIENT_ID!,
     clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    key: () => deriveKey(process.env.AUTH_SECRET!, { info: "unauth:flow" }),
+    key: () => deriveJWK(process.env.AUTH_SECRET!, { info: "unauth:flow" }),
     origin: "https://app.example",
     onSuccess: async (event: H3Event, { identity }) => {
       const session = await useAuthSession(event);
@@ -63,7 +63,7 @@ app.get(
 );
 ```
 
-- `key`: a symmetric JWE key, or a callback returning one, called once on the first request. `deriveKey(secret, { info })` derives an `A256GCM` key from a random secret of 32+ characters. A key pair is refused: a token sealed to a public key could be minted by anyone holding it.
+- `key`: the key that seals the sign-in's flow cookie, or a callback returning it, called once on the first request. `deriveJWK(secret, { info })` turns a random secret of 32+ characters into one. The shapes a key may take, rotation and the `jwe` and `onKeyLookup` options follow `unauth/session`'s JWE session keys; a key pair is refused, since a token sealed to a public key could be minted by anyone holding it.
 - `origin`: the callback is this route on that origin, and its forms may start a sign-in that links an account or names it; `redirectUri` names the callback outright instead.
 - `onStart(event)`: optional; returns `{ redirect, memo, loginHint, scopes, params }` for this request. `memo` is anything the application wants back at the callback, sealed; `loginHint` names the account (OAuth's `login_hint`, an AT Protocol handle). A start that returns either `memo`, or `loginHint` for a custom provider, is taken only as a `POST` from the application's own origin (`ERR_AUTHN_CROSS_SITE_START` otherwise): start those sign-ins from a form.
 - `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `memo` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.

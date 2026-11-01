@@ -8,9 +8,17 @@ import {
   isUnauthError,
   resolveProvider,
   defineOidcProvider,
+  refreshTokens,
   verifyIdToken,
 } from "../../../src/n/index.ts";
-import { CLIENT_ID, ISSUER, CLIENT_SECRET, atHash, createFakeProvider } from "./_fake-provider.ts";
+import {
+  CLIENT_ID,
+  ISSUER,
+  CLIENT_SECRET,
+  type FakeProvider,
+  atHash,
+  createFakeProvider,
+} from "./_fake-provider.ts";
 
 const NOW = Date.UTC(2026, 9, 1, 12);
 const now = () => NOW;
@@ -35,6 +43,15 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
     },
     (error: unknown) => error,
   );
+}
+
+function thrown(run: () => unknown): unknown {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("expected a throw");
 }
 
 /** A fresh issuer per test keeps the module-level JWKS cache out of the way. */
@@ -154,6 +171,7 @@ describe("discover", () => {
     const fake = await fakeAt("resolve");
     const issuer = "https://resolve.idp.test";
     const provider = defineOidcProvider({
+      id: "idp",
       issuer,
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -218,6 +236,7 @@ describe("discover", () => {
     const fake = await fakeAt("iss-param");
     const issuer = "https://iss-param.idp.test";
     const provider = defineOidcProvider({
+      id: "idp",
       issuer,
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -233,6 +252,7 @@ describe("discover", () => {
     const silent = await fakeAt("iss-param-silent");
     silent.discovery.authorization_response_iss_parameter_supported = undefined;
     const quiet = defineOidcProvider({
+      id: "idp",
       issuer: "https://iss-param-silent.idp.test",
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -443,5 +463,163 @@ describe("verifyIdToken", () => {
     await expect(verifyIdToken(token, { ...options, accessToken: "at-1" })).resolves.toBeDefined();
     const error = await rejection(verifyIdToken(token, { ...options, accessToken: "at-2" }));
     expect(isUnauthError(error, "ERR_AUTHN_ID_TOKEN_INVALID")).toBe(true);
+  });
+});
+
+describe("refreshTokens on an OpenID Connect provider", () => {
+  async function setup(name: string) {
+    const fake = await fakeAt(name);
+    const issuer = `https://${name}.idp.test`;
+    const provider = await resolveProvider(
+      defineOidcProvider({ id: "idp", issuer, clientId: CLIENT_ID, clientSecret: CLIENT_SECRET }),
+      { fetch: fake.fetch, now },
+    );
+    const answer = (idToken: string) =>
+      fake.nextTokenResponse(
+        Response.json({ access_token: "at-2", token_type: "Bearer", id_token: idToken }),
+      );
+    const refresh = (options: { subject?: string } = {}) =>
+      refreshTokens(provider, { refreshToken: "rt-1", fetch: fake.fetch, now, ...options });
+    return { fake, issuer, answer, refresh };
+  }
+
+  it("verifies a refreshed id_token and returns its claims", async () => {
+    const { fake, issuer, answer, refresh } = await setup("refresh-ok");
+    const token = await fake.signIdToken(
+      claims({ iss: issuer, nonce: undefined, at_hash: await atHash("at-2") }),
+    );
+    answer(token);
+
+    const tokens = await refresh({ subject: "user-1" });
+
+    expect(tokens).toMatchObject({ access_token: "at-2", id_token: token, refresh_token: "rt-1" });
+    expect(tokens.claims).toMatchObject({ iss: issuer, sub: "user-1", aud: CLIENT_ID });
+    expect(fake.jwksFetches()).toBe(1);
+  });
+
+  it("resolves a discovery provider itself", async () => {
+    const fake = await fakeAt("refresh-discovery");
+    const issuer = "https://refresh-discovery.idp.test";
+    const provider = defineOidcProvider({
+      id: "idp",
+      issuer,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+    fake.nextTokenResponse(
+      Response.json({
+        access_token: "at-2",
+        token_type: "Bearer",
+        id_token: await fake.signIdToken(claims({ iss: issuer })),
+      }),
+    );
+
+    const tokens = await refreshTokens(provider, { refreshToken: "rt-1", fetch: fake.fetch, now });
+
+    expect(tokens.claims?.sub).toBe("user-1");
+    expect(fake.requests.map((request) => request.url.pathname)).toEqual([
+      "/.well-known/openid-configuration",
+      "/token",
+      "/jwks",
+    ]);
+  });
+
+  it("accepts a refreshed id_token carrying a nonce", async () => {
+    const { fake, issuer, answer, refresh } = await setup("refresh-nonce");
+    answer(await fake.signIdToken(claims({ iss: issuer, nonce: "from-the-sign-in" })));
+
+    await expect(refresh()).resolves.toMatchObject({ claims: { nonce: "from-the-sign-in" } });
+  });
+
+  it.each([
+    [
+      "another key",
+      async (issuer: string) =>
+        (await createFakeProvider({ issuer })).signIdToken(claims({ iss: issuer })),
+    ],
+    [
+      "another issuer",
+      async (_issuer: string, fake: FakeProvider) =>
+        fake.signIdToken(claims({ iss: "https://evil.test" })),
+    ],
+    [
+      "another audience",
+      async (issuer: string, fake: FakeProvider) =>
+        fake.signIdToken(claims({ iss: issuer, aud: "someone-else" })),
+    ],
+    [
+      "an expired token",
+      async (issuer: string, fake: FakeProvider) =>
+        fake.signIdToken(claims({ iss: issuer, exp: iat - 60 })),
+    ],
+    [
+      "another access token",
+      async (issuer: string, fake: FakeProvider) =>
+        fake.signIdToken(claims({ iss: issuer, at_hash: await atHash("at-other") })),
+    ],
+  ])("refuses a refreshed id_token from %s", async (label, mint) => {
+    const { fake, issuer, answer, refresh } = await setup(`refresh-${label.replaceAll(" ", "-")}`);
+    answer(await mint(issuer, fake));
+
+    const error = await rejection(refresh());
+
+    expect(isUnauthError(error, "ERR_AUTHN_ID_TOKEN_INVALID")).toBe(true);
+    expect(isUnauthError(error) && error.status).toBe(401);
+  });
+
+  it("refuses a refreshed id_token naming another subject than the one given", async () => {
+    const { fake, issuer, answer, refresh } = await setup("refresh-subject");
+    answer(await fake.signIdToken(claims({ iss: issuer, sub: "user-2" })));
+
+    const error = await rejection(refresh({ subject: "user-1" }));
+
+    expect(isUnauthError(error, "ERR_AUTHN_ID_TOKEN_INVALID")).toBe(true);
+    expect(isUnauthError(error) && error.cause).toEqual({ claim: "sub", reason: "subject" });
+  });
+
+  it("returns an answer without id_token as is, fetching no keys", async () => {
+    const { fake, refresh } = await setup("refresh-no-id-token");
+
+    const tokens = await refresh({ subject: "user-1" });
+
+    expect(tokens.access_token).toBe("at-2");
+    expect(tokens.claims).toBeUndefined();
+    expect(fake.jwksFetches()).toBe(0);
+  });
+});
+
+describe("defineOidcProvider", () => {
+  it("requires an id: the type refuses a missing one and the runtime refuses it with ERR_UNAUTH_CONFIG_INVALID", () => {
+    // @ts-expect-error `id` is required
+    const missing = () => defineOidcProvider({ issuer: ISSUER, clientId: CLIENT_ID });
+    const cast = () =>
+      defineOidcProvider({ issuer: ISSUER, clientId: CLIENT_ID } as Parameters<
+        typeof defineOidcProvider
+      >[0]);
+
+    expect(isUnauthError(thrown(missing), "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+    expect(isUnauthError(thrown(cast), "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+  });
+
+  it("refuses an empty id with ERR_UNAUTH_CONFIG_INVALID", () => {
+    const error = thrown(() => defineOidcProvider({ id: "", issuer: ISSUER, clientId: CLIENT_ID }));
+
+    expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+  });
+
+  it("keeps two generic providers apart by their ids", () => {
+    const tenantA = defineOidcProvider({
+      id: "tenant-a",
+      issuer: "https://a.idp.test",
+      clientId: CLIENT_ID,
+    });
+    const tenantB = defineOidcProvider({
+      id: "tenant-b",
+      issuer: "https://b.idp.test",
+      clientId: CLIENT_ID,
+    });
+
+    expect(tenantA.id).toBe("tenant-a");
+    expect(tenantB.id).toBe("tenant-b");
   });
 });

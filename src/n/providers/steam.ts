@@ -38,6 +38,7 @@ export function defineSteamProvider(config: SteamProviderConfig): CustomProvider
     id: config.id ?? "steam",
     kind: "custom",
     label: config.label ?? "Steam",
+    isCallback: (params) => params.has("openid.mode"),
     start,
     complete: (context) => complete(context, { apiKey }),
   });

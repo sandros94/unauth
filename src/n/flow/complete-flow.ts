@@ -2,9 +2,11 @@ import { type CompleteFlowOptions, completeFlowWithReturnHost } from "./_interna
 import type { FlowResult, Provider } from "./types.ts";
 
 /**
- * Completes a sign-in from the provider's redirect: consumes the flow (the cookie is expired even
- * when this throws), checks `state` and `iss`, redeems the code, verifies the id_token of an
- * OpenID Connect provider and maps the account through `provider.profile`. Every failure is an
+ * Completes a sign-in from the provider's redirect: checks `state`, then consumes the flow (the
+ * cookie is expired even when a later step throws; a callback of another `state` leaves a flow
+ * kept in the cookie alone, while a `store` has taken its record), checks `iss`, redeems the
+ * code, verifies the id_token of an OpenID Connect provider and maps the account through
+ * `provider.profile`. Every failure is an
  * `UnauthError` whose message names the stage and whose `cause` holds the detail. A mix-up
  * between providers is caught by the provider `id` bound into the flow record and by the RFC 9207
  * `iss` parameter: with `issuerParameter` on, `iss` must equal `provider.issuer`; otherwise a

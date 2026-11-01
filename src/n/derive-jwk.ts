@@ -1,3 +1,4 @@
+import { thumbprint } from "unjwt/jwk";
 import type { JWK_oct } from "unjwt/session";
 import { hkdf } from "unsecure/hkdf";
 import { configError } from "./flow/_internal/http/shared.ts";
@@ -8,12 +9,19 @@ import { configError } from "./flow/_internal/http/shared.ts";
  * every instance and restart; another info gives an unrelated key. Changing the secret or the info
  * invalidates every flow in flight.
  *
- * `secret` must be random (`openssl rand -base64 32`), never a passphrase: HKDF is not a password
- * KDF, and the length check is a floor, not a measure of entropy.
+ * Its `kid` is the key's RFC 7638 thumbprint, so the same on every instance too. It names the key
+ * in every token the key seals: a JWK Set rotating derived keys opens each token with the key
+ * that sealed it alone, and never meets unjwt's cap on the keys a token without `kid` is tried
+ * against.
+ *
+ * `secret` is a random string the deployment holds (`openssl rand -base64 32`, an `AUTH_SECRET`),
+ * never something a person chose or typed, whatever a framework calls it: HKDF only spreads the
+ * randomness it is given, and the length check is a floor, not a measure of entropy. A key from a
+ * password is `unauth/session`'s `deriveJWKFromPassword`, which stretches it.
  *
  * @throws `ERR_UNAUTH_CONFIG_INVALID` for a secret shorter than 32 characters or an empty `info`.
  */
-export async function deriveKey(
+export async function deriveJWK(
   secret: string,
   options: { info: string },
 ): Promise<JWK_oct<"A256GCM">> {
@@ -21,12 +29,12 @@ export async function deriveKey(
   if (typeof secret !== "string" || secret.length < MIN_SECRET_LENGTH) {
     const got = typeof secret === "string" ? String(secret.length) : "none";
     throw configError(
-      `deriveKey needs a \`secret\` of at least ${MIN_SECRET_LENGTH} characters, got ${got}: use a longer random secret, such as \`openssl rand -base64 32\`.`,
+      `deriveJWK needs a \`secret\` of at least ${MIN_SECRET_LENGTH} characters, got ${got}: use a longer random secret, such as \`openssl rand -base64 32\`.`,
     );
   }
   if (typeof info !== "string" || info === "") {
     throw configError(
-      'deriveKey needs a non-empty `info` naming the key\'s purpose, such as "unauth:flow".',
+      'deriveJWK needs a non-empty `info` naming the key\'s purpose, such as "unauth:flow".',
     );
   }
   const k = await hkdf(new TextEncoder().encode(secret), {
@@ -36,7 +44,7 @@ export async function deriveKey(
     length: 32,
     returnAs: "base64url",
   });
-  return { kty: "oct", k, alg: "A256GCM" };
+  return { kty: "oct", k, alg: "A256GCM", kid: await thumbprint({ kty: "oct", k }) };
 }
 
 const MIN_SECRET_LENGTH = 32;

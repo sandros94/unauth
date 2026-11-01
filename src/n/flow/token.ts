@@ -2,7 +2,10 @@ import { type Fetch, configError, fetchOf, nowOf } from "./_internal/http/shared
 import { postForm } from "./_internal/http/form.ts";
 import { authenticateClient } from "./_internal/client-auth.ts";
 import { parseTokenResponse } from "./_internal/token-response.ts";
-import type { OAuthTokens, OAuthProvider } from "./types.ts";
+import type { CacheDriver } from "./_internal/cache/load.ts";
+import { verifyProviderIdToken } from "./_internal/provider-id-token.ts";
+import { resolveProvider } from "./discovery.ts";
+import type { IdTokenClaims, OAuthTokens, OAuthProvider } from "./types.ts";
 
 /** Options of {@link exchangeCode}. */
 export interface ExchangeCodeOptions {
@@ -40,26 +43,62 @@ export interface RefreshTokensOptions {
   refreshToken: string;
   /** Narrower scopes for the new access token. */
   scopes?: string[];
+  /**
+   * The `sub` of the account whose tokens these are, from its sign-in: a refreshed id_token must
+   * name it.
+   */
+  subject?: string;
   fetch?: Fetch;
   now?: () => number;
+  /** Keep the discovery document and the JWK Set here instead of in memory. */
+  cache?: CacheDriver;
+}
+
+/** What {@link refreshTokens} returns: the new tokens, with the refreshed id_token's verified claims. */
+export interface RefreshedTokens extends OAuthTokens {
+  /** Present when an OpenID Connect provider returned an id_token. */
+  claims?: IdTokenClaims;
 }
 
 /**
  * Trades a refresh token for new tokens (RFC 6749 §6); the old refresh token is kept when the
- * provider does not rotate it. A refusal or an unusable body throws `ERR_AUTHN_TOKEN_EXCHANGE`
- * (401); an endpoint that gives no answer throws `ERR_AUTHN_PROVIDER_ERROR` (502).
+ * provider does not rotate it. A `discovery` provider is resolved first (see `resolveProvider`).
+ * An id_token from an OpenID Connect provider is verified as at sign-in (OIDC Core §12.2): its
+ * signature, issuer, audience, `exp`, `iat`, `at_hash` and, with `subject`, that `sub` names that
+ * account; a `nonce` is not required. Its claims are returned in `claims`.
+ *
+ * A refusal or an unusable body throws `ERR_AUTHN_TOKEN_EXCHANGE` (401); an id_token failing
+ * verification throws `ERR_AUTHN_ID_TOKEN_INVALID` (401), `cause.reason` `"subject"` when it names
+ * another account; an endpoint that gives no answer throws `ERR_AUTHN_PROVIDER_ERROR` (502).
  */
 export async function refreshTokens(
   provider: OAuthProvider<unknown>,
   options: RefreshTokensOptions,
-): Promise<OAuthTokens> {
+): Promise<RefreshedTokens> {
+  const fetch = fetchOf(options);
+  const now = nowOf(options);
+  const resolved = await resolveProvider(provider, { fetch, now, cache: options.cache });
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: options.refreshToken,
   });
-  if (options.scopes) body.set("scope", options.scopes.join(provider.scopeSeparator));
-  const tokens = await tokenRequest(provider, body, options);
-  return { ...tokens, refresh_token: tokens.refresh_token ?? options.refreshToken };
+  if (options.scopes) body.set("scope", options.scopes.join(resolved.scopeSeparator));
+  const tokens = await tokenRequest(resolved, body, { fetch, now });
+  const refreshed: RefreshedTokens = {
+    ...tokens,
+    refresh_token: tokens.refresh_token ?? options.refreshToken,
+  };
+  if (resolved.kind === "oidc" && tokens.id_token !== undefined) {
+    refreshed.claims = await verifyProviderIdToken(resolved, {
+      idToken: tokens.id_token,
+      accessToken: tokens.access_token,
+      subject: options.subject,
+      fetch,
+      now,
+      cache: options.cache,
+    });
+  }
+  return refreshed;
 }
 
 async function tokenRequest(

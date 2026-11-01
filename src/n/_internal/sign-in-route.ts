@@ -34,8 +34,8 @@ export interface SignInSteps<TProfile, TResult, TMemo> {
 
 /**
  * One route for both legs of a sign-in, answering `GET` and `POST` and refusing any other method
- * with a `405`, so it is mounted without a method filter: without `code`/`error` (or a
- * `form_post` body) it answers the redirect to the provider, otherwise it completes the callback
+ * with a `405`, so it is mounted without a method filter: a request that is not the callback leg
+ * (see `isCallback`) answers the redirect to the provider, otherwise it completes the callback
  * and returns `complete`'s value. A sign-in a relocation moved off its starting host is redirected
  * back there with the result in a sealed, single-use handoff token; that host redeems it against
  * the flow it recorded when the sign-in left, in the browser that started it, and `complete` runs
@@ -59,14 +59,23 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
       onError ? onError(error) : failureResponse(error, headers);
 
     let key: FlowKey;
+    let handoff: HandoffCarrier<TProfile, TMemo>;
     try {
       key = await route.key();
+      if (carrier?.key !== key) {
+        carrier = {
+          key,
+          handoff: handoffCarrier<TProfile, TMemo>(key, {
+            jwe: flow.jwe,
+            onKeyLookup: flow.onKeyLookup,
+          }),
+        };
+      }
+      handoff = carrier.handoff;
     } catch (error) {
       if (!isUnauthError(error)) throw error;
       return fail(error);
     }
-    if (carrier?.key !== key) carrier = { key, handoff: handoffCarrier<TProfile, TMemo>(key) };
-    const { handoff } = carrier;
 
     const handed =
       provider.kind === "custom" ? new URL(event.req.url).searchParams.get(HANDOFF_PARAM) : null;

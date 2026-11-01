@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { type JWK_oct, defineJWESession, generateJWK } from "unjwt/session";
 
-import { type WebRequestEvent, deriveKey } from "../../../src/n/index.ts";
+import { type WebRequestEvent, deriveJWK } from "../../../src/n/index.ts";
 import { defineSignInHandler } from "../../../src/n/sign-in.ts";
 import { presetHandler } from "../../../src/n/providers/_internal/shared.ts";
 import { defineAppleHandler, defineAppleProvider } from "../../../src/n/providers/apple.ts";
@@ -79,7 +79,7 @@ describe("defineGitHubHandler", () => {
       scopes: ["read:user"],
       id: "gh",
       label: "GH",
-      key: () => deriveKey(SECRET, { info: FLOW_INFO }),
+      key: () => deriveJWK(SECRET, { info: FLOW_INFO }),
       origin: APP,
       cookie: { secure: false },
       onSuccess: () => "ok",
@@ -120,7 +120,7 @@ describe("every preset handler", () => {
     authorizationParams: { prompt: "consent" },
   };
   const signIn = {
-    key: () => deriveKey(SECRET, { info: FLOW_INFO }),
+    key: () => deriveJWK(SECRET, { info: FLOW_INFO }),
     origin: APP,
     onSuccess: () => "ok",
   };
@@ -201,7 +201,7 @@ describe("preset handler types", () => {
     expectTypeOf(
       defineGitHubHandler({
         ...config,
-        key: () => deriveKey(SECRET, { info: FLOW_INFO }),
+        key: () => deriveJWK(SECRET, { info: FLOW_INFO }),
         onSuccess: () => "ok",
       }),
     ).returns.resolves.toEqualTypeOf<Response | string>();

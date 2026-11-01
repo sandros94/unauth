@@ -42,6 +42,10 @@
       "types": "./dist/session.d.mts",
       "default": "./dist/session.mjs"
     },
+    "./dpop": {
+      "types": "./dist/dpop.d.mts",
+      "default": "./dist/dpop.mjs"
+    },
     "./error": {
       "types": "./dist/error.d.mts",
       "default": "./dist/error.mjs"

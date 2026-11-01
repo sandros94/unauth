@@ -49,6 +49,17 @@ export interface UnauthErrorCauseMap {
    * §4.1.2.1) or at the pushed authorization request endpoint (RFC 9126 §2.3).
    */
   ERR_AUTHN_PROVIDER_REFUSED: OAuthErrorResponse;
+  /**
+   * Which check an id_token failed: `claim`, the claim at fault, with `reason: "subject"` when `sub`
+   * names another account than the one expected; `reason: "missing"`, a sign-in at an OpenID
+   * Connect provider returned none; neither, the signature, `iss`, `aud` or `exp` failed, with the
+   * error underneath in `cause`.
+   */
+  ERR_AUTHN_ID_TOKEN_INVALID: {
+    claim?: "sub" | "iat" | "azp" | "nonce" | "at_hash";
+    reason?: "missing" | "subject";
+    cause?: unknown;
+  };
   /** The token endpoint's error (RFC 6749 §5.2), its HTTP status, or the detail of an unusable answer. */
   ERR_AUTHN_TOKEN_EXCHANGE: Partial<OAuthErrorResponse> & {
     status?: number;

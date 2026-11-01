@@ -1,7 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { isJWTError } from "unjwt/error";
 import { type JWK_oct, defineJWSSession, generateJWK } from "unjwt/session";
 
 import {
+  type OneTimeTokenKeyLookup,
+  UnauthError,
   createOpaqueToken,
   defineOneTimeToken,
   hashOpaqueToken,
@@ -120,6 +123,167 @@ describe("defineOneTimeToken", () => {
     const token = await link.issue({ email: "a@b.c", purpose: "invite" });
 
     await expect(link.open(token)).resolves.toEqual({ email: "a@b.c", purpose: "invite" });
+  });
+});
+
+describe("one-time token keys", () => {
+  function header(token: string): Record<string, unknown> {
+    const json = atob(token.split(".")[0]!.replaceAll("-", "+").replaceAll("_", "/"));
+    return JSON.parse(json) as Record<string, unknown>;
+  }
+
+  function hmacKey(): Promise<CryptoKey> {
+    return crypto.subtle.generateKey({ name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+  }
+
+  function linkOf(
+    config: Omit<Parameters<typeof defineOneTimeToken>[0], "maxAge" | "purpose" | "consume">,
+  ) {
+    return defineOneTimeToken<{ email: string }>({
+      ...config,
+      maxAge: "15m",
+      purpose: "magic-link",
+      consume: memoryConsume(),
+    });
+  }
+
+  it("signs with a JWK Set's first key and still opens what the others signed", async () => {
+    const next = await generateJWK("HS256");
+    const old = await linkOf({ key }).issue({ email: "old@b.c" });
+    const rotated = linkOf({ key: { keys: [next, key] } });
+
+    await expect(rotated.open(old)).resolves.toEqual({ email: "old@b.c" });
+    const fresh = await rotated.issue({ email: "new@b.c" });
+    expect(header(fresh)).toMatchObject({ kid: next.kid, typ: "unauth-ott+jwt" });
+    await expect(linkOf({ key: next }).open(fresh)).resolves.toEqual({ email: "new@b.c" });
+    const stale = await rejection(linkOf({ key }).open(fresh));
+    expect(isUnauthError(stale, "ERR_AUTHN_TOKEN_INVALID")).toBe(true);
+  });
+
+  it("takes a CryptoKey once `jws` names its algorithm, and refuses it without", async () => {
+    const cryptoKey = await hmacKey();
+    const link = linkOf({ key: cryptoKey, jws: { alg: "HS256" } });
+    const token = await link.issue({ email: "a@b.c" });
+
+    expect(header(token)).toMatchObject({ alg: "HS256", typ: "unauth-ott+jwt" });
+    await expect(link.open(token)).resolves.toEqual({ email: "a@b.c" });
+    const { alg: _alg, ...bare } = await generateJWK("HS256");
+    for (const unnamed of [cryptoKey, bare, { keys: [key, bare] }] as const) {
+      let error: unknown;
+      try {
+        linkOf({ key: unnamed as JWK_oct<"HS256"> });
+      } catch (thrown) {
+        error = thrown;
+      }
+      expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+      expect((error as Error).message).toMatch(/naming no algorithm[\s\S]*"jws"/);
+    }
+  });
+
+  it("opens under `jws` what a set entry naming no `alg` signed", async () => {
+    const { alg: _alg, ...bare } = await generateJWK("HS256");
+    const old = await linkOf({ key: bare, jws: { alg: "HS256" } }).issue({
+      email: "a@b.c",
+    });
+    const set = { keys: [key, bare] };
+
+    await expect(linkOf({ key: set, jws: { alg: "HS256" } }).open(old)).resolves.toEqual({
+      email: "a@b.c",
+    });
+  });
+
+  it("signs with a pair's private key and verifies with its public key", async () => {
+    const pair = await generateJWK("ES256");
+    const link = linkOf({ key: pair });
+    const token = await link.issue({ email: "a@b.c" });
+
+    expect(header(token)).toMatchObject({ alg: "ES256" });
+    await expect(link.open(token)).resolves.toEqual({ email: "a@b.c" });
+  });
+
+  it("verifies under the key `onKeyLookup` picks by the token's `kid`, in place of `key`", async () => {
+    const old = await generateJWK("HS256");
+    const token = await linkOf({ key: old }).issue({ email: "a@b.c" });
+    const lookups: unknown[] = [];
+    const link = linkOf({
+      key,
+      onKeyLookup: (args) => {
+        lookups.push(args);
+        return { keys: [old] };
+      },
+    });
+
+    await expect(link.open(token)).resolves.toEqual({ email: "a@b.c" });
+    expect(lookups).toEqual([{ header: expect.objectContaining({ kid: old.kid }) }]);
+    expect(Object.keys(lookups[0]!)).toEqual(["header"]);
+    const unlooked = await rejection(linkOf({ key }).open(token));
+    expect(isUnauthError(unlooked, "ERR_AUTHN_TOKEN_INVALID")).toBe(true);
+  });
+
+  it("refuses the token as invalid when `onKeyLookup` returns no key, or an empty JWK Set", async () => {
+    const token = await linkOf({ key }).issue({ email: "a@b.c" });
+    const lookups: OneTimeTokenKeyLookup[] = [() => undefined, () => ({ keys: [] })];
+
+    for (const onKeyLookup of lookups) {
+      const error = await rejection(linkOf({ key, onKeyLookup }).open(token));
+      expect(isUnauthError(error, "ERR_AUTHN_TOKEN_INVALID")).toBe(true);
+    }
+  });
+
+  it("propagates what `onKeyLookup` throws as it is, an `UnauthError` included, without consuming the token", async () => {
+    const consume = memoryConsume();
+    const token = await linkOf({ key }).issue({ email: "a@b.c" });
+    const thrown = [
+      new Error("kms down"),
+      new UnauthError("[app] No such tenant.", "ERR_APP_TENANT"),
+    ];
+
+    const linkWith = (onKeyLookup: OneTimeTokenKeyLookup) =>
+      defineOneTimeToken<{ email: string }>({
+        key,
+        onKeyLookup,
+        maxAge: "15m",
+        purpose: "magic-link",
+        consume,
+      });
+
+    for (const down of thrown) {
+      const link = linkWith(() => {
+        throw down;
+      });
+      expect(await rejection(link.open(token))).toBe(down);
+    }
+    expect(consume).not.toHaveBeenCalled();
+    await expect(linkWith(() => key).open(token)).resolves.toEqual({ email: "a@b.c" });
+  });
+
+  it("rejects with unjwt's `ERR_JWK_INVALID` a key `onKeyLookup` returns that cannot verify the token, without consuming it", async () => {
+    const consume = memoryConsume();
+    const token = await linkOf({ key }).issue({ email: "a@b.c" });
+    const link = defineOneTimeToken<{ email: string }>({
+      key,
+      onKeyLookup: () => ({ kty: "oct", k: "AAAA", alg: "HS256" }),
+      maxAge: "15m",
+      purpose: "magic-link",
+      consume,
+    });
+
+    expect(isJWTError(await rejection(link.open(token)), "ERR_JWK_INVALID")).toBe(true);
+    expect(consume).not.toHaveBeenCalled();
+  });
+
+  it("refuses a JWK Set unjwt refuses, as a configuration error", async () => {
+    const generated = await Promise.all(Array.from({ length: 9 }, () => generateJWK("HS256")));
+    const keys = generated.map(({ kty, k, alg }) => ({ kty, k, alg }));
+    let error: unknown;
+    try {
+      linkOf({ key: { keys } });
+    } catch (thrown) {
+      error = thrown;
+    }
+
+    expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+    expect(isJWTError((error as Error).cause, "ERR_SESSION_CONFIG_INVALID")).toBe(true);
   });
 });
 
