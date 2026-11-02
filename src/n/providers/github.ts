@@ -61,9 +61,10 @@ const HEADERS = { "user-agent": "unauth", "accept": "application/vnd.github+json
  * account from `GET https://api.github.com/user`. PKCE `S256`; the client secret in the request
  * body. With `user:email` granted, `email` and `emailVerified` come from the primary entry of
  * `GET /user/emails`; without it, `email` is the public profile address and `emailVerified` stays
- * unset.
+ * unset. Add `user:email` for `identity.email` (a private email needs it), `read:user` for the full
+ * profile.
  *
- * @default scopes `["read:user", "user:email"]`
+ * @default scopes `[]`
  */
 export function defineGitHubProvider(options: GitHubProviderConfig): OAuthProvider<GitHubProfile> {
   return defineOAuth2Provider({
@@ -76,7 +77,7 @@ export function defineGitHubProvider(options: GitHubProviderConfig): OAuthProvid
     userinfo: `${API}/user`,
     userinfoHeaders: HEADERS,
     tokenAuth: "body",
-    scopes: options.scopes ?? ["read:user", "user:email"],
+    scopes: options.scopes ?? [],
     authorizationParams: options.authorizationParams,
     profile: githubProfile,
   });

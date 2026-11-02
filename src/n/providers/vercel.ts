@@ -27,9 +27,10 @@ export interface VercelProviderConfig extends PresetConfig {
 /**
  * Sign in with Vercel, OpenID Connect discovered from `https://vercel.com`: PKCE `S256`, which
  * Vercel requires, a nonce, the client secret over HTTP Basic, or a public client without one.
- * Add `offline_access` to `scopes` when the application wants a refresh token.
+ * Add `email` and `profile` for `identity.email` and `identity.name`, `offline_access` for a
+ * refresh token.
  *
- * @default scopes `["openid", "email", "profile"]`
+ * @default scopes `["openid"]`
  */
 export function defineVercelProvider(options: VercelProviderConfig): OAuthProvider<VercelProfile> {
   return defineOidcProvider({
@@ -39,7 +40,7 @@ export function defineVercelProvider(options: VercelProviderConfig): OAuthProvid
     clientId: options.clientId,
     clientSecret: options.clientSecret,
     tokenAuth: options.clientSecret ? "basic" : "none",
-    scopes: options.scopes ?? ["openid", "email", "profile"],
+    scopes: options.scopes ?? ["openid"],
     authorizationParams: options.authorizationParams,
     profile: vercelProfile,
   });

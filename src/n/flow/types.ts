@@ -52,6 +52,11 @@ export interface ProvenIdentity<TProfile = Record<string, unknown>> {
   subject: string;
   /** What the provider returned, typed per provider. */
   profile: TProfile;
+  /**
+   * `name`, `email` and `emailVerified` are present only when the provider returns them, which
+   * depends on the `scopes` the sign-in asked for; the presets' defaults ask for the least that
+   * yields `subject`. Key an account by `provider` and `subject`, never by `email`.
+   */
   name?: string;
   email?: string;
   /** Whether the provider vouches for `email`; absent when it does not say. */

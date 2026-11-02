@@ -138,7 +138,7 @@ describe("startFlow", () => {
     const { location } = await beginSignIn(provider, fake);
 
     expect(location.searchParams.get("nonce")).toMatch(/^[\w-]{43}$/);
-    expect(location.searchParams.get("scope")).toBe("openid profile email");
+    expect(location.searchParams.get("scope")).toBe("openid");
   });
 
   it("refuses to guess a redirect URI", async () => {

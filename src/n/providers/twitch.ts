@@ -38,9 +38,9 @@ export interface TwitchProviderConfig extends PresetConfig {
  * with the `Client-Id` header. No PKCE, absent from Twitch's authorization-code flow
  * (https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/); the client secret in the
  * request body. Twitch documents `email` as the verified address: `emailVerified` is `true` when
- * it is present.
+ * it is present. Add `user:read:email` for `identity.email`.
  *
- * @default scopes `["user:read:email"]`
+ * @default scopes `["openid"]` (Twitch requires a scope; this one grants nothing beyond the account)
  */
 export function defineTwitchProvider(options: TwitchProviderConfig): OAuthProvider<TwitchProfile> {
   return defineOAuth2Provider({
@@ -54,7 +54,7 @@ export function defineTwitchProvider(options: TwitchProviderConfig): OAuthProvid
     userinfoHeaders: { "client-id": options.clientId },
     tokenAuth: "body",
     pkce: false,
-    scopes: options.scopes ?? ["user:read:email"],
+    scopes: options.scopes ?? ["openid"],
     authorizationParams: options.authorizationParams,
     profile: twitchProfile,
   });

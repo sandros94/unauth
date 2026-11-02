@@ -40,6 +40,7 @@ export interface MicrosoftProviderConfig extends PresetConfig {
  * verification: authorization and token `https://login.microsoftonline.com/<tenant>/oauth2/v2.0/…`,
  * account from Microsoft Graph `GET https://graph.microsoft.com/v1.0/me`. PKCE `S256`; the client
  * secret in the request body. `mail` is not vouched for: `emailVerified` stays unset.
+ * `User.Read` is the least Graph `GET /me` accepts, and it returns `displayName` and `mail` too.
  *
  * @default scopes `["User.Read"]`
  */

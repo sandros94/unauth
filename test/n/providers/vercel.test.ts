@@ -103,7 +103,7 @@ describe("Vercel", () => {
       discovery: true,
       nonce: true,
       pkce: "S256",
-      scopes: ["openid", "email", "profile"],
+      scopes: ["openid"],
     });
   });
 
@@ -120,7 +120,7 @@ describe("Vercel", () => {
   it("sends PKCE S256 and a nonce with the default scopes", async () => {
     expect(authorizationQuery(await discovered(provider))).toMatchObject({
       client_id: "client-1",
-      scope: "openid email profile",
+      scope: "openid",
       code_challenge: "c",
       code_challenge_method: "S256",
       nonce: "n",
@@ -151,6 +151,13 @@ describe("Vercel", () => {
       avatar: "https://vercel.com/api/www/avatar/2kN8x1Q4bVfA",
     });
     expect(identity.profile.preferred_username).toBe("ada");
+  });
+
+  it("leaves email and name unset when the claims carry only the subject", async () => {
+    const { iss, aud, sub, iat, exp } = vercelClaims;
+    const claims = { iss, aud, sub, iat, exp };
+    const identity = await provider.profile(context({ claims }));
+    expect(identity).toEqual({ subject: "usr_2kN8x1Q4bVfA", profile: claims });
   });
 
   it("falls back to preferred_username without a name", async () => {

@@ -73,7 +73,7 @@ describe("Spotify", () => {
       authorization: "https://accounts.spotify.com/authorize",
       token: "https://accounts.spotify.com/api/token",
       userinfo: "https://api.spotify.com/v1/me",
-      scopes: ["user-read-email", "user-read-private"],
+      scopes: [],
       scopeSeparator: " ",
     });
   });
@@ -82,10 +82,8 @@ describe("Spotify", () => {
     const provider = defineSpotifyProvider(secret);
     expect(provider).toMatchObject({ tokenAuth: "basic", pkce: false });
     const query = authorizationQuery(provider);
-    expect(query).toMatchObject({
-      client_id: "client-1",
-      scope: "user-read-email user-read-private",
-    });
+    expect(query).toMatchObject({ client_id: "client-1" });
+    expect(query).not.toHaveProperty("scope");
     expect(query).not.toHaveProperty("code_challenge");
 
     let authorization: string | null = null;

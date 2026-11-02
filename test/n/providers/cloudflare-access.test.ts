@@ -99,7 +99,7 @@ describe("Cloudflare Access", () => {
       nonce: true,
       pkce: "S256",
       tokenAuth: "basic",
-      scopes: ["openid", "email", "profile"],
+      scopes: ["openid"],
     });
   });
 
@@ -134,7 +134,7 @@ describe("Cloudflare Access", () => {
   it("sends PKCE S256 and a nonce, with groups opt-in through scopes", async () => {
     expect(authorizationQuery(await discovered(provider))).toMatchObject({
       client_id: "client-1",
-      scope: "openid email profile",
+      scope: "openid",
       code_challenge: "c",
       code_challenge_method: "S256",
       nonce: "n",
@@ -157,6 +157,13 @@ describe("Cloudflare Access", () => {
       avatar: "https://cdn.acme.example/ada.png",
     });
     expect(identity.profile.groups).toEqual(["engineering", "admins"]);
+  });
+
+  it("leaves email and name unset when the claims carry only the subject", async () => {
+    const { iss, aud, sub, iat, exp } = accessClaims;
+    const claims = { iss, aud, sub, iat, exp };
+    const identity = await provider.profile(context({ claims }));
+    expect(identity).toEqual({ subject: "f1c2d3e4-5a6b-4c7d-8e9f-0a1b2c3d4e5f", profile: claims });
   });
 
   it("refuses claims without a subject or with malformed groups", async () => {

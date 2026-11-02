@@ -44,7 +44,11 @@ export interface OidcProviderConfig extends Pick<
    * issuers merge their accounts.
    */
   id: string;
-  /** @default ["openid", "profile", "email"] */
+  /**
+   * Add `email` and `profile` for `identity.email` and `identity.name`.
+   *
+   * @default ["openid"]
+   */
   scopes?: string[];
 }
 
@@ -61,13 +65,7 @@ export function defineOidcProvider<TProfile>(
 export function defineOidcProvider(
   options: OidcProviderConfig & { profile?: ProfileMapper<unknown> },
 ): OAuthProvider<unknown> {
-  const {
-    clientId,
-    clientSecret,
-    profile,
-    scopes = ["openid", "profile", "email"],
-    ...rest
-  } = options;
+  const { clientId, clientSecret, profile, scopes = ["openid"], ...rest } = options;
   return defineProvider<unknown>({
     ...rest,
     scopes,

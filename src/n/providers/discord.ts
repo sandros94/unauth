@@ -44,9 +44,10 @@ export interface DiscordProviderConfig extends PresetConfig {
  * `https://discord.com/api/oauth2/token`, account from `GET https://discord.com/api/users/@me`.
  * PKCE `S256`; the client secret in the request body. `avatar` is the user's avatar on Discord's
  * CDN, else the default avatar Discord assigns
- * (https://discord.com/developers/docs/reference#image-formatting).
+ * (https://discord.com/developers/docs/reference#image-formatting). Add `email` for `identity.email`
+ * and `identity.emailVerified`.
  *
- * @default scopes `["identify", "email"]`
+ * @default scopes `["identify"]`
  */
 export function defineDiscordProvider(
   options: DiscordProviderConfig,
@@ -60,7 +61,7 @@ export function defineDiscordProvider(
     token: "https://discord.com/api/oauth2/token",
     userinfo: "https://discord.com/api/users/@me",
     tokenAuth: "body",
-    scopes: options.scopes ?? ["identify", "email"],
+    scopes: options.scopes ?? ["identify"],
     authorizationParams: options.authorizationParams,
     profile: discordProfile,
   });

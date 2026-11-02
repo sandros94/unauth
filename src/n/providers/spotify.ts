@@ -41,9 +41,10 @@ export interface SpotifyProviderConfig extends PresetConfig {
  * `https://accounts.spotify.com/api/token`, account from `GET https://api.spotify.com/v1/me`.
  * With a client secret, HTTP Basic and no PKCE; without one, a public client with PKCE `S256`
  * (https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow). Spotify
- * documents `email` as unverified: `emailVerified` stays unset.
+ * documents `email` as unverified: `emailVerified` stays unset. Add `user-read-email` for
+ * `identity.email`, `user-read-private` for `country` and `product`.
  *
- * @default scopes `["user-read-email", "user-read-private"]`
+ * @default scopes `[]`
  */
 export function defineSpotifyProvider(
   options: SpotifyProviderConfig,
@@ -59,7 +60,7 @@ export function defineSpotifyProvider(
     userinfo: "https://api.spotify.com/v1/me",
     tokenAuth: confidential ? "basic" : "none",
     pkce: confidential ? false : "S256",
-    scopes: options.scopes ?? ["user-read-email", "user-read-private"],
+    scopes: options.scopes ?? [],
     authorizationParams: options.authorizationParams,
     profile: spotifyProfile,
   });

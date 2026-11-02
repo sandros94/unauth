@@ -75,9 +75,51 @@ describe("GitHub", () => {
       userinfo: "https://api.github.com/user",
       tokenAuth: "body",
       pkce: "S256",
-      scopes: ["read:user", "user:email"],
+      scopes: [],
     });
     expect(provider.userinfoHeaders["user-agent"]).toBeTruthy();
+    expect(authorizationQuery(provider)).not.toHaveProperty("scope");
+  });
+
+  it("reads /user alone under the default scopes, leaving a private email unset", async () => {
+    const seen: Request[] = [];
+    const identity = await provider.profile(
+      context({
+        tokens: { access_token: "at-1", token_type: "bearer", scope: "", raw: {} },
+        userinfo: fixtures.githubUser,
+        fetch: async (input, init) => {
+          seen.push(new Request(input, init));
+          return Response.json(fixtures.githubEmails);
+        },
+      }),
+    );
+
+    expect(seen).toEqual([]);
+    expect(identity).toEqual({
+      subject: "583231",
+      profile: fixtures.githubUser,
+      name: "The Octocat",
+      avatar: "https://avatars.githubusercontent.com/u/583231?v=4",
+    });
+  });
+
+  it("requests /user/emails when the scopes ask for user:email", async () => {
+    const scoped = defineGitHubProvider({ ...secret, scopes: ["user:email"] });
+    expect(authorizationQuery(scoped).scope).toBe("user:email");
+    const seen: Request[] = [];
+    const identity = await scoped.profile(
+      context({
+        tokens: { access_token: "at-1", token_type: "bearer", scope: "user:email", raw: {} },
+        userinfo: fixtures.githubUser,
+        fetch: async (input, init) => {
+          seen.push(new Request(input, init));
+          return Response.json(fixtures.githubEmails);
+        },
+      }),
+    );
+
+    expect(seen.map((request) => request.url)).toEqual(["https://api.github.com/user/emails"]);
+    expect(identity).toMatchObject({ email: "octocat@github.com", emailVerified: true });
   });
 
   it("takes the primary email from /user/emails when user:email was granted", async () => {
@@ -141,7 +183,16 @@ describe("Google", () => {
       discovery: true,
       nonce: true,
       pkce: "S256",
-      scopes: ["openid", "email", "profile"],
+      scopes: ["openid", "profile"],
+    });
+  });
+
+  it("leaves email and name unset when the claims carry only the subject", async () => {
+    const identity = await provider.profile(context({ claims: oidcClaims(fixtures.googleClaims) }));
+
+    expect(identity).toEqual({
+      subject: "110169484474386276334",
+      profile: oidcClaims(fixtures.googleClaims),
     });
   });
 
@@ -179,10 +230,19 @@ describe("Discord", () => {
   it("is configured for Discord's endpoints", () => {
     expectTypeOf(provider).toEqualTypeOf<OAuthProvider<DiscordProfile>>();
     expect(authorizationQuery(provider)).toMatchObject({
-      scope: "identify email",
+      scope: "identify",
       code_challenge_method: "S256",
     });
     expect(provider.userinfo).toBe("https://discord.com/api/users/@me");
+  });
+
+  it("leaves the email unset without the email scope", async () => {
+    const user = without(fixtures.discordUser, "email", "verified");
+    const identity = await provider.profile(context({ userinfo: user }));
+
+    expect(identity).toMatchObject({ subject: "80351110224678912", name: "Nelly" });
+    expect(identity.email).toBeUndefined();
+    expect(identity.emailVerified).toBeUndefined();
   });
 
   it("maps the user with its CDN avatar", async () => {
@@ -259,11 +319,38 @@ describe("Apple", () => {
       responseMode: "form_post",
       pkce: false,
       nonce: true,
-      scopes: ["name", "email"],
+      scopes: [],
     });
     const query = authorizationQuery(provider);
-    expect(query).toMatchObject({ response_mode: "form_post", nonce: "n", scope: "name email" });
+    expect(query).toMatchObject({ response_mode: "form_post", nonce: "n" });
+    expect(query).not.toHaveProperty("scope");
     expect(query).not.toHaveProperty("code_challenge");
+    const scoped = defineAppleProvider({
+      clientId: "com.example.web",
+      teamId: "TEAM",
+      keyId: "KEY",
+      privateKey: keys.privateKey,
+      scopes: ["name", "email"],
+    });
+    expect(authorizationQuery(scoped)).toMatchObject({
+      response_mode: "form_post",
+      scope: "name email",
+    });
+  });
+
+  it("leaves email and name unset when the id_token carries only the subject", async () => {
+    const keys = await generateJWK("ES256");
+    const provider = defineAppleProvider({
+      clientId: "com.example.web",
+      teamId: "T",
+      keyId: "K",
+      privateKey: keys.privateKey,
+    });
+    const claims = oidcClaims(fixtures.appleClaims);
+
+    const identity = await provider.profile(context({ claims }));
+
+    expect(identity).toEqual({ subject: fixtures.appleClaims.sub, profile: claims });
   });
 
   it("mints a short-lived ES256 client secret from a JWK or a PEM", async () => {
@@ -379,9 +466,18 @@ describe("Twitch", () => {
   it("sends the Client-Id header to Helix", () => {
     expectTypeOf(provider).toEqualTypeOf<OAuthProvider<TwitchProfile>>();
     expect(provider.userinfoHeaders).toEqual({ "client-id": "client-1" });
-    expect(provider.scopes).toEqual(["user:read:email"]);
+    expect(provider.scopes).toEqual(["openid"]);
     expect(provider.pkce).toBe(false);
     expect(authorizationQuery(provider)).not.toHaveProperty("code_challenge");
+  });
+
+  it("leaves the email unset without user:read:email", async () => {
+    const user = without(fixtures.twitchUsers.data[0], "email");
+    const identity = await provider.profile(context({ userinfo: { data: [user] } }));
+
+    expect(identity).toMatchObject({ subject: "141981764", name: "TwitchDev" });
+    expect(identity.email).toBeUndefined();
+    expect(identity.emailVerified).toBeUndefined();
   });
 
   it("unwraps data[0], whose email Twitch documents as verified", async () => {
@@ -413,8 +509,16 @@ describe("LinkedIn", () => {
       discovery: true,
       pkce: false,
       nonce: true,
+      scopes: ["openid"],
     });
     expect(defineLinkedInProvider({ ...secret, pkce: true }).pkce).toBe("S256");
+  });
+
+  it("leaves email and name unset when the claims carry only the subject", async () => {
+    const claims = oidcClaims(fixtures.linkedinClaims);
+    const identity = await provider.profile(context({ claims }));
+
+    expect(identity).toEqual({ subject: "782bbtaQ", profile: claims });
   });
 
   it("maps the claims, keeping the object locale", async () => {
@@ -436,8 +540,20 @@ describe("Facebook", () => {
     expect(provider.userinfo).toBe(
       "https://graph.facebook.com/v26.0/me?fields=id%2Cname%2Cemail%2Cpicture",
     );
-    expect(authorizationQuery(provider).scope).toBe("email,public_profile");
+    expect(authorizationQuery(provider).scope).toBe("public_profile");
+    const scoped = defineFacebookProvider({ ...secret, scopes: ["public_profile", "email"] });
+    expect(authorizationQuery(scoped).scope).toBe("public_profile,email");
     expect(provider.userinfo).not.toContain("access_token");
+  });
+
+  it("leaves email and name unset when Graph returns only the id", async () => {
+    const identity = await defineFacebookProvider(secret).profile(
+      context({ userinfo: { id: fixtures.facebookUser.id } }),
+    );
+    expect(identity).toEqual({
+      subject: "10224354126445211",
+      profile: { id: "10224354126445211" },
+    });
   });
 
   it("maps the user with its picture", async () => {
@@ -477,3 +593,14 @@ describe("X", () => {
     expect(identity.email).toBeUndefined();
   });
 });
+
+/** The claims every id_token carries, without the scope-dependent ones. */
+function oidcClaims(claims: IdTokenClaims): IdTokenClaims {
+  const { iss, aud, sub, iat, exp } = claims;
+  return { iss, aud, sub, iat, exp };
+}
+
+/** `value` without the members `keys` names. */
+function without(value: object, ...keys: string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+}

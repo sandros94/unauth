@@ -33,8 +33,9 @@ export interface LinkedInProviderConfig extends PresetConfig {
  * `https://www.linkedin.com/oauth`: a nonce, the client secret in the request body. PKCE is off
  * unless `pkce: true`; LinkedIn enables it per app, for native apps
  * (https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow-native).
+ * Add `email` and `profile` for `identity.email` and `identity.name`.
  *
- * @default scopes `["openid", "profile", "email"]`
+ * @default scopes `["openid"]`
  */
 export function defineLinkedInProvider(
   options: LinkedInProviderConfig,
@@ -47,7 +48,7 @@ export function defineLinkedInProvider(
     clientSecret: options.clientSecret,
     tokenAuth: "body",
     pkce: options.pkce ?? false,
-    scopes: options.scopes ?? ["openid", "profile", "email"],
+    scopes: options.scopes ?? ["openid"],
     authorizationParams: options.authorizationParams,
     profile: linkedinProfile,
   });

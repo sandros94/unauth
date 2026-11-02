@@ -57,9 +57,10 @@ const SECRET_LIFETIME = 300;
  * Apple requires whenever scopes are requested. No PKCE: `state` and the id_token's `nonce` protect
  * the flow. The client secret, sent in the request body, is an ES256 JWT minted per token request
  * and valid five minutes. Apple's scopes are `name` and `email`, without `openid`; the id_token
- * comes all the same. The name arrives only on the first sign-in, in the posted `user` field.
+ * comes all the same. Add `name` and `email` for `identity.name` and `identity.email`; the name
+ * arrives only on the first sign-in, in the posted `user` field.
  *
- * @default scopes `["name", "email"]`
+ * @default scopes `[]`
  */
 export function defineAppleProvider(options: AppleProviderConfig): OAuthProvider<AppleProfile> {
   return defineProvider({
@@ -73,7 +74,7 @@ export function defineAppleProvider(options: AppleProviderConfig): OAuthProvider
     responseMode: "form_post",
     pkce: false,
     tokenAuth: "body",
-    scopes: options.scopes ?? ["name", "email"],
+    scopes: options.scopes ?? [],
     openidScope: false,
     authorizationParams: options.authorizationParams,
     client: { id: options.clientId, secret: appleClientSecret(options) },

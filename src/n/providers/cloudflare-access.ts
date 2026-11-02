@@ -35,9 +35,10 @@ const TEAM = /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/i;
  * Connect app (not a consumer Cloudflare account login): discovered from
  * `https://<team>.cloudflareaccess.com/cdn-cgi/access/sso/oidc/<clientId>`, PKCE `S256`, a nonce,
  * the client secret over HTTP Basic. The `groups` scope adds the identity provider's groups to
- * `identity.profile.groups`. Throws `ERR_UNAUTH_CONFIG_INVALID` when `team` is not a DNS label.
+ * `identity.profile.groups`. Add `email` and `profile` for `identity.email` and `identity.name`.
+ * Throws `ERR_UNAUTH_CONFIG_INVALID` when `team` is not a DNS label.
  *
- * @default scopes `["openid", "email", "profile"]`
+ * @default scopes `["openid"]`
  */
 export function defineCloudflareAccessProvider(
   options: CloudflareAccessProviderConfig,
@@ -54,7 +55,7 @@ export function defineCloudflareAccessProvider(
     issuer: `https://${team}.cloudflareaccess.com/cdn-cgi/access/sso/oidc/${encodeURIComponent(options.clientId)}`,
     clientId: options.clientId,
     clientSecret: options.clientSecret,
-    scopes: options.scopes ?? ["openid", "email", "profile"],
+    scopes: options.scopes ?? ["openid"],
     authorizationParams: options.authorizationParams,
     profile: cloudflareAccessProfile,
   });

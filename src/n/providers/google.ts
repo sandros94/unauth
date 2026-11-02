@@ -30,9 +30,10 @@ export interface GoogleProviderConfig extends PresetConfig {
 /**
  * Google, OpenID Connect discovered from `https://accounts.google.com`: PKCE `S256`, a nonce, the
  * client secret over HTTP Basic. Restrict to a Workspace domain by checking
- * `identity.profile.hd`; the `hd` authorization parameter is only a hint.
+ * `identity.profile.hd`; the `hd` authorization parameter is only a hint. Add `email` for
+ * `identity.email`.
  *
- * @default scopes `["openid", "email", "profile"]`
+ * @default scopes `["openid", "profile"]` (Google requires `profile` or `email` beside `openid`)
  */
 export function defineGoogleProvider(options: GoogleProviderConfig): OAuthProvider<GoogleProfile> {
   return defineOidcProvider({
@@ -41,7 +42,7 @@ export function defineGoogleProvider(options: GoogleProviderConfig): OAuthProvid
     issuer: "https://accounts.google.com",
     clientId: options.clientId,
     clientSecret: options.clientSecret,
-    scopes: options.scopes ?? ["openid", "email", "profile"],
+    scopes: options.scopes ?? ["openid", "profile"],
     authorizationParams: options.authorizationParams,
     profile: googleProfile,
   });

@@ -37,9 +37,9 @@ export interface FacebookProviderConfig extends PresetConfig {
  * `https://graph.facebook.com/<version>/oauth/access_token`, account from Graph API `GET /me` with
  * the token in the `Authorization` header, never in the URL. PKCE `S256`; the client secret in the
  * request body; scopes comma-separated. Facebook does not say whether `email` is verified:
- * `emailVerified` stays unset.
+ * `emailVerified` stays unset. Add `email` for `identity.email`.
  *
- * @default scopes `["email", "public_profile"]`
+ * @default scopes `["public_profile"]`
  */
 export function defineFacebookProvider(
   options: FacebookProviderConfig,
@@ -55,7 +55,7 @@ export function defineFacebookProvider(
     token: `https://graph.facebook.com/${version}/oauth/access_token`,
     userinfo: `https://graph.facebook.com/${version}/me?fields=${encodeURIComponent(fields)}`,
     tokenAuth: "body",
-    scopes: options.scopes ?? ["email", "public_profile"],
+    scopes: options.scopes ?? ["public_profile"],
     scopeSeparator: ",",
     authorizationParams: options.authorizationParams,
     profile: facebookProfile,
