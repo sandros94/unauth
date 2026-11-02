@@ -54,17 +54,18 @@ export interface SignInHandlerOptions<
     result: FlowResult<TProfile, NoInfer<TMemo>>,
   ) => TResult | Promise<TResult>;
   /**
-   * Answers a failed flow, always an `UnauthError`; its return value is the response. Without it
-   * the failure is answered with a plain `Response` carrying the error's status (500 when it has
-   * none): its message below 500, a generic body otherwise. An `UnauthError` thrown by `onStart`
-   * or `onSuccess` (the application refusing the sign-in, say an account that is disabled) is
-   * answered here too; anything else they throw is the application's own failure and propagates
-   * as it is, for the framework's error handling.
+   * Answers a failed flow, always an `UnauthError`; its return value is the response. Returning
+   * nothing, or leaving the hook out, answers the failure with a plain `Response` carrying the
+   * error's status (500 when it has none): its message below 500, a generic body otherwise. So
+   * a hook answers the codes it cares about and returns nothing for the rest. An `UnauthError`
+   * thrown by `onStart` or `onSuccess` (the application refusing the sign-in, say an account that
+   * is disabled) is answered here too; anything else they throw is the application's own failure
+   * and propagates as it is, for the framework's error handling.
    */
   onError?: (
     event: TEvent,
     error: UnauthError,
-  ) => SignInAnswer<TResult> | Response | Promise<SignInAnswer<TResult> | Response>;
+  ) => SignInAnswer<TResult> | Response | void | Promise<SignInAnswer<TResult> | Response | void>;
 }
 
 /** What a sign-in answers besides a `Response`: `onSuccess`'s return type without `void`. */
@@ -77,7 +78,8 @@ export type SignInAnswer<TResult> = Exclude<TResult, void>;
  * starts the flow with `onStart`'s intent and answers the redirect to the provider; the callback
  * completes it and calls `onSuccess`, which writes the application's session. The handler returns
  * `onSuccess`'s value, or a `302` to the landing path when that is `undefined`. A failed flow is an
- * `UnauthError`, answered by `onError` or by a plain `Response` with its status.
+ * `UnauthError`, answered by `onError`, or by a plain `Response` with its status when that
+ * answers nothing or is not given.
  *
  * Every hook takes the event first. The annotation on the first hook's `event` types every hook
  * and the handler: put the framework's event type on the first hook written; `result` and `memo`
@@ -98,7 +100,7 @@ export type SignInAnswer<TResult> = Exclude<TResult, void>;
  *   key,
  *   origin: "https://app.example",
  *   onStart: async (event: H3Event) => {
- *     if (event.req.method !== "POST") return undefined;
+ *     if (event.req.method !== "POST") return;
  *     const session = await useAuthSession(event);
  *     return session ? { memo: { userId: session.userId } } : undefined;
  *   },

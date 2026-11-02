@@ -13,7 +13,7 @@ export default defineAtprotoHandler({
   key: () => deriveJWK(useRuntimeConfig().authSecret, { info: "unauth:flow" }),
   fetch: publicFetch,
   onStart: async (event: H3Event) => {
-    if (event.req.method !== "POST") return undefined;
+    if (event.req.method !== "POST") return;
     const session = await useAuthSession(event);
 
     const loginHint = (await event.req.formData()).get("login");

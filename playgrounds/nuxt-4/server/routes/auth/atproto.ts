@@ -17,7 +17,7 @@ export default defineEventHandler(
       return { kty: "oct", k: base64UrlStringify(bytes), alg: "A256GCM" } as const;
     },
     onStart: async (event: RequestEvent) => {
-      if (event.req.method !== "POST") return undefined;
+      if (event.req.method !== "POST") return;
       const session = await useAuthSession(event);
       const body: { login?: unknown } | undefined = await readBody(event);
       const loginHint = body?.login;

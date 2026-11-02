@@ -282,6 +282,30 @@ describe("defineSignInHandler without a session", () => {
     expect(event.res.headers.getSetCookie().join("\n")).toMatch(/unauth-flow=/);
   });
 
+  it("answers the plain failure when onError returns nothing, the flow cookie expired once", async () => {
+    const onError = vi.fn((_event: unknown, error: UnauthError) =>
+      error.code === "ERR_AUTHN_STATE_MISMATCH" ? new Response(null, { status: 418 }) : undefined,
+    );
+    const { handler } = await setup({ onError });
+    const jar = cookieJar();
+    const start = await call(handler, "/auth/fake");
+    jar.update(start.headers);
+    const back = fake.approve(start.headers.get("location")!);
+    back.searchParams.set("error", "access_denied");
+
+    const event = eventFor(new Request(back, { headers: { cookie: jar.toString() } }));
+    const response = (await handler(event)) as Response;
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(response.status).toBe(401);
+    expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await response.text()).toBe(onError.mock.calls[0]![1].message);
+    expect(response.headers.getSetCookie()).toEqual([]);
+    const lines = event.res.headers.getSetCookie();
+    expect(lines.filter((l) => l.startsWith("unauth-flow=") && isExpired(l))).toHaveLength(1);
+  });
+
   it("expires the flow cookie on the event's errHeaders too, when the framework keeps them apart", async () => {
     const { handler } = await setup({
       onError: (_event, error) => new Response(error.message, { status: error.status }),
@@ -852,6 +876,13 @@ describe("defineSignInHandler types", () => {
       // @ts-expect-error onError answers a Response or one of onSuccess's values
       onError: () => ({ ok: false }),
     });
+    expectTypeOf(
+      defineSignInHandler(fakeProvider(), {
+        key: flowKey,
+        onSuccess: () => "ok",
+        onError: async (_event, error) => (error.status === 403 ? "refused" : undefined),
+      }),
+    ).returns.resolves.toEqualTypeOf<Response | string>();
     expectTypeOf(
       defineSignInHandler(fakeProvider(), { key: flowKey, onSuccess: async () => {} }),
     ).returns.resolves.toEqualTypeOf<Response>();

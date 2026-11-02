@@ -31,7 +31,7 @@ export interface SignInRoute<TProfile, TResult, TEvent extends WebRequestEvent, 
 /** The steps of one request around the flow. */
 export interface SignInSteps<TProfile, TResult, TMemo> {
   onStart?: () => FlowIntent<TMemo> | void | Promise<FlowIntent<TMemo> | void>;
-  onError?: (error: UnauthError) => TResult | Response | Promise<TResult | Response>;
+  onError?: (error: UnauthError) => TResult | Response | void | Promise<TResult | Response | void>;
   /** Turns a completed sign-in into the response. */
   complete: (result: FlowResult<TProfile, TMemo>) => Promise<TResult | Response>;
 }
@@ -46,7 +46,8 @@ export interface SignInSteps<TProfile, TResult, TMemo> {
  * it, and `complete` or `onError` runs there; `onStart` ran there too and is not called on the
  * relocated start. The consumed flow cookie is expired on the response, error responses included (on the
  * event's `errHeaders` too, for a framework that keeps those apart); an `UnauthError`, the flow's
- * or one `onStart` or `complete` throws, is answered by `onError`, else by a plain response.
+ * or one `onStart` or `complete` throws, is answered by `onError`, else (or when it answers
+ * nothing) by a plain response.
  */
 export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TMemo>(
   provider: Provider<TProfile>,
@@ -63,7 +64,8 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
     const fail = async (error: UnauthError, headers?: Headers): Promise<TResult | Response> => {
       if (!onError) return failureResponse(error, headers);
       if (headers) copySetCookie(headers, event.res);
-      return onError(error);
+      const answer = await onError(error);
+      return answer === undefined ? failureResponse(error) : answer;
     };
 
     let key: FlowKey;

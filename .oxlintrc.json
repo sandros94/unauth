@@ -60,6 +60,12 @@
         "typescript/no-explicit-any": "error",
         "unicorn/consistent-function-scoping": "off"
       }
+    },
+    {
+      "files": ["playgrounds/**", "docs/**"],
+      "rules": {
+        "consistent-return": "off"
+      }
     }
   ]
 }

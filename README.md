@@ -70,7 +70,7 @@ export async function createSession(event: H3Event, { userId }: { userId: string
 
 export async function useAuthSession(event: H3Event) {
   const token = getCookie(event, "__Host-session");
-  if (!token) return undefined;
+  if (!token) return;
   const { rows } =
     await db.sql`SELECT user_id FROM sessions WHERE token_hash = ${await hashOpaqueToken(token)}`;
   return rows[0] ? { userId: rows[0].user_id } : undefined;
@@ -109,7 +109,7 @@ app.all(
 - `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `memo` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.
 - Headers the application sets on `event.res.headers` in `onStart` or `onSuccess` (its session cookie), and the expiry of the consumed flow cookie, reach the browser because the framework sends them with whatever the handler returns, as h3, Nitro and Nuxt do; an adapter for another framework must apply them.
 - `fetch`: optional; replaces the global `fetch` for every request a sign-in makes to a provider, where a deployment refuses private network ranges.
-- `onError(event, error)`: optional; `error` is an `UnauthError` with `code`, `cause` and `status`, an `UnauthError` thrown by `onStart` or `onSuccess` included. Without it the failure is answered with a plain `Response` of that status.
+- `onError(event, error)`: optional; `error` is an `UnauthError` with `code`, `cause` and `status`, an `UnauthError` thrown by `onStart` or `onSuccess` included. Without it, or when it returns nothing, the failure is answered with a plain `Response` of that status: answer the codes you care about, return nothing for the rest.
 - Annotate the `event` of the first hook you write with the framework's event type: every hook and the handler take it, `result` and `memo` stay inferred.
 - `defineSignInHandler(provider, options)` is the same handler for any provider. It answers `GET` and `POST` and refuses other methods with a `405`: mount it without a method filter (`app.all(...)`, a `routes/auth/github.ts` rather than `.get.ts`).
 
@@ -119,7 +119,7 @@ app.all(
 
 ```ts
 onStart: async (event: H3Event) => {
-  if (event.req.method !== "POST") return undefined;
+  if (event.req.method !== "POST") return;
   const session = await useAuthSession(event);
   return session ? { memo: { userId: session.userId } } : undefined;
 },

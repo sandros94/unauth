@@ -49,7 +49,6 @@ export default defineEventHandler(
           headers: { "location": "/?notice=use-link-button", "cache-control": "no-store" },
         });
       }
-      return new Response(error.message, { status: error.status ?? 500 });
     },
   }),
 );
