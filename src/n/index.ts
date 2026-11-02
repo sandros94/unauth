@@ -71,13 +71,21 @@ export type {
 } from "./_internal/flow-key.ts";
 export { deriveJWK } from "./derive-jwk.ts";
 export { type PublicServerOptions, isPublicServer } from "./public-server.ts";
-/** @deprecated Import from `unauth/token`. */
 export {
+  /** @deprecated Import from `unauth/token`. */
   type OneTimeToken,
+  /** @deprecated Import from `unauth/token`. */
   type OneTimeTokenConfig,
+  /** @deprecated Import from `unauth/token`. */
   type OneTimeTokenKeyLookup,
+  /** @deprecated Import from `unauth/token`. */
   type OneTimeTokenUse,
+  /** @deprecated Import from `unauth/token`. */
   defineOneTimeToken,
 } from "../token/one-time-token.ts";
-/** @deprecated Import from `unauth/token`. */
-export { createOpaqueToken, hashOpaqueToken } from "../token/opaque-token.ts";
+export {
+  /** @deprecated Import from `unauth/token`. */
+  createOpaqueToken,
+  /** @deprecated Import from `unauth/token`. */
+  hashOpaqueToken,
+} from "../token/opaque-token.ts";
