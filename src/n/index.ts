@@ -70,6 +70,7 @@ export type {
   SignInKey,
 } from "./_internal/flow-key.ts";
 export { deriveJWK } from "./derive-jwk.ts";
+export { type PublicServerOptions, isPublicServer } from "./public-server.ts";
 export {
   type OneTimeToken,
   type OneTimeTokenConfig,

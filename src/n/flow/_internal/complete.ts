@@ -33,8 +33,11 @@ export interface CompleteFlowOptions extends FlowCarrierOptions {
   headers: Headers;
   /**
    * Replaces the global `fetch` for every request to a provider or to what a sign-in resolves
-   * (discovery, keys, handles, servers): the place to refuse private network ranges when the
-   * server can reach some.
+   * (discovery, keys, handles, servers): the place to refuse private addresses a public name
+   * resolves to, when the server can reach some.
+   * - Node: an undici `Agent` refusing non-unicast addresses at connect time (`playgrounds/nitro/server/utils/public-fetch.ts`).
+   * - Cloudflare Workers: the platform refuses private ranges; nothing to inject.
+   * - Deno and Bun: no connect hook; restrict with `--allow-net` or egress rules.
    */
   fetch?: Fetch;
   now?: () => number;

@@ -240,6 +240,9 @@ importers:
       unauth:
         specifier: workspace:*
         version: link:../..
+      undici:
+        specifier: ^8.12.3
+        version: 8.12.3
     devDependencies:
       '@types/node':
         specifier: ^26.6.5

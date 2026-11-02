@@ -52,13 +52,19 @@ export interface AtprotoProviderConfig {
   tosUri?: string;
   policyUri?: string;
   /**
-   * Development only: lets the PDS, authorization server and endpoints named by DID documents and
-   * server metadata use plain `http:`, for a PDS run locally. Off, those must be `https:`: with
-   * it on, any account's documents can point this server at plain-http services it can reach.
+   * Whether a server a stranger's input or documents name may be reached: the handle's host, a
+   * `did:web` host, the PDS, the authorization server and its endpoints, a server typed as
+   * `loginHint`. Default: `isPublicServer` with no relaxations. Whatever it returns, the URL is
+   * first held to its shape (parseable, `http:` or `https:`, no credentials); what it throws
+   * propagates as it is. The configured `dnsResolver` and `plcDirectory` are not asked about.
    *
-   * @default false
+   * @example
+   * // Development: a PDS at http://localhost:2583.
+   * isServerAllowed: () => true
+   * @example
+   * isServerAllowed: (url) => isPublicServer(url, { allow: { suffixes: [".local"] } })
    */
-  allowHttp?: boolean;
+  isServerAllowed?: (url: URL) => boolean;
   /** A DNS-over-HTTPS resolver answering `application/dns-json`. @default "https://cloudflare-dns.com/dns-query" */
   dnsResolver?: string;
   /** The `did:plc` directory. @default "https://plc.directory" */
@@ -75,7 +81,7 @@ export interface AtprotoProvider extends CustomProvider<AtprotoProfile> {
 
 /**
  * AT Protocol (Bluesky and every other PDS) as a public client, sign-in only: `loginHint` names the
- * account (a handle or a DID) or the server to start from (an `https://` URL); the account's
+ * account (a handle or a DID) or the server to start from (its URL); the account's
  * authorization server is discovered through its DID document and PDS; the request is pushed
  * (PAR) with PKCE and a DPoP proof signed by a key minted for this sign-in; the callback's `iss`,
  * the token's `sub` and the account's PDS are checked against each other. The DPoP-bound tokens
@@ -144,7 +150,7 @@ export const defineAtprotoHandler: PresetHandler<AtprotoProviderPart, AtprotoPro
       "policyUri",
       "dnsResolver",
       "plcDirectory",
-      "allowHttp",
+      "isServerAllowed",
     ],
     shared: ["redirectUri"],
   });

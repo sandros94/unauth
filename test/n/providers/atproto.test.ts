@@ -10,6 +10,7 @@ import {
   defineSignInHandler,
   isUnauthError,
   startFlow,
+  isPublicServer,
 } from "../../../src/n/index.ts";
 import {
   type AtprotoProvider,
@@ -261,7 +262,7 @@ describe("a remote document naming a plain-http loopback URL", () => {
     );
 
     expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
-    expect(error).toMatchObject({ cause: { reason: "malformed" } });
+    expect(error).toMatchObject({ cause: { reason: "refused" } });
     expect(reachedLoopback()).toBe(false);
   });
 
@@ -278,17 +279,154 @@ describe("a remote document naming a plain-http loopback URL", () => {
     }
   });
 
-  it("follows them when the provider opts in with allowHttp, for a PDS run locally", async () => {
+  it("follows them under isServerAllowed: () => true, for a PDS run locally", async () => {
+    const anyServer = { isServerAllowed: () => true };
     fake.documents.set(ALICE.did, didDocument(ALICE.did, ALICE.handle, "http://127.0.0.1:2583"));
-    await rejection(begin(provider({ allowHttp: true }), ALICE.handle));
+    await rejection(begin(provider(anyServer), ALICE.handle));
     expect(fake.requests.map((r) => r.url.href)).toContain(
       "http://127.0.0.1:2583/.well-known/oauth-protected-resource",
     );
 
     fake = createFakeAtproto();
     fake.metadata = { pushed_authorization_request_endpoint: "http://localhost:2583/oauth/par" };
-    await rejection(begin(provider({ allowHttp: true }), ALICE.handle));
+    await rejection(begin(provider(anyServer), ALICE.handle));
     expect(fake.requests.map((r) => r.url.href)).toContain("http://localhost:2583/oauth/par");
+
+    fake = createFakeAtproto();
+    await rejection(begin(provider(anyServer), "http://localhost:2583"));
+    expect(fake.requests.map((r) => r.url.href)).toContain(
+      "http://localhost:2583/.well-known/oauth-protected-resource",
+    );
+  });
+});
+
+describe("the servers a sign-in may reach", () => {
+  const reached = (hostname: string) => fake.requests.some((r) => r.url.hostname === hostname);
+
+  it("refuses a DID document naming a private PDS, as a login hint error, without asking it", async () => {
+    fake.documents.set(ALICE.did, didDocument(ALICE.did, ALICE.handle, "https://192.168.1.10"));
+
+    const error = await rejection(begin(provider(), ALICE.handle));
+
+    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
+    expect(isUnauthError(error) && error.cause).toMatchObject({ cause: { reason: "refused" } });
+    expect(reached("192.168.1.10")).toBe(false);
+  });
+
+  it("refuses PDS metadata naming a single-label authorization server, without asking it", async () => {
+    const fetch: typeof fake.fetch = async (input, init) => {
+      const url = new URL(new Request(input, init).url);
+      if (url.origin === PDS && url.pathname === "/.well-known/oauth-protected-resource") {
+        return Response.json({ resource: PDS, authorization_servers: ["https://intranet"] });
+      }
+      return fake.fetch(input, init);
+    };
+    const error = await rejection(
+      startFlow(provider(), formStart(REDIRECT_URI), {
+        key,
+        redirectUri: REDIRECT_URI,
+        fetch,
+        loginHint: ALICE.handle,
+      }),
+    );
+
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") && error.cause.reason).toBe("refused");
+    expect(reached("intranet")).toBe(false);
+  });
+
+  it("refuses a typed server whose metadata names a refused authorization server, as a provider error", async () => {
+    const policy = {
+      isServerAllowed: (url: URL) => isPublicServer(url) && url.hostname === "pds.test",
+    };
+
+    const error = await rejection(begin(provider(policy), PDS));
+
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") && error.cause.reason).toBe("refused");
+    expect(reached(new URL(ISSUER).hostname)).toBe(false);
+  });
+
+  it("refuses a login hint naming a private server, a special-use did:web or credentials, asking nothing", async () => {
+    const cases = [
+      { login: "https://10.0.0.1", policy: {} },
+      { login: "http://pds.test", policy: {} },
+      { login: "did:web:pds.local", policy: {} },
+      { login: "https://u:p@pds.test", policy: { isServerAllowed: () => true } },
+    ];
+    for (const { login, policy } of cases) {
+      const error = await rejection(begin(provider(policy), login));
+      expect({ login, invalid: isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID") }).toEqual({
+        login,
+        invalid: true,
+      });
+    }
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it("refuses a handle whose well-known host the policy refuses, without asking it", async () => {
+    const policy = {
+      isServerAllowed: (url: URL) => isPublicServer(url) && url.hostname !== BOB.handle,
+    };
+
+    const error = await rejection(begin(provider(policy), BOB.handle));
+
+    expect(isUnauthError(error, "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
+    expect(served("/.well-known/atproto-did")).toBe(0);
+  });
+
+  it("asks the hook about the PDS and the authorization server, as URL instances", async () => {
+    const asked: unknown[] = [];
+    const isServerAllowed = (url: URL) => {
+      asked.push(url);
+      return isPublicServer(url);
+    };
+
+    await signIn(provider({ isServerAllowed }), ALICE.handle);
+
+    expect(asked.every((url) => url instanceof URL)).toBe(true);
+    const hosts = new Set(asked.map((url) => (url as URL).hostname));
+    expect(hosts).toEqual(new Set([new URL(PDS).hostname, new URL(ISSUER).hostname]));
+  });
+
+  it("lets what the hook throws propagate as it is", async () => {
+    const thrown = new Error("policy store down");
+    const policy = {
+      isServerAllowed: () => {
+        throw thrown;
+      },
+    };
+
+    expect(await rejection(begin(provider(policy), ALICE.handle))).toBe(thrown);
+    expect(await rejection(begin(provider(policy), PDS))).toBe(thrown);
+    expect(await rejection(begin(provider(policy), BOB.handle))).toBe(thrown);
+  });
+
+  it("applies a tightening hook to every server", async () => {
+    const policy = {
+      isServerAllowed: (url: URL) => isPublicServer(url) && url.hostname === "pds.test",
+    };
+
+    const error = await rejection(begin(provider(policy), ALICE.handle));
+
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") && error.cause.reason).toBe("refused");
+    expect(reached(new URL(ISSUER).hostname)).toBe(false);
+  });
+
+  it("checks cached server metadata again at every use", async () => {
+    fake.metadata = { pushed_authorization_request_endpoint: "http://localhost:2583/oauth/par" };
+    await rejection(begin(provider({ isServerAllowed: () => true }), ALICE.handle));
+    const loaded = served("/.well-known/oauth-authorization-server");
+
+    const error = await rejection(begin(provider(), ALICE.handle));
+
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") && error.cause.reason).toBe("refused");
+    expect(served("/.well-known/oauth-authorization-server")).toBe(loaded);
+  });
+
+  it("refuses an isServerAllowed that is not a function", () => {
+    expect(() =>
+      provider({ isServerAllowed: "yes" as unknown as (url: URL) => boolean }),
+    ).toThrowError(expect.objectContaining({ code: "ERR_UNAUTH_CONFIG_INVALID" }));
   });
 });
 
@@ -347,7 +485,14 @@ describe("the DID document cache", () => {
       set: (name, value) => void stored.set(name, value),
     };
     const resolve = (plcDirectory: string) =>
-      resolveDid(ALICE.did, { fetch, now: Date.now, cache, dnsResolver: DNS, plcDirectory });
+      resolveDid(ALICE.did, {
+        fetch,
+        now: Date.now,
+        cache,
+        dnsResolver: DNS,
+        plcDirectory,
+        isServerAllowed: isPublicServer,
+      });
 
     const first = await resolve(PLC);
     const second = await resolve(OTHER_PLC);

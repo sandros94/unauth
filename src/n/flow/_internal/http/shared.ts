@@ -105,17 +105,12 @@ export function assertSecureUrl(
 }
 
 /**
- * `value` as an `https:` URL read from a provider's document (a DID document, a server's metadata):
- * anything else, plain `http:` on a loopback host included, is `ERR_AUTHN_PROVIDER_ERROR`
- * (`malformed`). The loopback and `insecureHosts` exceptions of {@link assertSecureUrl} are for
- * URLs the application configured, never for ones a remote party chose; `allowHttp` admits plain
- * `http:` on any host, for a development setup the application opted into.
+ * `value` as a server URL a remote party chose (a URL read from a DID document or a server's
+ * metadata, or typed by a visitor), checked for shape only: at most {@link MAX_URL_LENGTH}
+ * characters, `http:` or `https:`, no credentials. Anything else is `ERR_AUTHN_PROVIDER_ERROR`
+ * (`malformed`). Whether the server may be reached is {@link assertRemoteUrl}'s question.
  */
-export function assertRemoteUrl(
-  value: string,
-  options: { label: string; allowHttp?: boolean },
-): URL {
-  const expected = options.allowHttp ? "an http: or https:" : "an https:";
+export function remoteUrl(value: string, options: { label: string }): URL {
   if (value.length > MAX_URL_LENGTH) {
     throw providerError(`${options.label} must be at most ${MAX_URL_LENGTH} characters.`, {
       reason: "malformed",
@@ -125,13 +120,39 @@ export function assertRemoteUrl(
   try {
     url = new URL(value);
   } catch (error) {
-    throw providerError(`${options.label} must be ${expected} URL.`, {
+    throw providerError(`${options.label} must be an http: or https: URL.`, {
       reason: "malformed",
       cause: error,
     });
   }
-  if (url.protocol === "https:" || (options.allowHttp && url.protocol === "http:")) return url;
-  throw providerError(`${options.label} must be ${expected} URL.`, { reason: "malformed" });
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw providerError(`${options.label} must be an http: or https: URL.`, {
+      reason: "malformed",
+    });
+  }
+  if (url.username !== "" || url.password !== "") {
+    throw providerError(`${options.label} must carry no credentials.`, { reason: "malformed" });
+  }
+  return url;
+}
+
+/**
+ * {@link remoteUrl}, then the sign-in's policy: a server `isServerAllowed` refuses is
+ * `ERR_AUTHN_PROVIDER_ERROR` (`refused`); what it throws propagates as it is. The loopback and
+ * `insecureHosts` exceptions of {@link assertSecureUrl} are for URLs the application configured,
+ * never for ones a remote party chose.
+ */
+export function assertRemoteUrl(
+  value: string,
+  options: { label: string; isServerAllowed: (url: URL) => boolean },
+): URL {
+  const url = remoteUrl(value, options);
+  if (!options.isServerAllowed(url)) {
+    throw providerError(`${options.label} is not a server this sign-in may reach.`, {
+      reason: "refused",
+    });
+  }
+  return url;
 }
 
 /** `value` in seconds when it is a positive duration (`30`, `"10m"`), else `ERR_UNAUTH_CONFIG_INVALID`. */

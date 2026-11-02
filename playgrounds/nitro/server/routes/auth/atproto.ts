@@ -5,11 +5,13 @@ import { defineAtprotoHandler } from "unauth/n/providers/atproto";
 
 import { findOrCreateUser, linkIdentity } from "../../utils/accounts.ts";
 import { atproto } from "../../utils/atproto.ts";
+import { publicFetch } from "../../utils/public-fetch.ts";
 import { useAuthSession } from "../../utils/session.ts";
 
 export default defineAtprotoHandler({
   provider: atproto,
   key: () => deriveJWK(useRuntimeConfig().authSecret, { info: "unauth:flow" }),
+  fetch: publicFetch,
   onStart: async (event: H3Event) => {
     const session = await useAuthSession(event);
 

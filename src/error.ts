@@ -72,12 +72,13 @@ export interface UnauthErrorCauseMap {
   /**
    * Why a provider endpoint gave no usable answer: `unreachable`, no connection; `timeout`, nothing
    * within the deadline; `too-large`, a body over the cap; `status`, a failed HTTP status;
-   * `malformed`, an answer that is not what its protocol says; `failed`, a custom provider's own
-   * leg threw something that is not an `UnauthError`. `status` is the HTTP status once one
-   * arrived, `cause` the failure underneath when there is one.
+   * `malformed`, an answer that is not what its protocol says; `refused`, a server the sign-in's
+   * policy does not reach; `failed`, a custom provider's own leg threw something that is not an
+   * `UnauthError`. `status` is the HTTP status once one arrived, `cause` the failure underneath
+   * when there is one.
    */
   ERR_AUTHN_PROVIDER_ERROR: {
-    reason: "unreachable" | "timeout" | "too-large" | "status" | "malformed" | "failed";
+    reason: "unreachable" | "timeout" | "too-large" | "status" | "malformed" | "refused" | "failed";
     status?: number;
     cause?: unknown;
   };

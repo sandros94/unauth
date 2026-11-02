@@ -1,5 +1,5 @@
 import { isUnauthError } from "../../../../error.ts";
-import { assertRemoteUrl, providerError } from "../../../flow/_internal/http/shared.ts";
+import { assertRemoteUrl, providerError, remoteUrl } from "../../../flow/_internal/http/shared.ts";
 import {
   type MetadataLoader,
   type MetadataOptions,
@@ -8,7 +8,7 @@ import {
   defineMetadataLoader,
   requiredMember,
 } from "../../../flow/_internal/cache/metadata.ts";
-import { loginHintError } from "./identity.ts";
+import { type UrlPolicy, loginHintError } from "./identity.ts";
 
 /** The atproto authorization server of an account, with the endpoints a sign-in uses. */
 export interface AtprotoServer {
@@ -43,11 +43,6 @@ const REQUIRED_TRUE = [
   "client_id_metadata_document_supported",
 ];
 
-/** What a server document's URLs are held to: `https:`, or any `http(s):` for a local setup. */
-export interface UrlPolicy {
-  allowHttp?: boolean;
-}
-
 const loadAuthorizationServer: MetadataLoader<string> = /* @__PURE__ */ defineMetadataLoader({
   name: "atproto-resource",
   label: RESOURCE_LABEL,
@@ -64,24 +59,21 @@ const loadServerMetadata: MetadataLoader<AtprotoServer> = /* @__PURE__ */ define
 
 /**
  * The origin of the one authorization server a PDS's protected resource metadata names, kept ten
- * minutes; one that is not `https:` (nor `http:` under `allowHttp`) is `ERR_AUTHN_PROVIDER_ERROR`.
+ * minutes; one the policy refuses is `ERR_AUTHN_PROVIDER_ERROR` (`refused`), checked at every use.
  */
 export async function authorizationServerOf(
   pds: string,
   options: MetadataOptions & UrlPolicy,
 ): Promise<string> {
   const issuer = await loadAuthorizationServer(pds, options);
-  assertRemoteUrl(issuer, {
-    label: `The authorization server of ${pds}`,
-    allowHttp: options.allowHttp,
-  });
+  assertRemoteUrl(issuer, { ...options, label: `The authorization server of ${pds}` });
   return issuer;
 }
 
 /**
  * The metadata of an authorization server, checked against the atproto profile and kept ten
- * minutes; an endpoint that is not `https:` (nor `http:` under `allowHttp`) is
- * `ERR_AUTHN_PROVIDER_ERROR`.
+ * minutes; an endpoint the policy refuses is `ERR_AUTHN_PROVIDER_ERROR` (`refused`), checked at
+ * every use.
  */
 export async function serverMetadata(
   issuer: string,
@@ -89,7 +81,7 @@ export async function serverMetadata(
 ): Promise<AtprotoServer> {
   const server = await loadServerMetadata(issuer, options);
   for (const name of ["authorizationEndpoint", "parEndpoint", "tokenEndpoint"] as const) {
-    assertRemoteUrl(server[name], { label: `${issuer} "${name}"`, allowHttp: options.allowHttp });
+    assertRemoteUrl(server[name], { ...options, label: `${issuer} "${name}"` });
   }
   return server;
 }
@@ -104,7 +96,8 @@ export async function serverOfPds(
 
 /**
  * The authorization server behind a URL the user typed: a PDS (through its protected resource
- * metadata) or an authorization server itself. Neither is `ERR_AUTHN_LOGIN_HINT_INVALID`.
+ * metadata) or an authorization server itself. Neither is `ERR_AUTHN_LOGIN_HINT_INVALID`; a server
+ * their metadata names that the policy refuses stays `ERR_AUTHN_PROVIDER_ERROR` (`refused`).
  */
 export async function serverOfUrl(
   origin: string,
@@ -113,6 +106,7 @@ export async function serverOfUrl(
   try {
     return await serverOfPds(origin, options);
   } catch (error) {
+    if (!isUnauthError(error) || refused(error)) throw error;
     if (!isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") || error.cause.status !== 404) {
       throw loginHintError(`${origin} is not an atproto server.`, error);
     }
@@ -120,6 +114,7 @@ export async function serverOfUrl(
   try {
     return await serverMetadata(origin, options);
   } catch (error) {
+    if (!isUnauthError(error) || refused(error)) throw error;
     throw loginHintError(`${origin} is not an atproto server.`, error);
   }
 }
@@ -146,12 +141,9 @@ function parseProtectedResource(document: unknown, pds: string): string {
 function parseServerMetadata(document: unknown, issuer: string): AtprotoServer {
   const context = { issuer, url: `${issuer}${AUTHORIZATION_SERVER}`, label: SERVER_LABEL };
   const metadata = assertIssuerDocument(document, context);
-  // Shape only: whether plain http: is acceptable is the caller's policy, checked at every use.
+  // Shape only: whether the server may be reached is the caller's policy, checked at every use.
   const endpoint = (name: string): string =>
-    assertRemoteUrl(requiredMember(metadata, name, context), {
-      label: `${issuer} "${name}"`,
-      allowHttp: true,
-    }).href;
+    remoteUrl(requiredMember(metadata, name, context), { label: `${issuer} "${name}"` }).href;
   const includes = (name: string, value: string): boolean =>
     Array.isArray(metadata[name]) && metadata[name].includes(value);
   const notAtproto = (detail: string) =>
@@ -180,11 +172,15 @@ function parseServerMetadata(document: unknown, issuer: string): AtprotoServer {
 
 /** `value` as an `http(s):` origin with no path; anything else is `ERR_AUTHN_PROVIDER_ERROR`. */
 function originOf(value: string, label: string): string {
-  const url = assertRemoteUrl(value, { label, allowHttp: true });
+  const url = remoteUrl(value, { label });
   if (url.href !== `${url.origin}/`) {
     throw providerError(`${label} must be an origin with no path, got ${JSON.stringify(value)}.`, {
       reason: "malformed",
     });
   }
   return url.origin;
+}
+
+function refused(error: unknown): boolean {
+  return isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") && error.cause.reason === "refused";
 }

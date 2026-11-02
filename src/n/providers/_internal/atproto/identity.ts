@@ -2,7 +2,6 @@ import { UnauthError, isUnauthError } from "../../../../error.ts";
 import {
   MAX_URL_LENGTH,
   assertRemoteUrl,
-  assertSecureUrl,
   isRecord,
   providerError,
   stringField,
@@ -15,19 +14,23 @@ import {
   raced,
 } from "../../../flow/_internal/http/body.ts";
 import { getObject } from "../../../flow/_internal/http/json.ts";
+import { SPECIAL_USE_TLDS } from "../../../public-server.ts";
 import {
   type MetadataOptions,
   defineMetadataLoader,
 } from "../../../flow/_internal/cache/metadata.ts";
 
+/** Which servers a stranger's input or documents name may be reached. */
+export interface UrlPolicy {
+  isServerAllowed: (url: URL) => boolean;
+}
+
 /** Where the resolvers an identity needs are, and how to reach them. */
-export interface AtprotoResolveOptions extends MetadataOptions {
+export interface AtprotoResolveOptions extends MetadataOptions, UrlPolicy {
   /** A DNS-over-HTTPS resolver answering `application/dns-json`. */
   dnsResolver: string;
   /** The `did:plc` directory. */
   plcDirectory: string;
-  /** Lets the URLs read from documents use plain `http:` (a PDS run locally). */
-  allowHttp?: boolean;
 }
 
 /** An account: its DID, the handle it verifiably claims, and the origin of its PDS. */
@@ -43,16 +46,7 @@ export type AtprotoLoginHint = { kind: "account"; input: string } | { kind: "ser
 
 /** Handle syntax (atproto Handle spec) and the TLDs it never resolves. */
 const HANDLE = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
-const DISALLOWED_TLDS = new Set([
-  "alt",
-  "arpa",
-  "example",
-  "internal",
-  "invalid",
-  "local",
-  "localhost",
-  "onion",
-]);
+const DISALLOWED_TLDS = new Set(SPECIAL_USE_TLDS);
 const DID_PLC = /^did:plc:[a-z2-7]{24}$/;
 const DID_WEB = /^did:web:([a-z0-9.-]+)$/;
 /** The longest handle document (`/.well-known/atproto-did`) read. */
@@ -62,9 +56,7 @@ const loadDid = /* @__PURE__ */ defineMetadataLoader<DidDocument, AtprotoResolve
   name: "atproto-did",
   label: "DID document",
   url: (did, options) =>
-    did.startsWith("did:plc:")
-      ? `${plcOrigin(options)}/${did}`
-      : `https://${did.slice("did:web:".length)}/.well-known/did.json`,
+    did.startsWith("did:plc:") ? `${plcOrigin(options)}/${did}` : didWebUrl(did),
   partition: (options) => plcOrigin(options),
   parse: parseDidDocument,
   revive: reviveDidDocument,
@@ -86,11 +78,14 @@ export function loginHintError(
   });
 }
 
-/** A `loginHint`: an `https://` URL is a server to start from, anything else an account (handle or DID). */
-export function parseLoginHint(loginHint: string): AtprotoLoginHint {
+/**
+ * A `loginHint`: an `http(s)://` URL is a server to start from, held to the policy (which refuses
+ * plain `http:` unless the application's allows it), anything else an account (handle or DID).
+ */
+export function parseLoginHint(loginHint: string, options: UrlPolicy): AtprotoLoginHint {
   const input = loginHint.trim().replace(/^@/, "");
-  if (/^https:\/\//i.test(input)) {
-    const url = assertServerUrl(input);
+  if (/^https?:\/\//i.test(input)) {
+    const url = reachable(input, { ...options, label: "The server", input });
     return { kind: "server", url: url.origin };
   }
   if (input.startsWith("did:")) {
@@ -132,13 +127,22 @@ export async function verifiedHandle(
 ): Promise<{ handle?: string }> {
   const claimed = claimedHandle(document);
   if (claimed === undefined) return {};
-  const did = await resolveHandle(claimed, options).catch(() => undefined);
+  const did = await resolveHandle(claimed, options).catch((error: unknown) => {
+    if (!isUnauthError(error)) throw error;
+    return undefined;
+  });
   return did === document.id ? { handle: claimed } : {};
 }
 
-/** A DID document, kept ten minutes; an unknown DID is `ERR_AUTHN_LOGIN_HINT_INVALID`. */
+/**
+ * A DID document, kept ten minutes; an unknown DID, or a `did:web` on a server the policy refuses,
+ * is `ERR_AUTHN_LOGIN_HINT_INVALID`.
+ */
 export function resolveDid(did: string, options: AtprotoResolveOptions): Promise<DidDocument> {
   assertDid(did);
+  if (did.startsWith("did:web:")) {
+    reachable(didWebUrl(did), { ...options, label: `The DID document of ${did}`, input: did });
+  }
   return loadDid(did, options).catch((error: unknown) => {
     if (isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR") && error.cause.status === 404) {
       throw loginHintError(`${did} is unknown.`, error);
@@ -148,14 +152,12 @@ export function resolveDid(did: string, options: AtprotoResolveOptions): Promise
 }
 
 /** The origin of the PDS a DID document names; `ERR_AUTHN_LOGIN_HINT_INVALID` without one. */
-export function pdsOf(document: DidDocument, options: { allowHttp?: boolean }): string {
+export function pdsOf(document: DidDocument, options: UrlPolicy): string {
   if (document.pds === undefined) throw loginHintError(`${document.id} names no PDS.`);
   try {
-    return assertRemoteUrl(document.pds, {
-      label: `The PDS of ${document.id}`,
-      allowHttp: options.allowHttp,
-    }).origin;
+    return assertRemoteUrl(document.pds, { ...options, label: `The PDS of ${document.id}` }).origin;
   } catch (error) {
+    if (!isUnauthError(error)) throw error;
     throw loginHintError(`${document.id} names an unusable PDS.`, error);
   }
 }
@@ -176,13 +178,28 @@ export function assertDid(did: string): void {
   throw loginHintError(`${JSON.stringify(did)} is not a did:plc or a host-only did:web.`);
 }
 
-/** The `https://` origin of a server given as `loginHint`. */
-function assertServerUrl(input: string): URL {
+/**
+ * `url`, a server the visitor's `input` names, once the policy may reach it; anything else is
+ * `ERR_AUTHN_LOGIN_HINT_INVALID`, the provider error as its `cause`. What the policy throws
+ * propagates as it is.
+ */
+function reachable(url: string, options: UrlPolicy & { label: string; input: string }): URL {
   try {
-    return assertSecureUrl(input, { label: "The server" });
+    return assertRemoteUrl(url, options);
   } catch (error) {
-    throw loginHintError(`${JSON.stringify(input)} is not an https:// server URL.`, error);
+    if (!isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")) throw error;
+    const input = JSON.stringify(options.input);
+    throw loginHintError(
+      error.cause.reason === "refused"
+        ? `${input} names a server this sign-in may not reach.`
+        : `${input} is not a server URL.`,
+      error,
+    );
   }
+}
+
+function didWebUrl(did: string): string {
+  return `https://${did.slice("did:web:".length)}/.well-known/did.json`;
 }
 
 /**
@@ -230,7 +247,11 @@ async function resolveHandleDns(
 }
 
 async function resolveHandleHttps(handle: string, options: AtprotoResolveOptions): Promise<string> {
-  const url = `https://${handle}/.well-known/atproto-did`;
+  const url = reachable(`https://${handle}/.well-known/atproto-did`, {
+    ...options,
+    label: `The handle ${handle}`,
+    input: handle,
+  }).href;
   const signal = AbortSignal.timeout(PROVIDER_FETCH_TIMEOUT);
   let response: Response;
   try {

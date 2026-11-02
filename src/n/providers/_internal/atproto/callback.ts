@@ -1,4 +1,4 @@
-import { UnauthError } from "../../../../error.ts";
+import { UnauthError, isUnauthError } from "../../../../error.ts";
 import { isRecord, profileError, stringField } from "../../../flow/_internal/http/shared.ts";
 import { exchangeError, parseTokenResponse } from "../../../flow/_internal/token-response.ts";
 import type {
@@ -116,6 +116,7 @@ async function verifiedProfile(
     try {
       document = await resolveDid(sub, options);
     } catch (error) {
+      if (!isUnauthError(error)) throw error;
       throw profileError("The signed-in account's DID document could not be read.", error);
     }
     const pds = pdsOf(document, options);

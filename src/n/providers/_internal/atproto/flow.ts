@@ -6,12 +6,14 @@ import {
   stringField,
 } from "../../../flow/_internal/http/shared.ts";
 import { createPkce } from "../../../flow/random.ts";
+import { isPublicServer } from "../../../public-server.ts";
 import type { CustomStart, CustomStartContext } from "../../../flow/types.ts";
 import { type AtprotoClient, relocation, sameCallback } from "./client.ts";
 import { type DpopKey, createDpopKey, dpopPost } from "./dpop.ts";
 import {
   type AtprotoIdentity,
   type AtprotoResolveOptions,
+  type UrlPolicy,
   parseLoginHint,
   resolveIdentity,
 } from "./identity.ts";
@@ -22,24 +24,26 @@ const DEFAULT_PLC_DIRECTORY = "https://plc.directory";
 
 /**
  * Where accounts are resolved: the DNS-over-HTTPS resolver and the `did:plc` directory; and
- * whether the URLs their documents name may use plain `http:`.
+ * which servers the input and documents name may be reached.
  */
-export interface Resolvers {
+export interface Resolvers extends UrlPolicy {
   dnsResolver: string;
   plcDirectory: string;
-  allowHttp: boolean;
 }
 
 /** The resolvers a provider config names, defaulted and checked to be `https:`. */
 export function resolversOf(config: {
   dnsResolver?: string;
   plcDirectory?: string;
-  allowHttp?: boolean;
+  isServerAllowed?: (url: URL) => boolean;
 }): Resolvers {
+  if (config.isServerAllowed !== undefined && typeof config.isServerAllowed !== "function") {
+    throw configError(`The AT Protocol "isServerAllowed" is not a function.`);
+  }
   const resolvers = {
     dnsResolver: config.dnsResolver ?? DEFAULT_DNS_RESOLVER,
     plcDirectory: config.plcDirectory ?? DEFAULT_PLC_DIRECTORY,
-    allowHttp: config.allowHttp ?? false,
+    isServerAllowed: config.isServerAllowed ?? isPublicServer,
   };
   assertSecureUrl(resolvers.dnsResolver, { label: `The AT Protocol "dnsResolver"` });
   assertSecureUrl(resolvers.plcDirectory, { label: `The AT Protocol "plcDirectory"` });
@@ -104,7 +108,7 @@ export async function start(
     throw configError(`An AT Protocol sign-in needs the "atproto" scope.`);
   }
   const options: AtprotoResolveOptions = { ...context, ...resolvers };
-  const target = parseLoginHint(loginHint);
+  const target = parseLoginHint(loginHint, resolvers);
   let identity: AtprotoIdentity | undefined;
   let server: AtprotoServer;
   if (target.kind === "account") {
