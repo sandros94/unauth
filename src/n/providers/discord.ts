@@ -89,8 +89,9 @@ function discordProfile(context: ProfileContext): ProfileResult<DiscordProfile> 
     subject: user.id,
     profile: user,
     name: nonEmpty(user.global_name) ?? user.username,
-    avatar: discordAvatar(user),
   };
+  const avatar = discordAvatar(user);
+  if (avatar !== undefined) result.avatar = avatar;
   const email = nonEmpty(user.email);
   if (email !== undefined) {
     result.email = email;
@@ -99,19 +100,22 @@ function discordProfile(context: ProfileContext): ProfileResult<DiscordProfile> 
   return result;
 }
 
-/** The CDN URL of the user's avatar, else of the default one Discord assigns. */
+/**
+ * The CDN URL of the user's avatar, else of the default one Discord assigns: by the discriminator
+ * when it is four digits, else by the id. `undefined` for an id that is not a snowflake.
+ */
 export function discordAvatar(
   user: Pick<DiscordProfile, "id" | "avatar" | "discriminator">,
-): string {
+): string | undefined {
+  if (!/^\d+$/.test(user.id)) return undefined;
   const cdn = "https://cdn.discordapp.com";
-  if (user.avatar) {
+  if (user.avatar && /^(a_)?[0-9a-f]+$/i.test(user.avatar)) {
     const format = user.avatar.startsWith("a_") ? "gif" : "png";
     return `${cdn}/avatars/${user.id}/${user.avatar}.${format}`;
   }
-  const index =
-    user.discriminator === "0" || !user.discriminator
-      ? Number((BigInt(user.id) >> 22n) % 6n)
-      : Number(user.discriminator) % 5;
+  const index = /^\d{4}$/.test(user.discriminator)
+    ? Number(user.discriminator) % 5
+    : Number((BigInt(user.id) >> 22n) % 6n);
   return `${cdn}/embed/avatars/${index}.png`;
 }
 

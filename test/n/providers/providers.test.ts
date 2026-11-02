@@ -262,12 +262,44 @@ describe("Discord", () => {
   it("builds animated and default avatars", () => {
     const id = "80351110224678912";
     expect(discordAvatar({ id, avatar: "a_123", discriminator: "0" })).toMatch(/\/a_123\.gif$/);
+    expect(discordAvatar({ id, avatar: "../x?y", discriminator: "0" })).toMatch(
+      /\/embed\/avatars\/\d\.png$/,
+    );
     expect(discordAvatar({ id, avatar: null, discriminator: "0" })).toBe(
       `https://cdn.discordapp.com/embed/avatars/${Number((BigInt(id) >> 22n) % 6n)}.png`,
     );
     expect(discordAvatar({ id, avatar: null, discriminator: "1337" })).toBe(
       "https://cdn.discordapp.com/embed/avatars/2.png",
     );
+  });
+
+  it("falls back to the id-based default for a discriminator that is not four digits", () => {
+    const id = "80351110224678912";
+    const byId = `https://cdn.discordapp.com/embed/avatars/${Number((BigInt(id) >> 22n) % 6n)}.png`;
+    for (const discriminator of ["abcd", "12", "12345", " 1337", "1e3"]) {
+      expect(discordAvatar({ id, avatar: null, discriminator })).toBe(byId);
+    }
+  });
+
+  it("builds no avatar for an id that is not a snowflake", () => {
+    for (const id of ["abc", "", "-1", "1.5", "0x10"]) {
+      expect(discordAvatar({ id, avatar: null, discriminator: "0" })).toBeUndefined();
+      expect(
+        discordAvatar({ id, avatar: "8342729096ea3675442027381ff50dfe", discriminator: "0" }),
+      ).toBeUndefined();
+    }
+  });
+
+  it("trims the display name, falling back to the username when nothing is left", async () => {
+    const blank = await provider.profile(
+      context({ userinfo: { ...fixtures.discordUser, global_name: " \t " } }),
+    );
+    expect(blank.name).toBe("nelly");
+
+    const padded = await provider.profile(
+      context({ userinfo: { ...fixtures.discordUser, global_name: "  Nelly  " } }),
+    );
+    expect(padded.name).toBe("Nelly");
   });
 });
 

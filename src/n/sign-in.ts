@@ -22,7 +22,8 @@ export interface SignInHandlerOptions<
   extends Omit<StartFlowOptions, keyof FlowIntent | "key" | "context">, SignInKey {
   /**
    * An origin whose requests derive `redirectUri` from their own URL, and whose forms may start a
-   * sign-in that links an account or names it: added to `trustedOrigins`.
+   * sign-in that links an account or names it: added to `trustedOrigins`. Without `redirectUri`,
+   * a request from any other origin is refused with `ERR_AUTHN_ORIGIN_UNTRUSTED` (421).
    */
   origin?: string;
   /**
@@ -44,7 +45,8 @@ export interface SignInHandlerOptions<
   /**
    * Runs after a completed callback: the application writes its session, or acts on `result.memo`.
    * Its return value is the response; `undefined` answers a `302` to the flow's `redirect`, else
-   * to `redirect`. What it throws propagates as it is.
+   * to `redirect`. An `UnauthError` it throws is answered as a failed flow; anything else
+   * propagates as it is.
    */
   onSuccess: (
     event: TEvent,
@@ -53,8 +55,10 @@ export interface SignInHandlerOptions<
   /**
    * Answers a failed flow, always an `UnauthError`; its return value is the response. Without it
    * the failure is answered with a plain `Response` carrying the error's status (500 when it has
-   * none): its message below 500, a generic body otherwise. What `onSuccess` throws, and anything
-   * but an `UnauthError` from `onStart`, is not a failed flow and propagates as it is.
+   * none): its message below 500, a generic body otherwise. An `UnauthError` thrown by `onStart`
+   * or `onSuccess` (the application refusing the sign-in, say an account that is disabled) is
+   * answered here too; anything else they throw is the application's own failure and propagates
+   * as it is, for the framework's error handling.
    */
   onError?: (
     event: TEvent,

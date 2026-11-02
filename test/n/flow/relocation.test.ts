@@ -386,8 +386,8 @@ describe("a start the deployment did not list", () => {
         redirectUri: REDIRECT_URI,
       }),
     );
-    expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
-    expect((error as Error).message).toMatch(/evil\.test/);
+    expect(isUnauthError(error, "ERR_AUTHN_ORIGIN_UNTRUSTED")).toBe(true);
+    expect((error as Error).cause).toEqual({ origin: EVIL });
     expect(start).toHaveBeenCalledTimes(1);
   });
 
@@ -415,11 +415,11 @@ describe("a start the deployment did not list", () => {
           redirectUri: REDIRECT_URI,
         }),
       );
-      expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+      expect(isUnauthError(error, "ERR_AUTHN_ORIGIN_UNTRUSTED")).toBe(true);
     }
   });
 
-  it("is answered by the sign-in handler as a configuration failure, without a redirect", async () => {
+  it("is answered by the sign-in handler as a refused request, without a redirect", async () => {
     const { provider } = movingProvider({});
     const handler = defineSignInHandler(provider, {
       key,
@@ -428,7 +428,7 @@ describe("a start the deployment did not list", () => {
     });
     const res = { headers: new Headers() };
     const answer = await handler({ req: new Request(`${EVIL}/auth/custom`), res });
-    expect((answer as Response).status).toBe(500);
+    expect((answer as Response).status).toBe(421);
     expect((answer as Response).headers.get("location")).toBeNull();
     expect(res.headers.getSetCookie()).toEqual([]);
   });

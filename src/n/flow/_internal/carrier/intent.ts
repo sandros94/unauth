@@ -1,6 +1,5 @@
 import { UnauthError } from "../../../../error.ts";
-import { configError } from "../http/shared.ts";
-import { originOf } from "../redirect.ts";
+import { originOf, untrustedOrigin } from "../redirect.ts";
 import { type SealedCarrier, sealedCarrier } from "./sealed.ts";
 import type { StartFlowOptions } from "../../start-flow.ts";
 import type { FlowRecord } from "../../types.ts";
@@ -37,7 +36,7 @@ export interface ResumedIntent<TMemo> {
  * the provider and `state` of `record`, the flow that host keeps, sealed into
  * {@link INTENT_PARAM}, for the relocated start to read back. The completed sign-in is returned
  * to that host, so the request's origin must be one of `trustedOrigins`:
- * `ERR_UNAUTH_CONFIG_INVALID` otherwise, and nothing is sealed.
+ * `ERR_AUTHN_ORIGIN_UNTRUSTED` (421) otherwise, and nothing is sealed.
  */
 export async function withSealedIntent<TMemo>(
   url: URL,
@@ -46,9 +45,7 @@ export async function withSealedIntent<TMemo>(
   const { request, options, record } = context;
   const from = new URL(request.url);
   const trusted = (options.trustedOrigins ?? []).some((origin) => originOf(origin) === from.origin);
-  if (!trusted) {
-    throw configError(`A sign-in started on ${from.origin} cannot be relocated.`);
-  }
+  if (!trusted) throw untrustedOrigin(from.origin);
   const sealed = new URL(url);
   const token = await carrierOf<TMemo>(options).issue({
     intent: definedIntent(options),

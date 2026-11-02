@@ -15,7 +15,7 @@ import {
   type FlowKey,
   type WebRequestEvent,
   type Provider,
-  type UnauthError,
+  UnauthError,
   defineOidcProvider,
   defineSignInHandler,
   deriveJWK,
@@ -666,7 +666,110 @@ describe("defineSignInHandler with a session", () => {
 
     const other = await handler(eventFor(new Request("https://evil.test/auth/fake")));
     expect(other.status).toBe(500);
-    expect(errors.map((error) => error.code)).toEqual(["ERR_UNAUTH_CONFIG_INVALID"]);
+    expect(errors.map((error) => error.code)).toEqual(["ERR_AUTHN_ORIGIN_UNTRUSTED"]);
+    expect(errors[0]).toMatchObject({ status: 421, cause: { origin: "https://evil.test" } });
+  });
+
+  it("refuses a start on a forged Host with a 421, through onError when given", async () => {
+    const forged = () => eventFor(new Request("https://evil.test/auth/fake"));
+    const plain = defineSignInHandler(fakeProvider(), {
+      ...base(),
+      redirectUri: undefined,
+      origin: APP,
+      onSuccess: signIn,
+    });
+
+    const refused = await plain(forged());
+    expect(refused.status).toBe(421);
+    expect(refused.headers.get("location")).toBeNull();
+    expect(refused.headers.getSetCookie()).toEqual([]);
+
+    const onError = vi.fn((_event: WebRequestEvent, error: UnauthError) =>
+      Response.json({ code: error.code, cause: error.cause }, { status: error.status }),
+    );
+    const handled = defineSignInHandler(fakeProvider(), {
+      ...base(),
+      redirectUri: undefined,
+      origin: APP,
+      onSuccess: signIn,
+      onError,
+    });
+
+    const answer = await handled(forged());
+    expect(answer.status).toBe(421);
+    expect(await answer.json()).toEqual({
+      code: "ERR_AUTHN_ORIGIN_UNTRUSTED",
+      cause: { origin: "https://evil.test" },
+    });
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  /** The callback leg of a sign-in through `handler`, its event kept to read the cookies it wrote. */
+  async function callbackEvent(handler: (event: WebRequestEvent) => Promise<unknown>) {
+    const jar = cookieJar();
+    const start = await call(handler, "/auth/fake");
+    jar.update(start.headers);
+    const back = fake.approve(start.headers.get("location")!);
+    return eventFor(new Request(back, { headers: { cookie: jar.toString() } }));
+  }
+
+  const expiredFlow = (lines: string[]) =>
+    lines.filter((line) => line.startsWith("unauth-flow=") && isExpired(line));
+
+  it("answers an UnauthError thrown by onSuccess through onError, the flow cookie expired", async () => {
+    const disabled = new UnauthError("This account is disabled.", "ERR_APP_DISABLED", {
+      status: 403,
+    });
+    const onError = vi.fn((_event: WebRequestEvent, error: UnauthError) =>
+      Response.json({ code: error.code }, { status: error.status }),
+    );
+    const handler = defineSignInHandler(fakeProvider(), {
+      ...base(),
+      onSuccess: () => {
+        throw disabled;
+      },
+      onError,
+    });
+
+    const event = await callbackEvent(handler);
+    const answer = await handler(event);
+    expect(answer.status).toBe(403);
+    expect(await answer.json()).toEqual({ code: "ERR_APP_DISABLED" });
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0]![1]).toBe(disabled);
+    expect(expiredFlow(event.res.headers.getSetCookie())).toHaveLength(1);
+  });
+
+  it("answers an UnauthError thrown by onSuccess with its status and message without onError", async () => {
+    const handler = defineSignInHandler(fakeProvider(), {
+      ...base(),
+      onSuccess: () => {
+        throw new UnauthError("This account is disabled.", "ERR_APP_DISABLED", { status: 403 });
+      },
+    });
+
+    const event = await callbackEvent(handler);
+    const response = await handler(event);
+    expect(response.status).toBe(403);
+    expect(await response.text()).toBe("This account is disabled.");
+    expect(expiredFlow(event.res.headers.getSetCookie())).toHaveLength(1);
+  });
+
+  it("rethrows anything else onSuccess throws, as it is, without onError", async () => {
+    const boom = new Error("boom");
+    const onError = vi.fn(() => new Response(null, { status: 500 }));
+    const handler = defineSignInHandler(fakeProvider(), {
+      ...base(),
+      onSuccess: () => {
+        throw boom;
+      },
+      onError,
+    });
+
+    const event = await callbackEvent(handler);
+    await expect(handler(event)).rejects.toBe(boom);
+    expect(onError).not.toHaveBeenCalled();
+    expect(expiredFlow(event.res.headers.getSetCookie())).toHaveLength(1);
   });
 
   it("refuses a bad key, origin or redirect where the route is defined", () => {

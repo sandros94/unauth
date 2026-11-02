@@ -86,9 +86,11 @@ export function hasMember(value: unknown, name: string, type: "string" | "number
   return isRecord(value) && typeof value[name] === type;
 }
 
-/** `value` when it is a non-empty string. */
+/** `value` trimmed, when it is a string with something left. */
 export function nonEmpty(value: unknown): string | undefined {
-  return typeof value === "string" && value !== "" ? value : undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
 }
 
 /** A boolean claim some providers send as `"true"` / `"false"`. */

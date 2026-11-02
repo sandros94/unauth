@@ -40,8 +40,8 @@ export interface SignInSteps<TProfile, TResult, TMemo> {
  * back there with the result in a sealed, single-use handoff token; that host redeems it against
  * the flow it recorded when the sign-in left, in the browser that started it, and `complete` runs
  * there. The consumed flow cookie is expired on the response, error responses included (on the
- * event's `errHeaders` too, for a framework that keeps those apart); an `UnauthError` is answered
- * by `onError`, else by a plain response.
+ * event's `errHeaders` too, for a framework that keeps those apart); an `UnauthError`, the flow's
+ * or one `onStart` or `complete` throws, is answered by `onError`, else by a plain response.
  */
 export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, TMemo>(
   provider: Provider<TProfile>,
@@ -96,7 +96,7 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
         return onError(error);
       }
       copySetCookie(headers, event.res);
-      return complete(result);
+      return answerUnauthError(() => complete(result), fail);
     }
 
     if (!isCallback(provider, event.req)) {
@@ -142,8 +142,21 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
         headers: { "location": target.href, "cache-control": "no-store" },
       });
     }
-    return complete(result);
+    return answerUnauthError(() => complete(result), fail);
   };
+}
+
+/** `run`'s value, or `fail`'s answer to an `UnauthError` it throws; anything else propagates. */
+async function answerUnauthError<T>(
+  run: () => Promise<T>,
+  fail: (error: UnauthError) => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!isUnauthError(error)) throw error;
+    return fail(error);
+  }
 }
 
 /** A plain-text response for an `UnauthError`: its status (500 when it has none) and, below 500, its message; a 5xx carries a generic body. */

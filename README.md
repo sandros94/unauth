@@ -64,11 +64,11 @@ app.get(
 ```
 
 - `key`: the key that seals the sign-in's flow cookie, or a callback returning it, called once on the first request. `deriveJWK(secret, { info })` turns a random secret of 32+ characters into one. The shapes a key may take, rotation and the `jwe` and `onKeyLookup` options follow `unauth/session`'s JWE session keys; a key pair is refused, since a token sealed to a public key could be minted by anyone holding it.
-- `origin`: the callback is this route on that origin, and its forms may start a sign-in that links an account or names it; `redirectUri` names the callback outright instead.
+- `origin`: the callback is this route on that origin, and its forms may start a sign-in that links an account or names it; a request on any other origin is refused with a `421`; `redirectUri` names the callback outright instead.
 - `onStart(event)`: optional; returns `{ redirect, memo, loginHint, scopes, params }` for this request. `memo` is anything the application wants back at the callback, sealed; `loginHint` names the account (OAuth's `login_hint`, an AT Protocol handle). A start that returns either `memo`, or `loginHint` for a custom provider, is taken only as a `POST` from the application's own origin (`ERR_AUTHN_CROSS_SITE_START` otherwise): start those sign-ins from a form.
 - `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `memo` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.
 - `fetch`: optional; replaces the global `fetch` for every request a sign-in makes to a provider, where a deployment refuses private network ranges.
-- `onError(event, error)`: optional; `error` is an `UnauthError` with `code`, `cause` and `status`. Without it the failure is answered with a plain `Response` of that status.
+- `onError(event, error)`: optional; `error` is an `UnauthError` with `code`, `cause` and `status`, an `UnauthError` thrown by `onStart` or `onSuccess` included. Without it the failure is answered with a plain `Response` of that status.
 - Annotate the `event` of the first hook you write with the framework's event type: every hook and the handler take it, `result` and `memo` stay inferred.
 - `defineSignInHandler(provider, options)` is the same handler for any provider. It answers `GET` and `POST` and refuses other methods with a `405`: mount it without a method filter (`app.all(...)`, a `routes/auth/github.ts` rather than `.get.ts`).
 

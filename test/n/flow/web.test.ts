@@ -165,7 +165,8 @@ describe("startFlow", () => {
         trustedOrigins: [APP],
       }),
     );
-    expect(isUnauthError(error, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+    expect(isUnauthError(error, "ERR_AUTHN_ORIGIN_UNTRUSTED")).toBe(true);
+    expect(error).toMatchObject({ status: 421, cause: { origin: "https://evil.test" } });
   });
 
   it("drops a SameSite=Lax cookie for form_post providers in favour of SameSite=None", async () => {

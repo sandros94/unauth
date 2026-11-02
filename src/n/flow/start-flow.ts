@@ -17,7 +17,10 @@ export interface StartFlowOptions<TMemo = never> extends FlowCarrierOptions {
    * Origins whose requests may derive `redirectUri` from their own URL, when it is not set,
    * whose forms may start a sign-in that carries a `memo` or names the account (`loginHint`),
    * and whose starts a custom provider may relocate. A custom provider's own `trustedOrigins`
-   * are added.
+   * are added. Without `redirectUri`, a request from any other origin is refused with
+   * `ERR_AUTHN_ORIGIN_UNTRUSTED` (421). List every origin the sign-in runs on, the development
+   * ones included (`http://localhost:3000`, `http://127.0.0.1:3000`); origins are matched
+   * exactly, as the redirect URIs registered at the provider are.
    */
   trustedOrigins?: string[];
   /** Where to go after sign-in; kept only when it is a same-origin path. */
@@ -67,8 +70,8 @@ export interface StartFlowOptions<TMemo = never> extends FlowCarrierOptions {
  * completed sign-in handed back to that host is checked against. The token opens once, within a
  * minute, for the same provider; one that does not is `ERR_AUTHN_FLOW_EXPIRED`, one sealed for
  * another provider `ERR_AUTHN_STATE_MISMATCH`. Only a start from one of `trustedOrigins` is
- * relocated, since the completed sign-in is returned to that origin: `ERR_UNAUTH_CONFIG_INVALID`
- * for any other.
+ * relocated, since the completed sign-in is returned to that origin: `ERR_AUTHN_ORIGIN_UNTRUSTED`
+ * (421) for any other.
  *
  * A start that carries a `memo`, or names the account of a custom provider (`loginHint`), is
  * taken only from a form submitted on the application's own pages: a `POST` whose `Origin` is the

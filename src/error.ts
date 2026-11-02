@@ -12,6 +12,7 @@ export type KnownUnauthErrorCode =
   | "ERR_AUTHN_STATE_MISMATCH" // the callback does not belong to the flow this browser started
   | "ERR_AUTHN_CALLBACK_INVALID" // the callback request is not one the provider sends (a form body over the cap)
   | "ERR_AUTHN_CROSS_SITE_START" // a start that links an account or names the account was not a form submission from the application's own pages
+  | "ERR_AUTHN_ORIGIN_UNTRUSTED" // a start reached the sign-in on an origin it does not run on: `redirectUri` is never derived from an untrusted Host
   | "ERR_AUTHN_PROVIDER_REFUSED" // the provider answered the authorization request with an error
   | "ERR_AUTHN_TOKEN_EXCHANGE" // the token endpoint refused or failed a code or refresh grant
   | "ERR_AUTHN_ID_TOKEN_INVALID" // an id_token failed verification
@@ -42,6 +43,8 @@ export interface UnauthErrorCauseMap {
    * application's own origin.
    */
   ERR_AUTHN_CROSS_SITE_START: { reason: "method" | "origin" | "cross-site" };
+  /** The origin of the start that reached the sign-in on an origin it does not run on. */
+  ERR_AUTHN_ORIGIN_UNTRUSTED: { origin: string };
   /** Why the callback request was refused unread: `too-large`, a `form_post` body over the cap. */
   ERR_AUTHN_CALLBACK_INVALID: { reason: "too-large" };
   /**
@@ -95,7 +98,7 @@ export interface OAuthErrorResponse {
 export interface UnauthErrorOptions {
   /** The failure underneath, or the structured context listed in {@link UnauthErrorCauseMap}. */
   cause?: unknown;
-  /** The HTTP status to answer with, a hint; unauth uses 400, 401, 403, 500 and 502. */
+  /** The HTTP status to answer with, a hint; unauth uses 400, 401, 403, 421, 500 and 502. */
   status?: number;
 }
 

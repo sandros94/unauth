@@ -1,25 +1,34 @@
+import { UnauthError } from "../../../error.ts";
 import { configError } from "./http/shared.ts";
 
 /**
  * The `redirect_uri` of a flow: the configured one, else the request's own URL (without its query)
- * when the request's origin is one of `trustedOrigins`. Anything else is a configuration error:
- * a redirect URI is never guessed from an untrusted Host.
+ * when the request's origin is one of `trustedOrigins`. Without either it is a configuration error;
+ * a request from any other origin is refused with `ERR_AUTHN_ORIGIN_UNTRUSTED` (421): a redirect
+ * URI is never guessed from an untrusted Host.
  */
 export function resolveRedirectUri(
   request: Request,
   options: { redirectUri?: string; trustedOrigins?: string[] },
 ): string {
   if (options.redirectUri !== undefined) return options.redirectUri;
+  if (!options.trustedOrigins?.length) {
+    throw configError(`Set "redirectUri", or "trustedOrigins" to derive it from the request.`);
+  }
   const url = new URL(request.url);
-  const trusted = (options.trustedOrigins ?? []).some((origin) => originOf(origin) === url.origin);
-  if (!trusted) {
-    throw configError(
-      options.trustedOrigins
-        ? `The request origin ${url.origin} is not in "trustedOrigins"; set "redirectUri" or trust it.`
-        : `Set "redirectUri", or "trustedOrigins" to derive it from the request.`,
-    );
+  if (!options.trustedOrigins.some((origin) => originOf(origin) === url.origin)) {
+    throw untrustedOrigin(url.origin);
   }
   return `${url.origin}${url.pathname}`;
+}
+
+/** `ERR_AUTHN_ORIGIN_UNTRUSTED` (421): the request reached the sign-in on `origin`, which is not one of `trustedOrigins`. */
+export function untrustedOrigin(origin: string): UnauthError<"ERR_AUTHN_ORIGIN_UNTRUSTED"> {
+  return new UnauthError(
+    "[unauth/n] This sign-in is not served on this address.",
+    "ERR_AUTHN_ORIGIN_UNTRUSTED",
+    { status: 421, cause: { origin } },
+  );
 }
 
 /** `redirect` when it is a same-origin path (`/…`, not `//…` or `/\…`), else `undefined`. */
