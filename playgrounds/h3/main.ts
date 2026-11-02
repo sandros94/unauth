@@ -54,7 +54,7 @@ const signInWithAtproto = defineSignInHandler(atproto, {
   key: flowKey,
   onStart: async (event: H3Event) => {
     const posted = event.req.method === "POST" ? await event.req.formData() : undefined;
-    const loginHint = posted?.get("login") ?? new URL(event.req.url).searchParams.get("login");
+    const loginHint = posted?.get("login");
     return { loginHint: typeof loginHint === "string" && loginHint ? loginHint : undefined };
   },
   onSuccess: async (event, { identity }) => {

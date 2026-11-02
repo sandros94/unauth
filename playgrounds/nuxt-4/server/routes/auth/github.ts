@@ -5,6 +5,7 @@ import {
   deriveSecret,
   useRuntimeConfig,
 } from "nuxt/server";
+import { isUnauthError } from "unauth/n";
 import { base64UrlStringify } from "unauth/utils";
 import { defineGitHubHandler } from "unauth/n/providers/github";
 
@@ -40,6 +41,15 @@ export default defineEventHandler(
         ...(identity.name ? { name: identity.name } : {}),
         signedInAt: Date.now(),
       });
+    },
+    onError: (_event, error) => {
+      if (isUnauthError(error, "ERR_AUTHN_CROSS_SITE_START") && error.cause.reason === "method") {
+        return new Response(null, {
+          status: 302,
+          headers: { "location": "/?notice=use-link-button", "cache-control": "no-store" },
+        });
+      }
+      return new Response(error.message, { status: error.status ?? 500 });
     },
   }),
 );

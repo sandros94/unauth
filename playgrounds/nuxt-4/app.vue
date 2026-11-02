@@ -4,6 +4,7 @@ const login = ref("");
 const user = ref("");
 const password = ref("");
 const say = (line: string) => log.value.unshift(line);
+const notice = useRoute().query.notice;
 
 const { data: session, refresh } = await useFetch("/me", { default: () => null });
 
@@ -32,6 +33,9 @@ function openSocket() {
 <template>
   <main style="font-family: system-ui; max-width: 40rem; margin: 2rem auto">
     <h1>unauth on Nuxt 4</h1>
+    <p v-if="notice === 'use-link-button'">
+      You are signed in: use the connect GitHub button to link another account.
+    </p>
     <template v-if="session">
       <p>
         Signed in as <strong>{{ session.name ?? session.userId }}</strong

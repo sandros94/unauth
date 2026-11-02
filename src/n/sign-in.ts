@@ -98,8 +98,9 @@ export type SignInAnswer<TResult> = Exclude<TResult, void>;
  *   key,
  *   origin: "https://app.example",
  *   onStart: async (event: H3Event) => {
+ *     if (event.req.method !== "POST") return undefined;
  *     const session = await useAuthSession(event);
- *     return session.id ? { memo: { userId: session.data.userId } } : undefined;
+ *     return session ? { memo: { userId: session.userId } } : undefined;
  *   },
  *   onSuccess: async (event, { identity, memo }) => {
  *     // `event` is an `H3Event`; `memo` has the type `onStart` returned.

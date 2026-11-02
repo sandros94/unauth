@@ -3,11 +3,17 @@ import type { Provider } from "./flow/types.ts";
 
 /**
  * A web-standard request event: the `Request`, the `Headers` the response is sent with, and
- * optional per-request state. A sign-in handler takes it, and so does an `unjwt/session` definition.
+ * optional per-request state. A sign-in handler takes it; an `unjwt/session` definition accepts the
+ * same shape.
  */
 export interface WebRequestEvent {
   readonly req: Request;
   readonly res: {
+    /**
+     * Sent with whatever the handler returns: the cookies the application sets in `onStart` or
+     * `onSuccess`, and the consumed flow cookie's expiry. h3, Nitro and Nuxt merge them into the
+     * returned `Response`; an adapter for another framework must apply them.
+     */
     readonly headers: Headers;
     /**
      * The headers the framework applies to an error response (a `Response` of status 400 or

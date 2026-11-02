@@ -29,14 +29,55 @@ npx nypm install unauth
 
 ### Session
 
-The session is the application's own `unauth/session` definition (unjwt's `defineJWESession`, re-exported). A sign-in writes to it in `onSuccess`.
+unauth never reads or writes the application's session. `onSuccess(event, result)` gets the request event and the proven `result.identity`, and the application saves whatever session it wants. Two ways to write the `createSession` and `useAuthSession` the examples below call:
+
+A JWE cookie session with `unauth/session` (unjwt's `defineJWESession`, re-exported):
 
 ```ts
+import type { H3Event } from "h3";
 import { defineJWESession } from "unauth/session";
 
-const session = defineJWESession<SessionData, "1h">({ key, maxAge: "1h", rolling: "15m" });
-export const useAuthSession = (event: WebSessionEvent) => session.use(event);
+const sessions = defineJWESession<{ userId: string }, "1h">({ key, maxAge: "1h", rolling: "15m" });
+
+export async function createSession(event: H3Event, { userId }: { userId: string }) {
+  const session = await sessions.use(event);
+  await session.clear();
+  await session.update({ userId });
+}
+
+export async function useAuthSession(event: H3Event) {
+  const session = await sessions.use(event);
+  return session.id ? { userId: session.data.userId } : undefined;
+}
 ```
+
+An opaque token in the application's own storage: `createOpaqueToken()` gives a random `token` for an httpOnly cookie and its `hash`, the only part stored; `hashOpaqueToken(token)` finds the row again.
+
+```ts
+import { type H3Event, getCookie, setCookie } from "h3";
+import { createOpaqueToken, hashOpaqueToken } from "unauth/n";
+
+export async function createSession(event: H3Event, { userId }: { userId: string }) {
+  const { token, hash } = await createOpaqueToken();
+  await db.sql`INSERT INTO sessions (token_hash, user_id) VALUES (${hash}, ${userId})`;
+  setCookie(event, "__Host-session", token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+  });
+}
+
+export async function useAuthSession(event: H3Event) {
+  const token = getCookie(event, "__Host-session");
+  if (!token) return undefined;
+  const { rows } =
+    await db.sql`SELECT user_id FROM sessions WHERE token_hash = ${await hashOpaqueToken(token)}`;
+  return rows[0] ? { userId: rows[0].user_id } : undefined;
+}
+```
+
+The full versions, with expiry, rolling and sign-out, are [`playgrounds/nuxt-4`](./playgrounds/nuxt-4) and [`playgrounds/nuxt-4-opaque`](./playgrounds/nuxt-4-opaque).
 
 ### Sign in with a provider
 
@@ -47,7 +88,7 @@ import type { H3Event } from "h3";
 import { deriveJWK } from "unauth/n";
 import { defineGitHubHandler } from "unauth/n/providers/github";
 
-app.get(
+app.all(
   "/auth/github",
   defineGitHubHandler({
     clientId: process.env.GITHUB_CLIENT_ID!,
@@ -55,18 +96,18 @@ app.get(
     key: () => deriveJWK(process.env.AUTH_SECRET!, { info: "unauth:flow" }),
     origin: "https://app.example",
     onSuccess: async (event: H3Event, { identity }) => {
-      const session = await useAuthSession(event);
-      await session.clear();
-      await session.update({ provider: identity.provider, subject: identity.subject });
+      const user = await findOrCreateUser(identity);
+      await createSession(event, { userId: user.id });
     },
   }),
 );
 ```
 
-- `key`: the key that seals the sign-in's flow cookie, or a callback returning it, called once on the first request. `deriveJWK(secret, { info })` turns a random secret of 32+ characters into one. The shapes a key may take, rotation and the `jwe` and `onKeyLookup` options follow `unauth/session`'s JWE session keys; a key pair is refused, since a token sealed to a public key could be minted by anyone holding it.
+- `key`: the key that seals the sign-in's flow cookie, or a callback returning it, called once on the first request. `deriveJWK(secret, { info })` turns a random secret of 32+ characters into one. Any symmetric JWE key works, the shapes unjwt's JWE sessions take: an `oct` JWK, a secret `CryptoKey`, or a JWK Set whose first key seals and every key opens, to rotate. A key naming no algorithm needs `jwe: { alg, enc }`; `onKeyLookup` picks the opening key from a token's header. A key pair is refused, since a token sealed to a public key could be minted by anyone holding it.
 - `origin`: the callback is this route on that origin, and its forms may start a sign-in that links an account or names it; a request on any other origin is refused with a `421`. `redirectUri` names the callback outright instead. With `origin` too, both are where the sign-in runs.
-- `onStart(event)`: optional; returns `{ redirect, memo, loginHint, scopes, params }` for this request. `memo` is anything the application wants back at the callback, sealed; `loginHint` names the account (OAuth's `login_hint`, an AT Protocol handle). A start that returns either `memo`, or `loginHint` for a custom provider, is taken only as a `POST` from the application's own origin (`ERR_AUTHN_CROSS_SITE_START` otherwise): start those sign-ins from a form.
+- `onStart(event)`: optional; returns `{ redirect, memo, loginHint, scopes, params }` for this request. `memo` is anything the application wants back at the callback, sealed; `loginHint` names the account (OAuth's `login_hint`, an AT Protocol handle). A start that returns either `memo`, or `loginHint` for a custom provider, is taken only as a `POST` from the application's own origin (`ERR_AUTHN_CROSS_SITE_START`, a `403`, otherwise): start those sign-ins from a form, and return them only when `event.req.method === "POST"`.
 - `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `memo` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.
+- Headers the application sets on `event.res.headers` in `onStart` or `onSuccess` (its session cookie), and the expiry of the consumed flow cookie, reach the browser because the framework sends them with whatever the handler returns, as h3, Nitro and Nuxt do; an adapter for another framework must apply them.
 - `fetch`: optional; replaces the global `fetch` for every request a sign-in makes to a provider, where a deployment refuses private network ranges.
 - `onError(event, error)`: optional; `error` is an `UnauthError` with `code`, `cause` and `status`, an `UnauthError` thrown by `onStart` or `onSuccess` included. Without it the failure is answered with a plain `Response` of that status.
 - Annotate the `event` of the first hook you write with the framework's event type: every hook and the handler take it, `result` and `memo` stay inferred.
@@ -74,12 +115,13 @@ app.get(
 
 ### Linking another account
 
-`onStart` notes the signed-in user in `memo`; it comes back as `result.memo`, sealed, and `onSuccess` decides what to do with it. Such a start comes from a form on the application's own pages, never from a link: a cross-site navigation must not attach the signed-in user's account to an identity the navigator chose.
+`onStart` notes the signed-in user in `memo`; it comes back as `result.memo`, sealed, and `onSuccess` decides what to do with it. Such a start comes from a form, never from a link: a link proves nothing about who chose it, a form on the application's own page does. `onStart` returns the memo only for a `POST`, so a signed-in user following a sign-in link signs in as usual instead of meeting a `403`.
 
 ```ts
 onStart: async (event: H3Event) => {
+  if (event.req.method !== "POST") return undefined;
   const session = await useAuthSession(event);
-  return session.id ? { memo: { userId: session.data.userId } } : undefined;
+  return session ? { memo: { userId: session.userId } } : undefined;
 },
 onSuccess: async (event, { identity, memo }) => {
   if (memo) return linkIdentity(memo.userId, identity);

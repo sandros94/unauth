@@ -12,6 +12,7 @@ export default defineGitHubHandler({
   key: () => deriveJWK(useRuntimeConfig().authSecret, { info: "unauth:flow" }),
   origin: useRuntimeConfig().public.origin,
   onStart: async (event: H3Event) => {
+    if (event.req.method !== "POST") return undefined;
     const session = await useAuthSession(event);
     return session.id ? { memo: { userId: session.data.userId } } : undefined;
   },

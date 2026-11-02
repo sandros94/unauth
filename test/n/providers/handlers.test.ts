@@ -216,6 +216,7 @@ describe("preset handler types", () => {
       ...config,
       key: flowKey,
       onStart: async (event) => {
+        if (event.req.method !== "POST") return undefined;
         const session = await useAppSession(event);
         return session.id ? { memo: { userId: session.data.userId, from: "settings" } } : undefined;
       },
