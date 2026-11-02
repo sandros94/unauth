@@ -62,15 +62,16 @@ export function manageSession<TData extends object>(
         throw new TypeError(`${prefix} A session update must be a plain object.`);
       }
       const now = context.now();
+      const expiresAt = now + context.maxAge;
       const data = { ...state.record.data, ...patch };
       if (state.id !== undefined && state.token !== undefined) {
-        await put(state.id, { ...state.record, updatedAt: now, data });
-        deliver(state.token, state.record.expiresAt);
+        await put(state.id, { ...state.record, updatedAt: now, expiresAt, data });
+        deliver(state.token, expiresAt);
         return manager;
       }
       const { token, hash } = await createOpaqueToken({ bytes: context.bytes });
-      await put(hash, { createdAt: now, updatedAt: now, expiresAt: now + context.maxAge, data });
-      deliver(token, now + context.maxAge);
+      await put(hash, { createdAt: now, updatedAt: now, expiresAt, data });
+      deliver(token, expiresAt);
       return manager;
     },
     rotate: async () => {
@@ -82,8 +83,9 @@ export function manageSession<TData extends object>(
       state.id = undefined;
       state.token = undefined;
       const now = context.now();
-      await put(hash, { ...record, createdAt: now, updatedAt: now });
-      deliver(token, record.expiresAt);
+      const expiresAt = now + context.maxAge;
+      await put(hash, { ...record, createdAt: now, updatedAt: now, expiresAt });
+      deliver(token, expiresAt);
       return manager;
     },
     clear: async () => {

@@ -77,7 +77,7 @@ describe("defineOpaqueSession", () => {
     expect(await sessions.use(event)).toBe(session);
   });
 
-  it("reads the session back; update merges the data, moves updatedAt, keeps the token and the expiry", async () => {
+  it("reads the session back; update merges the data, keeps the token, ends maxAge from now", async () => {
     const { store, entries } = memory();
     const sessions = defineOpaqueSession<Data>({ store, maxAge: "1h" });
     const token = await signIn(sessions, { userId: "u1" });
@@ -94,17 +94,21 @@ describe("defineOpaqueSession", () => {
     expect(session.data).toEqual({ userId: "u1", name: "u1!" });
     expect(session.token).toBe(token);
     expect(session.updatedAt).toBe(NOW + 5000);
-    expect(session.expiresAt).toBe(NOW + HOUR);
+    expect(session.expiresAt).toBe(NOW + 5000 + HOUR);
     expect(cookieValue(cookieLine(event))).toBe(token);
-    expect(cookieLine(event)).toContain(new Date(NOW + HOUR).toUTCString());
+    expect(cookieLine(event)).toContain(new Date(NOW + 5000 + HOUR).toUTCString());
     expect(entries.size).toBe(1);
     expect(entries.get(session.id!)?.value).toMatchObject({
       updatedAt: NOW + 5000,
+      expiresAt: NOW + 5000 + HOUR,
       data: { userId: "u1", name: "u1!" },
     });
+    expect(entries.get(session.id!)?.ttl).toBe(3600);
 
-    await session.update(() => undefined);
+    vi.setSystemTime(NOW + 9000);
+    await session.update();
     expect(session.data).toEqual({ userId: "u1", name: "u1!" });
+    expect(session.expiresAt).toBe(NOW + 9000 + HOUR);
   });
 
   it("refuses an update that is not a plain object", async () => {
@@ -127,7 +131,7 @@ describe("defineOpaqueSession", () => {
     expect(session.data).toEqual({});
   });
 
-  it("rolling extends a cookie session once past its point, measured from the last extension", async () => {
+  it("rolling extends a cookie session on a read once it was last written that long ago", async () => {
     const { store, entries } = memory();
     const sessions = defineOpaqueSession<Data>({ store, maxAge: "1h", rolling: "15m" });
     const token = await signIn(sessions, { userId: "u1" });
@@ -137,8 +141,6 @@ describe("defineOpaqueSession", () => {
     const first = await sessions.use(early);
     expect(first.expiresAt).toBe(NOW + HOUR);
     expect(early.res.headers.getSetCookie()).toEqual([]);
-    await first.update({ name: "busy" });
-    expect(first.expiresAt).toBe(NOW + HOUR);
 
     vi.setSystemTime(NOW + 20 * 60_000);
     const late = request({ cookie: `__Host-unauth=${token}` });
@@ -242,7 +244,7 @@ describe("defineOpaqueSession", () => {
     expect(event.res.headers.getSetCookie()).toHaveLength(1);
   });
 
-  it("rotate moves the session under a new token; createdAt and updatedAt move, data and expiry stay", async () => {
+  it("rotate moves the session under a new token; createdAt and updatedAt move, data stays, expiry restarts", async () => {
     const { store, entries } = memory();
     const sessions = defineOpaqueSession<Data>({ store, maxAge: "1h" });
     const token = await signIn(sessions, { userId: "u1" });
@@ -254,9 +256,10 @@ describe("defineOpaqueSession", () => {
     expect(session.id).toBe(await hashOpaqueToken(session.token!));
     expect(session.createdAt).toBe(NOW + 1000);
     expect(session.updatedAt).toBe(NOW + 1000);
-    expect(session.expiresAt).toBe(NOW + HOUR);
+    expect(session.expiresAt).toBe(NOW + 1000 + HOUR);
     expect(session.data).toEqual({ userId: "u1" });
     expect(cookieValue(cookieLine(event))).toBe(session.token);
+    expect(cookieLine(event)).toContain(new Date(NOW + 1000 + HOUR).toUTCString());
     expect([...entries.keys()]).toEqual([session.id]);
     expect(sessions.token(event)).toBe(session.token);
     const old = await sessions.use(request({ cookie: `__Host-unauth=${token}` }));

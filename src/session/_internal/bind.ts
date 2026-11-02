@@ -123,7 +123,7 @@ async function read<TData extends object>(
   await roll(binding, context);
 }
 
-/** Extends a cookie session read past its `rolling` point to a fresh `maxAge`, cookie included. */
+/** Extends a cookie session last written `rolling` ago or more to a fresh `maxAge`, cookie included. */
 async function roll<TData extends object>(
   binding: OpaqueBinding<TData>,
   context: OpaqueContext<TData>,
@@ -133,7 +133,7 @@ async function roll<TData extends object>(
   if (rolling === undefined || !transport.write || !transport.writable()) return;
   if (state.id === undefined || state.token === undefined) return;
   const now = context.now();
-  if (now - (state.record.expiresAt - maxAge) < rolling) return;
+  if (now - state.record.updatedAt < rolling) return;
   const record = { ...state.record, updatedAt: now, expiresAt: now + maxAge };
   await records.write(state.id, record);
   transport.write(state.token, { expiresAt: record.expiresAt });

@@ -23,7 +23,7 @@ export interface OpaqueSessionRecord<TData> {
   createdAt: number;
   /** When the record was last written: created, updated, rotated or extended. */
   updatedAt: number;
-  /** When the session ends; a roll moves it. */
+  /** When the session ends: `maxAge` after `updatedAt`. */
   expiresAt: number;
   data: TData;
 }
@@ -41,14 +41,18 @@ export interface OpaqueSessionConfig {
    * never reached the client, a bearer never sent) names a token nobody holds, until its ttl.
    */
   store: CacheDriver;
-  /** Session lifetime: seconds, or a duration such as `"7d"`. The cookie expires with it. */
+  /**
+   * Session lifetime after its last write: seconds, or a duration such as `"7d"`. Every write
+   * (`update()`, `rotate()`, a roll) ends the session `maxAge` from then; the cookie expires with
+   * it.
+   */
   maxAge: ExpiresIn;
   /**
-   * Extends a session read from its cookie to a fresh `maxAge`: on every read with `true`, or
-   * once a duration (shorter than `maxAge`) has passed since the last extension, measured from
-   * `expiresAt - maxAge`, never from `createdAt` or `updatedAt`. A read that cannot write the
-   * cookie does not extend. A session read from the session header or from a token in hand never
-   * extends. @default undefined (the session ends `maxAge` after it was created)
+   * Makes a read a write once the session is old enough: a session read from its cookie is
+   * extended to a fresh `maxAge` on every read with `true`, or once a duration (shorter than
+   * `maxAge`) has passed since `updatedAt`. A read that cannot write the cookie does not extend.
+   * A session read from the session header or from a token in hand never extends on a read.
+   * @default undefined (a session ends `maxAge` after its last write)
    */
   rolling?: true | ExpiresIn;
   /**
@@ -98,9 +102,9 @@ export interface OpaqueSessionManager<TData extends object> {
   readonly token: string | undefined;
   /** When the session was created or last rotated, in ms; now without a session. */
   readonly createdAt: number;
-  /** When the record was last written, in ms; now without a session. */
+  /** When the record was last written, in ms; now without a session. Expiry counts from it. */
   readonly updatedAt: number;
-  /** When the session ends, in ms; `maxAge` from now without a session. */
+  /** When the session ends, in ms: `maxAge` after `updatedAt`. */
   readonly expiresAt: number;
   /** The session's data; `{}` without a session. */
   readonly data: TData;
@@ -120,18 +124,19 @@ export interface OpaqueSessionManager<TData extends object> {
    */
   readonly error: UnauthError<"ERR_SESSION_TOKEN_INVALID"> | undefined;
   /**
-   * Merges `update` into the data and rewrites the record: `updatedAt` moves, the token and
-   * `expiresAt` stay. Without a session it creates one for `update` as the whole data: a new token
-   * (in the cookie, or on `token`), a record that ends `maxAge` from now. At sign-in, `clear()`
-   * first, so the signed-in session gets a token nobody held before.
+   * Merges `update` into the data and rewrites the record: the token stays, `updatedAt` is now
+   * and the session ends `maxAge` from now; with no `update`, it only extends. Without a session
+   * it creates one for `update` as the whole data: a new token (in the cookie, or on `token`), a
+   * record that ends `maxAge` from now. At sign-in, `clear()` first, so the signed-in session gets
+   * a token nobody held before.
    * @throws `ERR_SESSION_READONLY_EVENT` if a `"cookie"` session has no response, or it was sent.
    * @throws `TypeError` if `update` is not a plain object, or a function returning one or `undefined`.
    */
   update(update?: OpaqueSessionUpdate<TData>): Promise<this>;
   /**
    * Moves the session under a new token: the old one names nothing from now on, `createdAt` and
-   * `updatedAt` are now, the data and `expiresAt` stay. Tracking which token a session had before
-   * is the application's.
+   * `updatedAt` are now, the session ends `maxAge` from now, the data stays. Tracking which token
+   * a session had before is the application's.
    * @throws `ERR_SESSION_READONLY_EVENT` if a `"cookie"` session has no response, or it was sent.
    * @throws `TypeError` without a session.
    */
