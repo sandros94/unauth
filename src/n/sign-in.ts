@@ -22,8 +22,8 @@ export interface SignInHandlerOptions<
   extends Omit<StartFlowOptions, keyof FlowIntent | "key" | "context">, SignInKey {
   /**
    * An origin whose requests derive `redirectUri` from their own URL, and whose forms may start a
-   * sign-in that links an account or names it: added to `trustedOrigins`. Without `redirectUri`,
-   * a request from any other origin is refused with `ERR_AUTHN_ORIGIN_UNTRUSTED` (421).
+   * sign-in that links an account or names it: added to `trustedOrigins`. A start on any other
+   * origin but the callback's is refused with `ERR_AUTHN_ORIGIN_UNTRUSTED` (421).
    */
   origin?: string;
   /**
@@ -39,7 +39,8 @@ export interface SignInHandlerOptions<
    * flow, it comes back as `result.memo`. A start returning `memo`, or `loginHint` for a custom
    * provider, is accepted only as a `POST` from the application's own origin
    * (`ERR_AUTHN_CROSS_SITE_START` otherwise): start those sign-ins from a form. An `UnauthError`
-   * it throws is answered as a failed flow; anything else propagates as it is.
+   * it throws is answered as a failed flow; anything else propagates as it is. It is not called on
+   * a relocated start, whose intent was decided (and `onStart` run) on the origin host.
    */
   onStart?: (event: TEvent) => FlowIntent<TMemo> | void | Promise<FlowIntent<TMemo> | void>;
   /**

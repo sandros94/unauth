@@ -814,18 +814,23 @@ describe("the client", () => {
     expect(moved.headers.getSetCookie().join("\n")).toMatch(/unauth-flow=/);
     expect(fake.requests).toHaveLength(0);
 
-    // The same hostname on another port is another origin: the start runs where it is.
-    const otherPort = await startFlow(
-      atproto,
-      formStart("http://localhost:3987/auth/atproto?login=x"),
-      { key, fetch: fake.fetch, loginHint: ALICE.handle },
-    );
-    expect(new URL(otherPort.headers.get("location")!).origin).toBe(ISSUER);
-    expect(otherPort.headers.getSetCookie().join("\n")).toMatch(/unauth-flow=/);
+    // Not listed (the same hostname on another port is another origin): refused, nothing sent.
+    for (const origin of ["http://localhost:3987", "http://dev.test:3000"]) {
+      const refused = await rejection(
+        startFlow(atproto, formStart(`${origin}/auth/atproto?login=x`), {
+          key,
+          fetch: fake.fetch,
+          loginHint: ALICE.handle,
+        }),
+      );
+      expect(isUnauthError(refused, "ERR_AUTHN_ORIGIN_UNTRUSTED")).toBe(true);
+      expect(refused).toMatchObject({ status: 421, cause: { origin } });
+    }
+    expect(fake.requests).toHaveLength(0);
 
-    // Not listed: the start runs where it is, and the flow cookie is set on that host. A handler
-    // naming the devOrigins form of the callback is accepted as the same callback.
-    const stayed = await startFlow(atproto, formStart("http://dev.test:3000/auth/atproto"), {
+    // On the callback's host the start runs there, and the flow cookie is set on that host. A
+    // handler naming the devOrigins form of the callback is accepted as the same callback.
+    const stayed = await startFlow(atproto, formStart("http://127.0.0.1:3000/auth/atproto"), {
       key,
       redirectUri: "http://localhost:3000/auth/atproto",
       fetch: fake.fetch,
@@ -959,6 +964,46 @@ describe("a devOrigins round trip through defineSignInHandler", () => {
     expect(seen).toHaveLength(1);
   });
 
+  it("hands a start without a handle back to localhost, where onError answers it", async () => {
+    const atproto = defineAtprotoProvider({
+      redirectUri: "http://localhost:3000/auth/atproto",
+      devOrigins: ["http://localhost:3000"],
+      dnsResolver: DNS,
+      plcDirectory: PLC,
+    });
+    const failed: { host: string; code: string; status?: number }[] = [];
+    const handler = defineSignInHandler(atproto, {
+      key,
+      fetch: fake.fetch,
+      onSuccess: () => "ok",
+      onError: (event, error) => {
+        failed.push({
+          host: new URL(event.req.url).hostname,
+          code: error.code,
+          status: error.status,
+        });
+        return new Response(error.message, { status: error.status });
+      },
+    });
+    const call = (url: string | URL, cookie?: string, form = false) =>
+      handler({ req: requestFor(url, cookie, form), res: { headers: new Headers() } });
+
+    const moved = (await call("http://localhost:3000/auth/atproto", undefined, true)) as Response;
+    const home = cookieHeader(moved.headers);
+    const handed = (await call(moved.headers.get("location")!)) as Response;
+    const back = new URL(handed.headers.get("location")!);
+    expect(back.origin).toBe("http://localhost:3000");
+    expect(back.searchParams.get("unauth_handoff")).toMatch(/^eyJ/);
+    expect(failed).toEqual([]);
+    expect(fake.requests).toHaveLength(0);
+
+    const answer = (await call(back, home)) as Response;
+    expect(answer.status).toBe(400);
+    expect(failed).toEqual([
+      { host: "localhost", code: "ERR_AUTHN_LOGIN_HINT_REQUIRED", status: 400 },
+    ]);
+  });
+
   describe("keeps the intent made on localhost", () => {
     const LOCAL = "http://localhost:3987";
     interface Session {
@@ -1084,7 +1129,7 @@ describe("a devOrigins round trip through defineSignInHandler", () => {
         fetch: fake.fetch,
         onStart: (event) => ({
           ...loginFromQuery(event),
-          ...(new URL(event.req.url).hostname === "localhost" ? { redirect: "/after" } : {}),
+          redirect: "/after",
         }),
         onSuccess: async (event, { identity }) => {
           const current = await session.use(event);

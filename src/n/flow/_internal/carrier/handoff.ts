@@ -8,9 +8,27 @@ import type { FlowResult, Provider } from "../../types.ts";
 /** The query parameter carrying a sealed sign-in result back to the host the user started on. */
 export const HANDOFF_PARAM = "unauth_handoff";
 
-/** What a handoff carries: the completed sign-in, and the `state` of the flow the origin host keeps. */
-export interface Handoff<TProfile, TMemo> {
-  result: FlowResult<TProfile, TMemo>;
+/**
+ * What a handoff carries: the completed sign-in or its failure, and the `state` of the flow the
+ * origin host keeps.
+ */
+export type Handoff<TProfile, TMemo> = { state: string } & (
+  | { result: FlowResult<TProfile, TMemo> }
+  | { failure: HandoffFailure }
+);
+
+/** An `UnauthError` as a handoff carries it, its `cause` reduced to what survives JSON. */
+export interface HandoffFailure {
+  code: string;
+  message: string;
+  status?: number;
+  cause?: unknown;
+}
+
+/** An `UnauthError` of a relocated leg, with the host it is handed back to and the `state` of the flow that host keeps. */
+export interface RelocatedFailure {
+  error: UnauthError;
+  returnHost: string;
   state: string;
 }
 
@@ -37,7 +55,8 @@ export function handoffCarrier<TProfile, TMemo>(
 /**
  * The result a handoff token brings back to the host the sign-in started on, redeemed as a
  * callback is: the token must open and name the provider and `state` of the flow this browser
- * recorded there, which is then consumed (its cookie expired on `headers`).
+ * recorded there, which is then consumed (its cookie expired on `headers`); a handed-back failure
+ * is thrown as the `UnauthError` it was.
  * `ERR_AUTHN_FLOW_EXPIRED` without a flow or for a token that does not open;
  * `ERR_AUTHN_STATE_MISMATCH` for a token of another flow or provider. A refused token leaves a
  * cookie-carried flow alive; a store-backed one is taken on opening, whatever the token. What
@@ -82,8 +101,35 @@ export async function redeemHandoff<TProfile, TMemo>(
     );
   }
   await opened.consume();
+  if ("failure" in handoff) {
+    const { failure } = handoff;
+    throw new UnauthError(failure.message, failure.code, {
+      status: failure.status,
+      cause: failure.cause,
+    });
+  }
   return handoff.result;
+}
+
+/** `error` as a handoff carries it: its `cause` through JSON, an `Error` in it as its `name` and `message`, dropped when it does not serialise. */
+export function handoffFailure(error: UnauthError): HandoffFailure {
+  const failure: HandoffFailure = { code: error.code, message: error.message };
+  if (error.status !== undefined) failure.status = error.status;
+  const cause = jsonSafe(error.cause);
+  if (cause !== undefined) failure.cause = cause;
+  return failure;
 }
 
 /** The handoff token's `typ`: never a session, flow or intent token. */
 const HANDOFF_TYP = "unauth-handoff+jwt";
+
+function jsonSafe(value: unknown): unknown {
+  try {
+    const json = JSON.stringify(value, (_key, member: unknown) =>
+      member instanceof Error ? { name: member.name, message: member.message } : member,
+    );
+    return json === undefined ? undefined : (JSON.parse(json) as unknown);
+  } catch {
+    return undefined;
+  }
+}

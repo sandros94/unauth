@@ -35,9 +35,9 @@ export interface AtprotoProviderConfig {
    * Development only: origins the app is also reached on with the development client, such as
    * `http://localhost:3000`. A `redirectUri` on one of them is registered on `127.0.0.1`. A sign-in
    * started on one of them is sent to the same URL on the callback's host, the flow recorded on
-   * both; the sign-in handler then returns the completed result to the starting origin in a
-   * sealed, single-use, one-minute token, redeemed there in the browser that started, and
-   * `onSuccess` runs there. They are trusted origins of every sign-in on this provider
+   * both; the sign-in handler then returns the completed result, or its failure, to the starting
+   * origin in a sealed, single-use, one-minute token, redeemed there in the browser that started,
+   * and `onSuccess` or `onError` runs there. They are trusted origins of every sign-in on this provider
    * (`trustedOrigins`).
    *
    * @default []

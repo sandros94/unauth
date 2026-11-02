@@ -10,6 +10,7 @@ import {
 } from "./http/shared.ts";
 import type { CacheDriver } from "./cache/load.ts";
 import { CALLBACK_BODY_MAX_BYTES, readText } from "./http/body.ts";
+import type { RelocatedFailure } from "./carrier/handoff.ts";
 import { type FlowCarrierOptions, openFlow } from "./carrier/transient.ts";
 import { resolveProvider } from "../discovery.ts";
 import { verifyProviderIdToken } from "./provider-id-token.ts";
@@ -61,13 +62,14 @@ export interface CompletedFlow<TProfile, TMemo> {
  * without a store the flow cookie is left as it was, so the real callback can still complete;
  * with a store the record was already taken (its `take` is single-use) and that sign-in is over.
  * A matching callback consumes the flow before anything else, whatever the outcome: the provider's
- * refusal, a failed exchange or profile all end it, the flow cookie expired on `headers`.
+ * refusal, a failed exchange or profile all end it, the flow cookie expired on `headers`; for a
+ * relocated start, such an `UnauthError` is returned with the host it began on, not thrown.
  */
 export async function completeFlowWithReturnHost<TProfile, TMemo = unknown>(
   provider: Provider<TProfile>,
   request: Request,
   options: CompleteFlowOptions,
-): Promise<CompletedFlow<TProfile, TMemo>> {
+): Promise<CompletedFlow<TProfile, TMemo> | RelocatedFailure> {
   const opened = await openFlow({ request, headers: options.headers, provider, options });
   if (!opened.record) {
     throw new UnauthError(
@@ -90,8 +92,22 @@ export async function completeFlowWithReturnHost<TProfile, TMemo = unknown>(
       },
     );
   }
-  await opened.consume();
+  try {
+    await opened.consume();
+    return await completeMatched<TProfile, TMemo>(provider, request, { params, record, options });
+  } catch (error) {
+    if (record.returnHost === undefined || !isUnauthError(error)) throw error;
+    return { error, returnHost: record.returnHost, state: record.state };
+  }
+}
 
+/** The callback once it matches the flow: the provider's refusal, else its identity. */
+async function completeMatched<TProfile, TMemo>(
+  provider: Provider<TProfile>,
+  request: Request,
+  context: { params: Record<string, string>; record: FlowRecord; options: CompleteFlowOptions },
+): Promise<CompletedFlow<TProfile, TMemo>> {
+  const { params, record, options } = context;
   const error = params.error;
   if (error !== undefined) {
     throw new UnauthError(

@@ -3,12 +3,16 @@ import type { UnauthError } from "../../error.ts";
 import { isUnauthError } from "../../error.ts";
 import {
   HANDOFF_PARAM,
+  type Handoff,
   type HandoffCarrier,
+  type RelocatedFailure,
   handoffCarrier,
+  handoffFailure,
   redeemHandoff,
 } from "../flow/_internal/carrier/handoff.ts";
-import { definedIntent } from "../flow/_internal/carrier/intent.ts";
-import { type StartFlowOptions, startFlow } from "../flow/start-flow.ts";
+import { carriesIntent, definedIntent } from "../flow/_internal/carrier/intent.ts";
+import type { StartFlowOptions } from "../flow/start-flow.ts";
+import { startFlowWithReturnHost } from "../flow/_internal/start.ts";
 import type { FlowResult } from "../flow/types.ts";
 import { type CompletedFlow, completeFlowWithReturnHost } from "../flow/_internal/complete.ts";
 import type { Provider } from "../flow/types.ts";
@@ -37,9 +41,10 @@ export interface SignInSteps<TProfile, TResult, TMemo> {
  * with a `405`, so it is mounted without a method filter: a request that is not the callback leg
  * (see `isCallback`) answers the redirect to the provider, otherwise it completes the callback
  * and returns `complete`'s value. A sign-in a relocation moved off its starting host is redirected
- * back there with the result in a sealed, single-use handoff token; that host redeems it against
- * the flow it recorded when the sign-in left, in the browser that started it, and `complete` runs
- * there. The consumed flow cookie is expired on the response, error responses included (on the
+ * back there with the result, or its `UnauthError`, in a sealed, single-use handoff token; that
+ * host redeems it against the flow it recorded when the sign-in left, in the browser that started
+ * it, and `complete` or `onError` runs there; `onStart` ran there too and is not called on the
+ * relocated start. The consumed flow cookie is expired on the response, error responses included (on the
  * event's `errHeaders` too, for a framework that keeps those apart); an `UnauthError`, the flow's
  * or one `onStart` or `complete` throws, is answered by `onError`, else by a plain response.
  */
@@ -55,8 +60,11 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
       return new Response(null, { status: 405, headers: { allow: "GET, POST" } });
     }
     const { onStart, onError, complete } = route.steps(event);
-    const fail = async (error: UnauthError, headers?: Headers): Promise<TResult | Response> =>
-      onError ? onError(error) : failureResponse(error, headers);
+    const fail = async (error: UnauthError, headers?: Headers): Promise<TResult | Response> => {
+      if (!onError) return failureResponse(error, headers);
+      if (headers) copySetCookie(headers, event.res);
+      return onError(error);
+    };
 
     let key: FlowKey;
     let handoff: HandoffCarrier<TProfile, TMemo>;
@@ -91,18 +99,30 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
         });
       } catch (error) {
         if (!isUnauthError(error)) throw error;
-        if (!onError) return failureResponse(error, headers);
-        copySetCookie(headers, event.res);
-        return onError(error);
+        return fail(error, headers);
       }
       copySetCookie(headers, event.res);
       return answerUnauthError(() => complete(result), fail);
     }
 
+    const here = new URL(event.req.url);
+    const failed = (relocated: RelocatedFailure, headers?: Headers) => {
+      if (relocated.returnHost === here.hostname) return fail(relocated.error, headers);
+      if (headers) copySetCookie(headers, event.res);
+      const { error, returnHost, state } = relocated;
+      return handBack(here, {
+        returnHost,
+        carrier: handoff,
+        handed: { failure: handoffFailure(error), state },
+      });
+    };
+
     if (!isCallback(provider, event.req)) {
+      const relocated = provider.kind === "custom" && carriesIntent(event.req);
+      let started: { response: Response } | RelocatedFailure;
       try {
-        const intent: FlowIntent<TMemo> = (await onStart?.()) ?? {};
-        return await startFlow<TMemo>(provider, event.req, {
+        const intent: FlowIntent<TMemo> = (relocated ? undefined : await onStart?.()) ?? {};
+        started = await startFlowWithReturnHost<TMemo>(provider, event.req, {
           ...flow,
           key,
           context: event.context,
@@ -112,10 +132,11 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
         if (!isUnauthError(error)) throw error;
         return fail(error);
       }
+      return "response" in started ? started.response : failed(started);
     }
 
     const headers = new Headers();
-    let completed: CompletedFlow<TProfile, TMemo>;
+    let completed: CompletedFlow<TProfile, TMemo> | RelocatedFailure;
     try {
       completed = await completeFlowWithReturnHost<TProfile, TMemo>(provider, event.req, {
         ...flow,
@@ -125,22 +146,13 @@ export function signInRoute<TProfile, TResult, TEvent extends WebRequestEvent, T
       });
     } catch (error) {
       if (!isUnauthError(error)) throw error;
-      if (!onError) return failureResponse(error, headers);
-      copySetCookie(headers, event.res);
-      return onError(error);
+      return fail(error, headers);
     }
+    if ("error" in completed) return failed(completed, headers);
     copySetCookie(headers, event.res);
     const { result, returnHost, state } = completed;
-    const here = new URL(event.req.url);
     if (returnHost !== undefined && state !== undefined && returnHost !== here.hostname) {
-      const target = new URL(here);
-      target.hostname = returnHost;
-      const token = await handoff.issue({ result, state });
-      target.search = `?${HANDOFF_PARAM}=${encodeURIComponent(token)}`;
-      return new Response(null, {
-        status: 302,
-        headers: { "location": target.href, "cache-control": "no-store" },
-      });
+      return handBack(here, { returnHost, carrier: handoff, handed: { result, state } });
     }
     return answerUnauthError(() => complete(result), fail);
   };
@@ -181,4 +193,23 @@ function copySetCookie(from: Headers, to: WebRequestEvent["res"]): void {
     to.headers.append("set-cookie", line);
     to.errHeaders?.append("set-cookie", line);
   }
+}
+
+/** A `302` to `here` on `returnHost`, carrying `handed` sealed as the handoff token alone. */
+async function handBack<TProfile, TMemo>(
+  here: URL,
+  context: {
+    returnHost: string;
+    carrier: HandoffCarrier<TProfile, TMemo>;
+    handed: Handoff<TProfile, TMemo>;
+  },
+): Promise<Response> {
+  const target = new URL(here);
+  target.hostname = context.returnHost;
+  const token = await context.carrier.issue(context.handed);
+  target.search = `?${HANDOFF_PARAM}=${encodeURIComponent(token)}`;
+  return new Response(null, {
+    status: 302,
+    headers: { "location": target.href, "cache-control": "no-store" },
+  });
 }

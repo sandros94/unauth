@@ -19,6 +19,7 @@ export async function completeFlow<TProfile, TMemo = unknown>(
   request: Request,
   options: CompleteFlowOptions,
 ): Promise<FlowResult<TProfile, TMemo>> {
-  const { result } = await completeFlowWithReturnHost<TProfile, TMemo>(provider, request, options);
-  return result;
+  const completed = await completeFlowWithReturnHost<TProfile, TMemo>(provider, request, options);
+  if ("error" in completed) throw completed.error;
+  return completed.result;
 }

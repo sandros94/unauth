@@ -1,13 +1,8 @@
 import type { CacheDriver } from "./_internal/cache/load.ts";
-import { type Fetch, fetchOf, nowOf } from "./_internal/http/shared.ts";
-import { resolveRedirectUri, safeRedirect } from "./_internal/redirect.ts";
-import { assertFormStart } from "./_internal/form-start.ts";
-import { type ResumedIntent, resumeIntent, withSealedIntent } from "./_internal/carrier/intent.ts";
-import { type FlowCarrierOptions, saveFlow } from "./_internal/carrier/transient.ts";
-import { buildAuthorizationUrl } from "./authorization-url.ts";
-import { resolveProvider } from "./discovery.ts";
-import { createNonce, createPkce, createState } from "./random.ts";
-import type { CustomProvider, FlowRecord, OAuthProvider, Provider } from "./types.ts";
+import type { Fetch } from "./_internal/http/shared.ts";
+import { startFlowWithReturnHost } from "./_internal/start.ts";
+import type { FlowCarrierOptions } from "./_internal/carrier/transient.ts";
+import type { Provider } from "./types.ts";
 
 /** Options of {@link startFlow}. */
 export interface StartFlowOptions<TMemo = never> extends FlowCarrierOptions {
@@ -17,10 +12,11 @@ export interface StartFlowOptions<TMemo = never> extends FlowCarrierOptions {
    * Origins whose requests may derive `redirectUri` from their own URL, when it is not set,
    * whose forms may start a sign-in that carries a `memo` or names the account (`loginHint`),
    * and whose starts a custom provider may relocate. A custom provider's own `trustedOrigins`
-   * are added. Without `redirectUri`, a request from any other origin is refused with
-   * `ERR_AUTHN_ORIGIN_UNTRUSTED` (421). List every origin the sign-in runs on, the development
-   * ones included (`http://localhost:3000`, `http://127.0.0.1:3000`); origins are matched
-   * exactly, as the redirect URIs registered at the provider are.
+   * are added. Once listed, a start is accepted on these origins and the callback's only,
+   * `ERR_AUTHN_ORIGIN_UNTRUSTED` (421) otherwise, `redirectUri` set or not. List every origin the
+   * sign-in runs on, the development ones included (`http://localhost:3000`,
+   * `http://127.0.0.1:3000`); origins are matched exactly, as the redirect URIs registered at the
+   * provider are.
    */
   trustedOrigins?: string[];
   /** Where to go after sign-in; kept only when it is a same-origin path. */
@@ -85,102 +81,7 @@ export async function startFlow<TMemo = never>(
   request: Request,
   options: StartFlowOptions<TMemo>,
 ): Promise<Response> {
-  const resumed: ResumedIntent<TMemo> =
-    provider.kind === "custom"
-      ? await resumeIntent(request, { provider: provider.id, options })
-      : { options };
-  options = resumed.options;
-  if (provider.kind === "custom" && provider.trustedOrigins?.length) {
-    options = {
-      ...options,
-      trustedOrigins: [...(options.trustedOrigins ?? []), ...provider.trustedOrigins],
-    };
-  }
-  const steerable =
-    options.memo !== undefined || (provider.kind === "custom" && options.loginHint !== undefined);
-  if (steerable && resumed.returnHost === undefined) {
-    assertFormStart(request, options.trustedOrigins);
-  }
-  const redirectUri = resolveRedirectUri(request, {
-    redirectUri:
-      options.redirectUri ?? (provider.kind === "custom" ? provider.redirectUri : undefined),
-    trustedOrigins: options.trustedOrigins,
-  });
-  const redirect = safeRedirect(options.redirect);
-  const record: FlowRecord<TMemo> = {
-    provider: provider.id,
-    state: resumed.state ?? createState(),
-    redirectUri,
-  };
-  if (redirect !== undefined) record.redirect = redirect;
-  if (options.memo !== undefined) record.memo = options.memo;
-  if (resumed.returnHost !== undefined && resumed.returnHost !== new URL(request.url).hostname) {
-    record.returnHost = resumed.returnHost;
-  }
-
-  const started =
-    provider.kind === "custom"
-      ? await startCustom(provider, request, { record, redirectUri, options })
-      : { url: await startOAuth(provider, { record, redirectUri, options }), relocate: false };
-
-  const location = started.relocate
-    ? await withSealedIntent(started.url, { request, options, record })
-    : started.url;
-  const headers = new Headers({ "location": location.href, "cache-control": "no-store" });
-  await saveFlow(record, { request, headers, provider, options });
-  return new Response(null, { status: 302, headers });
-}
-
-async function startOAuth(
-  provider: OAuthProvider<unknown>,
-  context: { record: FlowRecord; redirectUri: string; options: StartFlowOptions<unknown> },
-): Promise<URL> {
-  const { record, redirectUri, options } = context;
-  const resolved = await resolveProvider(provider, {
-    fetch: fetchOf(options),
-    now: options.now,
-    cache: options.cache,
-  });
-  const pkce = resolved.pkce ? await createPkce() : undefined;
-  if (pkce) record.verifier = pkce.verifier;
-  if (resolved.nonce) record.nonce = createNonce();
-  const params = { ...options.params };
-  if (options.loginHint !== undefined && params.login_hint === undefined) {
-    params.login_hint = options.loginHint;
-  }
-  return buildAuthorizationUrl(resolved, {
-    redirectUri,
-    state: record.state,
-    nonce: record.nonce,
-    scopes: options.scopes,
-    params,
-    pkce:
-      pkce &&
-      (resolved.pkce === "plain"
-        ? { challenge: pkce.verifier, method: "plain" }
-        : { challenge: pkce.challenge, method: "S256" }),
-  });
-}
-
-/** The provider's first leg: where to send the user, and whether that is the flow or a fresh start elsewhere. */
-async function startCustom(
-  provider: CustomProvider<unknown>,
-  request: Request,
-  context: { record: FlowRecord; redirectUri: string; options: StartFlowOptions<unknown> },
-): Promise<{ url: URL; relocate: boolean }> {
-  const { record, redirectUri, options } = context;
-  const started = await provider.start({
-    request,
-    record: { provider: record.provider, state: record.state, redirectUri: record.redirectUri },
-    redirectUri,
-    loginHint: options.loginHint,
-    scopes: options.scopes,
-    params: options.params,
-    fetch: fetchOf(options),
-    now: nowOf(options),
-    cache: options.cache,
-  });
-  if (started.relocate !== undefined) return { url: new URL(started.relocate), relocate: true };
-  if (started.data) record.data = started.data;
-  return { url: new URL(started.url), relocate: false };
+  const started = await startFlowWithReturnHost(provider, request, options);
+  if ("error" in started) throw started.error;
+  return started.response;
 }

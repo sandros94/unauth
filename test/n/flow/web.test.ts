@@ -169,6 +169,28 @@ describe("startFlow", () => {
     expect(error).toMatchObject({ status: 421, cause: { origin: "https://evil.test" } });
   });
 
+  it("takes a start with a fixed redirect URI on a listed origin or the callback's only, once origins are listed", async () => {
+    const fake = await createFakeProvider();
+    const callback = "https://callback.test/auth/fake";
+    const listed = { key, redirectUri: callback, trustedOrigins: [APP], fetch: fake.fetch };
+    for (const url of [`${APP}/auth/fake`, callback]) {
+      expect((await startFlow(fakeOAuth2(), new Request(url), listed)).status).toBe(302);
+    }
+
+    const error = await rejection(
+      startFlow(fakeOAuth2(), new Request("https://evil.test/auth/fake"), listed),
+    );
+    expect(isUnauthError(error, "ERR_AUTHN_ORIGIN_UNTRUSTED")).toBe(true);
+    expect(error).toMatchObject({ status: 421, cause: { origin: "https://evil.test" } });
+
+    const unlisted = await startFlow(fakeOAuth2(), new Request("https://internal.test/auth/fake"), {
+      key,
+      redirectUri: callback,
+      fetch: fake.fetch,
+    });
+    expect(unlisted.status).toBe(302);
+  });
+
   it("drops a SameSite=Lax cookie for form_post providers in favour of SameSite=None", async () => {
     const fake = await createFakeProvider();
     const provider = defineOAuth2Provider({

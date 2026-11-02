@@ -64,7 +64,7 @@ app.get(
 ```
 
 - `key`: the key that seals the sign-in's flow cookie, or a callback returning it, called once on the first request. `deriveJWK(secret, { info })` turns a random secret of 32+ characters into one. The shapes a key may take, rotation and the `jwe` and `onKeyLookup` options follow `unauth/session`'s JWE session keys; a key pair is refused, since a token sealed to a public key could be minted by anyone holding it.
-- `origin`: the callback is this route on that origin, and its forms may start a sign-in that links an account or names it; a request on any other origin is refused with a `421`; `redirectUri` names the callback outright instead.
+- `origin`: the callback is this route on that origin, and its forms may start a sign-in that links an account or names it; a request on any other origin is refused with a `421`. `redirectUri` names the callback outright instead. With `origin` too, both are where the sign-in runs.
 - `onStart(event)`: optional; returns `{ redirect, memo, loginHint, scopes, params }` for this request. `memo` is anything the application wants back at the callback, sealed; `loginHint` names the account (OAuth's `login_hint`, an AT Protocol handle). A start that returns either `memo`, or `loginHint` for a custom provider, is taken only as a `POST` from the application's own origin (`ERR_AUTHN_CROSS_SITE_START` otherwise): start those sign-ins from a form.
 - `onSuccess(event, result)`: required; `result` holds `identity`, `tokens`, `memo` and `redirect`. Returning nothing answers a `302` to `result.redirect`, else the `redirect` option, else `/`; returning a `Response` or a value answers that.
 - `fetch`: optional; replaces the global `fetch` for every request a sign-in makes to a provider, where a deployment refuses private network ranges.
@@ -110,7 +110,7 @@ app.all(
 
 - `onStart` names the account (a handle, a DID or a server URL) as `loginHint`; the handler reads nothing from the request. Naming the account picks the server the sign-in is pushed to, so the start is a `POST` form from the application's own pages (`ERR_AUTHN_CROSS_SITE_START` otherwise).
 - The provider's `client.metadata` is the document to serve at `clientId`; define the provider once with `defineAtprotoProvider` and pass it as `provider` to share it with that route.
-- A `clientId` on `http://localhost` is the development client; its callback must be on a loopback IP. `devOrigins: ["http://localhost:3000"]` maps a `localhost:3000` callback to `127.0.0.1:3000` and returns the result to `http://localhost:3000`.
+- A `clientId` on `http://localhost` is the development client; its callback must be on a loopback IP. `devOrigins: ["http://localhost:3000"]` maps a `localhost:3000` callback to `127.0.0.1:3000` and returns the result, or its failure, to `http://localhost:3000`, where `onSuccess` or `onError` runs.
 
 ### Custom providers
 

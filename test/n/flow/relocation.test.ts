@@ -5,7 +5,8 @@ import {
   type CustomProvider,
   type FlowResult,
   type SignInHandlerOptions,
-  type UnauthError,
+  type WebRequestEvent,
+  UnauthError,
   completeFlow,
   defineOAuth2Provider,
   defineProvider,
@@ -13,7 +14,7 @@ import {
   isUnauthError,
   startFlow,
 } from "../../../src/n/index.ts";
-import { handoffCarrier } from "../../../src/n/flow/_internal/carrier/handoff.ts";
+import { handoffCarrier, handoffFailure } from "../../../src/n/flow/_internal/carrier/handoff.ts";
 import { completeFlowWithReturnHost } from "../../../src/n/flow/_internal/complete.ts";
 import { CLIENT_ID, CLIENT_SECRET, ISSUER, createFakeProvider } from "./_fake-provider.ts";
 import { sealedCarrier } from "../../../src/n/flow/_internal/carrier/sealed.ts";
@@ -64,6 +65,25 @@ function movingProvider(options: { trustedOrigins?: string[] } = { trustedOrigin
   return { provider, start };
 }
 
+/** {@link movingProvider}'s provider, throwing `error` on the relocated start or on the callback. */
+function failingProvider(leg: "start" | "complete", error: UnauthError): CustomProvider {
+  const { provider } = movingProvider();
+  return defineProvider({
+    id: provider.id,
+    kind: "custom",
+    trustedOrigins: provider.trustedOrigins,
+    start: async (context) => {
+      const started = await provider.start(context);
+      if (leg === "start" && started.relocate === undefined) throw error;
+      return started;
+    },
+    complete: async (context) => {
+      if (leg === "complete") throw error;
+      return provider.complete(context);
+    },
+  });
+}
+
 /** The callback the provider sends the user back to, with the flow cookie `started` set. */
 function callback(started: Response): Request {
   const state = new URL(started.headers.get("location")!).searchParams.get("state")!;
@@ -105,7 +125,7 @@ function browser(handler: Handler) {
 /** The sign-in handler of `provider`, recording where `onSuccess` ran and the errors answered. */
 function app(
   provider: CustomProvider,
-  sealing: Partial<Pick<SignInHandlerOptions, "key" | "jwe" | "onKeyLookup">> = {},
+  sealing: Partial<Pick<SignInHandlerOptions, "key" | "jwe" | "onKeyLookup" | "onStart">> = {},
 ) {
   const seen: string[] = [];
   const errors: UnauthError[] = [];
@@ -126,11 +146,15 @@ function app(
 }
 
 /** The relocation round trip in `visit`'s browser, up to the handoff URL the callback host answers with. */
-async function handoffFor(visit: ReturnType<typeof browser>): Promise<URL> {
-  const moved = (await visit(formStart(`${APP}/auth/custom`))) as Response;
+async function handoffFor(
+  visit: ReturnType<typeof browser>,
+  options: { start?: Request; answer?: string } = {},
+): Promise<URL> {
+  const moved = (await visit(options.start ?? formStart(`${APP}/auth/custom`))) as Response;
   const started = (await visit(moved.headers.get("location")!)) as Response;
   const state = new URL(started.headers.get("location")!).searchParams.get("state")!;
-  const completed = (await visit(`${REDIRECT_URI}?state=${state}&code=c-1`)) as Response;
+  const answer = options.answer ?? "code=c-1";
+  const completed = (await visit(`${REDIRECT_URI}?state=${state}&${answer}`)) as Response;
   const handoff = new URL(completed.headers.get("location")!);
   expect(handoff.origin).toBe(APP);
   expect(handoff.searchParams.get("unauth_handoff")).toMatch(/^eyJ/);
@@ -365,13 +389,13 @@ describe("a relocated start", () => {
       redirectUri: REDIRECT_URI,
       memo: { userId: "u2" },
     });
-    const { result, returnHost } = await completeFlowWithReturnHost<unknown, Link>(
-      provider,
-      callback(started),
-      { key, headers: new Headers() },
-    );
-    expect(result.memo).toEqual({ userId: "u2" });
-    expect(returnHost).toBeUndefined();
+    const completed = await completeFlowWithReturnHost<unknown, Link>(provider, callback(started), {
+      key,
+      headers: new Headers(),
+    });
+    if ("error" in completed) throw completed.error;
+    expect(completed.result.memo).toEqual({ userId: "u2" });
+    expect(completed.returnHost).toBeUndefined();
   });
 });
 
@@ -534,6 +558,118 @@ describe("the handoff back to the origin host", () => {
     const answer = (await visit(handoff)) as Response;
     expect(answer.status).toBe(401);
     expect(isUnauthError(errors[0], "ERR_AUTHN_STATE_MISMATCH")).toBe(true);
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("onStart on a relocated sign-in", () => {
+  it("runs once, on the origin host: the relocated start keeps the intent sealed there", async () => {
+    const onStart = vi.fn((event: WebRequestEvent) => {
+      if (!event.req.headers.get("cookie")?.includes("session=")) {
+        throw new UnauthError("Sign in first.", "ERR_AUTHN_UNAUTHENTICATED", { status: 401 });
+      }
+    });
+    const { handler, seen, errors } = app(movingProvider().provider, { onStart });
+    const visit = browser(handler);
+    const handoff = await handoffFor(visit, {
+      start: formStart(`${APP}/auth/custom`, { headers: { cookie: "session=u1" } }),
+    });
+
+    expect(await visit(handoff)).toBe("ok");
+    expect(errors).toEqual([]);
+    expect(seen).toEqual(["app.test acct-1"]);
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(new URL(onStart.mock.calls[0]![0].req.url).origin).toBe(APP);
+  });
+});
+
+describe("a failure after the relocation", () => {
+  it("of the relocated start is handed back to the origin host, where onError answers it once", async () => {
+    const refusal = new UnauthError("Enter a handle.", "ERR_AUTHN_LOGIN_HINT_INVALID", {
+      status: 400,
+      cause: { handle: "nobody" },
+    });
+    const { handler, seen, errors } = app(failingProvider("start", refusal));
+    const visit = browser(handler);
+
+    const moved = (await visit(formStart(`${APP}/auth/custom`))) as Response;
+    const handed = (await visit(moved.headers.get("location")!)) as Response;
+    expect(handed.status).toBe(302);
+    expect(handed.headers.get("cache-control")).toBe("no-store");
+    const back = new URL(handed.headers.get("location")!);
+    expect(back.origin).toBe(APP);
+    expect([...back.searchParams.keys()]).toEqual(["unauth_handoff"]);
+    expect(errors).toEqual([]);
+
+    const answer = (await visit(back)) as Response;
+    expect(answer.status).toBe(400);
+    expect(errors).toHaveLength(1);
+    expect(isUnauthError(errors[0], "ERR_AUTHN_LOGIN_HINT_INVALID")).toBe(true);
+    expect(errors[0]).toMatchObject({
+      message: refusal.message,
+      status: 400,
+      cause: { handle: "nobody" },
+    });
+    expect(seen).toEqual([]);
+
+    const replay = (await visit(back)) as Response;
+    expect(replay.status).toBe(401);
+    expect(isUnauthError(errors[1], "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
+    expect(errors[1]!.cause).toEqual({ reason: "missing" });
+    expect(seen).toEqual([]);
+  });
+
+  it("of the callback, the provider's refusal, is handed back to the origin host", async () => {
+    const { handler, seen, errors } = app(movingProvider().provider);
+    const visit = browser(handler);
+    const handoff = await handoffFor(visit, { answer: "error=access_denied" });
+    expect(errors).toEqual([]);
+
+    const answer = (await visit(handoff)) as Response;
+    expect(answer.status).toBe(401);
+    expect(errors).toHaveLength(1);
+    expect(isUnauthError(errors[0], "ERR_AUTHN_PROVIDER_REFUSED")).toBe(true);
+    expect(errors[0]!.cause).toEqual({ error: "access_denied" });
+    expect(seen).toEqual([]);
+  });
+
+  it("of the provider's own callback leg arrives with its cause JSON-safe, an Error as its name and message", async () => {
+    const failure = new UnauthError("Sign-in is unavailable.", "ERR_AUTHN_PROVIDER_ERROR", {
+      status: 502,
+      cause: { reason: "failed", cause: new TypeError("socket hang up") },
+    });
+    const { handler, seen, errors } = app(failingProvider("complete", failure));
+    const visit = browser(handler);
+    const handoff = await handoffFor(visit);
+    expect(errors).toEqual([]);
+
+    const answer = (await visit(handoff)) as Response;
+    expect(answer.status).toBe(502);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(UnauthError);
+    expect(errors[0]).toMatchObject({ code: "ERR_AUTHN_PROVIDER_ERROR", status: 502 });
+    expect(errors[0]!.cause).toEqual({
+      reason: "failed",
+      cause: { name: "TypeError", message: "socket hang up" },
+    });
+    expect(seen).toEqual([]);
+  });
+
+  it("drops a cause that does not survive JSON, and keeps a missing status missing", () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    for (const cause of [undefined, 1n, cyclic, () => 1]) {
+      const sealed = handoffFailure(new UnauthError("No.", "ERR_AUTHN_PROVIDER_ERROR", { cause }));
+      expect(sealed).toEqual({ code: "ERR_AUTHN_PROVIDER_ERROR", message: "No." });
+    }
+  });
+
+  it("before the origin host is known is answered here: a forged intent token is refused without a handoff", async () => {
+    const { handler, seen, errors } = app(movingProvider().provider);
+    const answer = (await browser(handler)(`${REDIRECT_URI}?unauth_intent=eyJ.forged`)) as Response;
+    expect(answer.status).toBe(401);
+    expect(answer.headers.get("location")).toBeNull();
+    expect(isUnauthError(errors[0], "ERR_AUTHN_FLOW_EXPIRED")).toBe(true);
     expect(seen).toEqual([]);
   });
 });

@@ -5,21 +5,26 @@ import { configError } from "./http/shared.ts";
  * The `redirect_uri` of a flow: the configured one, else the request's own URL (without its query)
  * when the request's origin is one of `trustedOrigins`. Without either it is a configuration error;
  * a request from any other origin is refused with `ERR_AUTHN_ORIGIN_UNTRUSTED` (421): a redirect
- * URI is never guessed from an untrusted Host.
+ * URI is never guessed from an untrusted Host. Once `trustedOrigins` are listed, a configured one
+ * is used only on those origins and the callback's (its own, or the provider's `registered` one,
+ * where a relocated start runs), 421 otherwise; without them it is used whatever the request's
+ * origin, which a proxy may hide.
  */
 export function resolveRedirectUri(
   request: Request,
-  options: { redirectUri?: string; trustedOrigins?: string[] },
+  options: { redirectUri?: string; trustedOrigins?: string[]; registered?: string },
 ): string {
-  if (options.redirectUri !== undefined) return options.redirectUri;
-  if (!options.trustedOrigins?.length) {
+  const { redirectUri, trustedOrigins = [], registered } = options;
+  if (redirectUri === undefined && trustedOrigins.length === 0) {
     throw configError(`Set "redirectUri", or "trustedOrigins" to derive it from the request.`);
   }
+  if (redirectUri !== undefined && trustedOrigins.length === 0) return redirectUri;
   const url = new URL(request.url);
-  if (!options.trustedOrigins.some((origin) => originOf(origin) === url.origin)) {
+  const accepted = [...trustedOrigins, redirectUri, registered].filter((o) => o !== undefined);
+  if (!accepted.some((origin) => originOf(origin) === url.origin)) {
     throw untrustedOrigin(url.origin);
   }
-  return `${url.origin}${url.pathname}`;
+  return redirectUri ?? `${url.origin}${url.pathname}`;
 }
 
 /** `ERR_AUTHN_ORIGIN_UNTRUSTED` (421): the request reached the sign-in on `origin`, which is not one of `trustedOrigins`. */

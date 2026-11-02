@@ -25,10 +25,13 @@ interface SealedIntent<TMemo> {
 }
 
 /** What a resumed intent adds to a relocated start: the options and, from the origin host, its flow's binding. */
-export interface ResumedIntent<TMemo> {
-  options: StartFlowOptions<TMemo>;
-  returnHost?: string;
-  state?: string;
+export type ResumedIntent<TMemo> =
+  | { options: StartFlowOptions<TMemo>; returnHost?: undefined; state?: undefined }
+  | { options: StartFlowOptions<TMemo>; returnHost: string; state: string };
+
+/** Whether `request` is a relocated start: its URL carries a sealed intent, opened or not. */
+export function carriesIntent(request: Request): boolean {
+  return new URL(request.url).searchParams.has(INTENT_PARAM);
 }
 
 /**
