@@ -1,5 +1,5 @@
 import { isJWTError } from "unjwt/error";
-import { configError } from "../flow/_internal/http/shared.ts";
+import { configError } from "./shared.ts";
 
 /**
  * The key lookup's own failure when a token read ended with `error` there: what the application's
@@ -10,13 +10,19 @@ export function keyLookupFailure(error: unknown): { error: unknown } | undefined
   return isJWTError(error, "ERR_SESSION_READ_FAILED") ? { error: error.cause } : undefined;
 }
 
-/** The session `define` returns; a config unjwt refuses throws `ERR_UNAUTH_CONFIG_INVALID`, unjwt's error as `cause`. */
-export function definedSession<T>(define: () => T): T {
+/**
+ * The session `define` returns; a config unjwt refuses throws `ERR_UNAUTH_CONFIG_INVALID` with
+ * `prefix`, unjwt's error as `cause`.
+ */
+export function definedSession<T>(define: () => T, options: { prefix: string }): T {
   try {
     return define();
   } catch (error) {
     if (!isJWTError(error)) throw error;
-    throw configError(error.message.replace(UNJWT_PREFIX, ""), error);
+    throw configError(error.message.replace(UNJWT_PREFIX, ""), {
+      prefix: options.prefix,
+      cause: error,
+    });
   }
 }
 

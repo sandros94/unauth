@@ -1,5 +1,5 @@
 import type { JWSSignJWK } from "unjwt/jws";
-import type { CacheDriver } from "./_internal/cache/load.ts";
+import type { CacheDriver } from "../../_internal/cache-driver.ts";
 import type { Fetch } from "./_internal/http/shared.ts";
 
 /** The application's registration at a provider. */

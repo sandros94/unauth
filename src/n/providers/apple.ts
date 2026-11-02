@@ -1,7 +1,8 @@
 import { importPEM } from "unjwt/jwk";
 import { type JWSSignJWK, sign } from "unjwt/jws";
 import { safeJsonParse } from "unsecure/sanitize";
-import { isRecord, profileError } from "../flow/_internal/http/shared.ts";
+import { profileError } from "../flow/_internal/http/shared.ts";
+import { isRecord } from "../../_internal/shared.ts";
 import { defineProvider } from "../flow/provider.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
 import type { WebRequestEvent } from "../request-event.ts";

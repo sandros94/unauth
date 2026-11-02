@@ -5,6 +5,7 @@ import {
   deriveSecret,
   useRuntimeConfig,
 } from "nuxt/server";
+import { isUnauthError } from "unauth/n";
 import { base64UrlStringify } from "unauth/utils";
 import { defineGitHubHandler } from "unauth/n/providers/github";
 
@@ -20,20 +21,37 @@ export default defineEventHandler(
     origin: useRuntimeConfig().public.origin,
     onStart: async (event: RequestEvent) => {
       const session = await useAuthSession(event);
-      return session ? { memo: { userId: session.userId } } : undefined;
+      return session.id ? { memo: { userId: session.data.userId } } : undefined;
     },
     onSuccess: async (event, { identity, memo }) => {
+      const session = await useAuthSession(event);
+
       if (memo) {
-        const session = await useAuthSession(event);
-        if (session?.userId !== memo.userId) {
+        if (session.data.userId !== memo.userId) {
           throw createError({ statusCode: 401, message: "The session changed during the link" });
         }
         await linkIdentity(memo.userId, identity);
+        await session.rotate();
         return;
       }
 
       const user = await findOrCreateUser(identity);
-      await createSession(event, { userId: user.id });
+      await session.clear();
+      await session.update({
+        userId: user.id,
+        ...(identity.name ? { name: identity.name } : {}),
+        signedInAt: Date.now(),
+        family: crypto.randomUUID(),
+      });
+    },
+    onError: (_event, error) => {
+      if (isUnauthError(error, "ERR_AUTHN_CROSS_SITE_START") && error.cause.reason === "method") {
+        return new Response(null, {
+          status: 302,
+          headers: { "location": "/?notice=use-link-button", "cache-control": "no-store" },
+        });
+      }
+      return;
     },
   }),
 );

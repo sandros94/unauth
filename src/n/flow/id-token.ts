@@ -4,8 +4,9 @@ import { type DigestAlgorithm, hash } from "unsecure/hash";
 import { base64Stringify } from "unsecure/utils";
 import { secureCompare } from "unsecure/compare";
 import { type UnauthErrorCauseMap, UnauthError, isUnauthError } from "../../error.ts";
-import { type Fetch, nowOf } from "./_internal/http/shared.ts";
-import type { CacheDriver } from "./_internal/cache/load.ts";
+import type { Fetch } from "./_internal/http/shared.ts";
+import { nowOf } from "../../_internal/shared.ts";
+import type { CacheDriver } from "../../_internal/cache-driver.ts";
 import { fetchJwks } from "./jwks.ts";
 import type { IdTokenClaims } from "./types.ts";
 

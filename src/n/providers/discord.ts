@@ -1,6 +1,6 @@
 import { defineOAuth2Provider } from "../flow/oauth2.ts";
 import type { ProfileContext, ProfileResult, OAuthProvider } from "../flow/types.ts";
-import { isRecord } from "../flow/_internal/http/shared.ts";
+import { isRecord } from "../../_internal/shared.ts";
 import type { WebRequestEvent } from "../request-event.ts";
 import {
   type PresetConfig,

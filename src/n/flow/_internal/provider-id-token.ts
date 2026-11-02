@@ -1,5 +1,5 @@
 import { type Fetch, configError } from "./http/shared.ts";
-import type { CacheDriver } from "./cache/load.ts";
+import type { CacheDriver } from "../../../_internal/cache-driver.ts";
 import { verifyIdToken } from "../id-token.ts";
 import type { IdTokenClaims, OAuthProvider } from "../types.ts";
 

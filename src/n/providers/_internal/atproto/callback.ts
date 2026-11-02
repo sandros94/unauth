@@ -1,5 +1,6 @@
 import { UnauthError, isUnauthError } from "../../../../error.ts";
-import { isRecord, profileError, stringField } from "../../../flow/_internal/http/shared.ts";
+import { profileError } from "../../../flow/_internal/http/shared.ts";
+import { isRecord, stringField } from "../../../../_internal/shared.ts";
 import { exchangeError, parseTokenResponse } from "../../../flow/_internal/token-response.ts";
 import type {
   CustomCompleteContext,

@@ -1,10 +1,10 @@
 import { defineEventHandler } from "nuxt/server";
 
 export default defineEventHandler(async (event) => {
-  const { userId } = await requireAuthSession(event);
-  await revokeSessions(userId);
-  await deleteUser(userId);
-  await terminateSession(event);
+  const session = await requireAuthSession(event);
+  await revokeSessions(session.data.userId);
+  await deleteUser(session.data.userId);
+  await session.clear();
 
   return { ok: true };
 });

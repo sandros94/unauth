@@ -1,4 +1,4 @@
-import type { CacheDriver } from "./_internal/cache/load.ts";
+import type { CacheDriver } from "../../_internal/cache-driver.ts";
 import type { Fetch } from "./_internal/http/shared.ts";
 import { startFlowWithReturnHost } from "./_internal/start.ts";
 import type { FlowCarrierOptions } from "./_internal/carrier/transient.ts";

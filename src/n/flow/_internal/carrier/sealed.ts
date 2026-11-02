@@ -6,7 +6,7 @@ import {
   type FlowKeyLookup,
   flowSessionOptions,
 } from "../../../_internal/flow-key.ts";
-import { definedSession, keyLookupFailure } from "../../../_internal/session-error.ts";
+import { definedSession, keyLookupFailure } from "../../../../_internal/session-error.ts";
 
 /** A sealed token taken: its value, or why it was refused. */
 export type SealedTake<T> = { ok: true; value: T } | { ok: false; refused: unknown };
@@ -32,15 +32,17 @@ export function sealedCarrier<T>(
   key: FlowKey,
   options: { typ: string; name: string; jwe?: FlowKeyAlgorithms; onKeyLookup?: FlowKeyLookup },
 ): SealedCarrier<T> {
-  const tokens = definedSession(() =>
-    defineJWESession<{ value: T }, typeof MAX_AGE, FlowEvent>({
-      key,
-      name: options.name,
-      maxAge: MAX_AGE,
-      cookie: false,
-      sessionHeader: false,
-      ...flowSessionOptions(key, options),
-    }),
+  const tokens = definedSession(
+    () =>
+      defineJWESession<{ value: T }, typeof MAX_AGE, FlowEvent>({
+        key,
+        name: options.name,
+        maxAge: MAX_AGE,
+        cookie: false,
+        sessionHeader: false,
+        ...flowSessionOptions(key, options),
+      }),
+    { prefix: "[unauth/n]" },
   );
   return {
     issue: (value) => tokens.issue({ value }),

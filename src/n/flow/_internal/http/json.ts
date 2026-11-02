@@ -1,5 +1,6 @@
 import { safeJsonParse } from "unsecure/sanitize";
-import { type Fetch, endpointName, isRecord, providerError } from "./shared.ts";
+import { type Fetch, endpointName, providerError } from "./shared.ts";
+import { isRecord } from "../../../../_internal/shared.ts";
 import {
   PROVIDER_DOCUMENT_MAX_BYTES,
   PROVIDER_FETCH_TIMEOUT,

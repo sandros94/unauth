@@ -13,5 +13,14 @@ export default defineEventHandler(async (event) => {
 
   const user = await registerPassword(body.user, body.password);
 
-  return createSession(event, { userId: user.id });
+  const session = await useAuthSession(event);
+  await session.clear();
+  await session.update({ userId: user.id, signedInAt: Date.now(), family: crypto.randomUUID() });
+
+  return {
+    id: session.id,
+    userId: session.data.userId,
+    family: session.data.family,
+    expiresAt: session.expiresAt,
+  };
 });

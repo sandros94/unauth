@@ -30,7 +30,7 @@ export type {
   TokenAuthMethod,
 } from "./flow/types.ts";
 export type { Fetch } from "./flow/_internal/http/shared.ts";
-export type { CacheDriver } from "./flow/_internal/cache/load.ts";
+export type { CacheDriver } from "../_internal/cache-driver.ts";
 export { defineProvider } from "./flow/provider.ts";
 export { type Pkce, createNonce, createPkce, createState } from "./flow/random.ts";
 export { type AuthorizationParams, buildAuthorizationUrl } from "./flow/authorization-url.ts";
@@ -71,12 +71,13 @@ export type {
 } from "./_internal/flow-key.ts";
 export { deriveJWK } from "./derive-jwk.ts";
 export { type PublicServerOptions, isPublicServer } from "./public-server.ts";
+/** @deprecated Import from `unauth/token`. */
 export {
   type OneTimeToken,
   type OneTimeTokenConfig,
   type OneTimeTokenKeyLookup,
   type OneTimeTokenUse,
-  createOpaqueToken,
   defineOneTimeToken,
-  hashOpaqueToken,
-} from "./one-time-token.ts";
+} from "../token/one-time-token.ts";
+/** @deprecated Import from `unauth/token`. */
+export { createOpaqueToken, hashOpaqueToken } from "../token/opaque-token.ts";

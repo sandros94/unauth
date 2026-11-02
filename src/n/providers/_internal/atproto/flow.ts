@@ -3,8 +3,8 @@ import {
   assertSecureUrl,
   configError,
   providerError,
-  stringField,
 } from "../../../flow/_internal/http/shared.ts";
+import { stringField } from "../../../../_internal/shared.ts";
 import { createPkce } from "../../../flow/random.ts";
 import { isPublicServer } from "../../../public-server.ts";
 import type { CustomStart, CustomStartContext } from "../../../flow/types.ts";

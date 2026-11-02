@@ -1,8 +1,9 @@
-import { type Fetch, configError, fetchOf, nowOf } from "./_internal/http/shared.ts";
+import { type Fetch, configError, fetchOf } from "./_internal/http/shared.ts";
+import { nowOf } from "../../_internal/shared.ts";
 import { postForm } from "./_internal/http/form.ts";
 import { authenticateClient } from "./_internal/client-auth.ts";
 import { parseTokenResponse } from "./_internal/token-response.ts";
-import type { CacheDriver } from "./_internal/cache/load.ts";
+import type { CacheDriver } from "../../_internal/cache-driver.ts";
 import { verifyProviderIdToken } from "./_internal/provider-id-token.ts";
 import { resolveProvider } from "./discovery.ts";
 import type { IdTokenClaims, OAuthTokens, OAuthProvider } from "./types.ts";

@@ -1,5 +1,6 @@
 import { getObject } from "../../../flow/_internal/http/json.ts";
-import { type Fetch, isRecord, profileError } from "../../../flow/_internal/http/shared.ts";
+import { type Fetch, profileError } from "../../../flow/_internal/http/shared.ts";
+import { isRecord } from "../../../../_internal/shared.ts";
 import type { ProfileResult } from "../../../flow/types.ts";
 import { hasMember, nonEmpty } from "../shared.ts";
 

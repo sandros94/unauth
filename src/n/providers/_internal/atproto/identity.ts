@@ -2,10 +2,9 @@ import { UnauthError, isUnauthError } from "../../../../error.ts";
 import {
   MAX_URL_LENGTH,
   assertRemoteUrl,
-  isRecord,
   providerError,
-  stringField,
 } from "../../../flow/_internal/http/shared.ts";
+import { isRecord, stringField } from "../../../../_internal/shared.ts";
 import {
   PROVIDER_FETCH_TIMEOUT,
   discardBody,

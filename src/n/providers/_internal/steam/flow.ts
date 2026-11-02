@@ -1,5 +1,6 @@
 import { UnauthError } from "../../../../error.ts";
-import { providerError, stringField } from "../../../flow/_internal/http/shared.ts";
+import { providerError } from "../../../flow/_internal/http/shared.ts";
+import { stringField } from "../../../../_internal/shared.ts";
 import type {
   CustomCompleteContext,
   CustomFlowResult,

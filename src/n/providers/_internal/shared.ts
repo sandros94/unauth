@@ -1,4 +1,5 @@
-import { isRecord, profileError } from "../../flow/_internal/http/shared.ts";
+import { profileError } from "../../flow/_internal/http/shared.ts";
+import { isRecord } from "../../../_internal/shared.ts";
 import type { ProfileContext, Provider } from "../../flow/types.ts";
 import type { WebRequestEvent } from "../../request-event.ts";
 import {

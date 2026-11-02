@@ -1,9 +1,12 @@
 /**
- * The error codes unauth defines: `ERR_AUTHN_*` for authentication (`unauth/n`), `ERR_UNAUTH_*`
- * for misconfiguration. {@link isUnauthError} takes this type, so a misspelled code does not compile.
+ * The error codes unauth defines: `ERR_AUTHN_*` for authentication (`unauth/n`), `ERR_SESSION_*`
+ * for opaque sessions (`unauth/session`), `ERR_UNAUTH_*` for misconfiguration. {@link isUnauthError} takes this type, so a misspelled code does not compile.
  */
 export type KnownUnauthErrorCode =
   | "ERR_UNAUTH_CONFIG_INVALID" // a configuration that cannot work
+  // session (`unauth/session`)
+  | "ERR_SESSION_TOKEN_INVALID" // the request's session token names no live session, or its session header holds no token
+  | "ERR_SESSION_READONLY_EVENT" // the session cannot change: the event has no response, or it was already sent
   // authn (`unauth/n`)
   | "ERR_AUTHN_UNAUTHENTICATED" // no signed-in session; for the application's own guards, never thrown by unauth
   | "ERR_AUTHN_LOGIN_HINT_REQUIRED" // the provider needs to know which account signs in (`loginHint`)
@@ -30,6 +33,14 @@ export type UnauthErrorCode = KnownUnauthErrorCode | (string & {});
  * usually the error underneath.
  */
 export interface UnauthErrorCauseMap {
+  /**
+   * Why the request's token names no session: `unknown`, no record under it (never issued, revoked,
+   * or not a token at all); `expired`, its record ended and is dropped; `header`, the session
+   * header named is present but holds neither a bare token nor `Bearer <token>`.
+   */
+  ERR_SESSION_TOKEN_INVALID:
+    | { reason: "unknown" | "expired" }
+    | { reason: "header"; header: string };
   /**
    * Why the callback carries no flow: `missing`, no flow cookie came back at all (the sign-in
    * started on another host, or cookies are off); `unreadable`, the cookie expired or does not

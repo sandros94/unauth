@@ -1,13 +1,8 @@
 import type { JWKSet } from "unjwt/jwk";
-import {
-  type Fetch,
-  assertSecureUrl,
-  fetchOf,
-  isRecord,
-  nowOf,
-  providerError,
-} from "./_internal/http/shared.ts";
-import { type CacheDriver, JWKS_REFRESH_COOLDOWN } from "./_internal/cache/load.ts";
+import { type Fetch, assertSecureUrl, fetchOf, providerError } from "./_internal/http/shared.ts";
+import { isRecord, nowOf } from "../../_internal/shared.ts";
+import { JWKS_REFRESH_COOLDOWN } from "./_internal/cache/load.ts";
+import type { CacheDriver } from "../../_internal/cache-driver.ts";
 import { defineMetadataLoader } from "./_internal/cache/metadata.ts";
 
 const load = /* @__PURE__ */ defineMetadataLoader<JWKSet>({

@@ -6,7 +6,7 @@ import {
   type FlowKeyLookup,
   flowSessionOptions,
 } from "../../../_internal/flow-key.ts";
-import { definedSession, keyLookupFailure } from "../../../_internal/session-error.ts";
+import { definedSession, keyLookupFailure } from "../../../../_internal/session-error.ts";
 import { durationSeconds } from "../http/shared.ts";
 import { createState } from "../../random.ts";
 import type { FlowRecord, Provider, FlowStore } from "../../types.ts";
@@ -145,7 +145,9 @@ function flowSession(context: { provider: Provider<unknown>; options: FlowCarrie
     cookie: { httpOnly: true, secure, sameSite, path: "/" },
     ...flowSessionOptions(key, { typ: FLOW_TYP, jwe, onKeyLookup }),
   };
-  return definedSession(() => defineJWESession<FlowCookie, ExpiresIn, FlowEvent>(config));
+  return definedSession(() => defineJWESession<FlowCookie, ExpiresIn, FlowEvent>(config), {
+    prefix: "[unauth/n]",
+  });
 }
 
 /** The flow cookie's `typ`: never a session or handoff token, whatever key they share. */

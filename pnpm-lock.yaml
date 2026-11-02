@@ -165,8 +165,8 @@ settings:
 catalogs:
   default:
     unjwt:
-      specifier: ^0.9.0
-      version: 0.9.0
+      specifier: https://pkg.pr.new/sandros94/unjwt@27a2892
+      version: https://pkg.pr.new/sandros94/unjwt@27a2892
 
 importers:
 
@@ -174,7 +174,7 @@ importers:
     dependencies:
       unjwt:
         specifier: 'catalog:'
-        version: 0.9.0
+        version: https://pkg.pr.new/sandros94/unjwt@27a2892
       unsecure:
         specifier: ^0.3.4
         version: 0.3.4
@@ -3665,8 +3665,9 @@ packages:
       rolldown:
         optional: true
 
-  unjwt@0.9.0:
-    resolution: {integrity: sha512-OytvYmS83QbDHF2jLfJMN8ea1lkrXDdV4Ft7RmUZGrBB3TimGuwP/aiMIkDt8u3TYOfyLGoRNaHDc0ysdqpJAg==}
+  unjwt@https://pkg.pr.new/sandros94/unjwt@27a2892:
+    resolution: {integrity: sha512-NJfwGOESP6ft87g2R4Uw1wy4WKIdCJGd84s15VO3FgpcpSHYIV3wBLTCaPxesdzcuSDAnC8ezqt1xnF+fmakpg==, tarball: https://pkg.pr.new/sandros94/unjwt@27a2892}
+    version: 0.9.0
 
   unplugin-utils@0.3.2:
     resolution: {integrity: sha512-xVToRh2CTmLk2HnEG7ac4rl1MJTT3RFkpS8B++/SnB0kXvuaavD+n3m/vrzyWQOdJNSZQACnbz01pnppbwV5BA==}
@@ -7605,7 +7606,7 @@ snapshots:
       - vite
       - webpack
 
-  unjwt@0.9.0: {}
+  unjwt@https://pkg.pr.new/sandros94/unjwt@27a2892: {}
 
   unplugin-utils@0.3.2:
     dependencies:

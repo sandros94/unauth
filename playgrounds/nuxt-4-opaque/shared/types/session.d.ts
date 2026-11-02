@@ -1,5 +1,6 @@
-export interface AuthSession {
+export interface SessionData {
   userId: string;
-  createdAt: number;
-  expiresAt: number;
+  name?: string;
+  signedInAt: number;
+  family: string;
 }

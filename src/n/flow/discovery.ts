@@ -3,11 +3,10 @@ import {
   assertSecureUrl,
   configError,
   fetchOf,
-  nowOf,
   providerError,
-  stringField,
 } from "./_internal/http/shared.ts";
-import type { CacheDriver } from "./_internal/cache/load.ts";
+import { nowOf, stringField } from "../../_internal/shared.ts";
+import type { CacheDriver } from "../../_internal/cache-driver.ts";
 import {
   assertIssuerDocument,
   defineMetadataLoader,

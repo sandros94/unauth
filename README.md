@@ -12,7 +12,8 @@ A collection of low-level and high-level, server-agnostic, Authentication and Au
 - **OAuth 2.1 and OpenID Connect** — one handler for both legs of a sign-in, presets for GitHub, Google, Apple, Microsoft, Discord, GitLab, LinkedIn, Facebook, Twitch, X, Spotify, TikTok, Netlify, Vercel and Cloudflare Access, generic `defineOAuth2Provider` and `defineOidcProvider`
 - **AT Protocol** — sign in with any PDS account: handle resolution, PAR, PKCE, DPoP, the account verified against its PDS automatically
 - **Custom providers** — any protocol over the same engine, with `start` and `complete` legs
-- **One-time tokens** — signed, single-use, expiring tokens
+- **Sessions** — `unauth/session` is unjwt's cookie sessions plus `defineOpaqueSession`: a random token in the cookie or a bearer header, the record in your store, same manager as the JWE session
+- **One-time tokens** — `unauth/token`: signed, single-use, expiring tokens, and opaque tokens with their hash
 - **Web-standard** — handlers take a request event `{ req, res: { headers } }`; `startFlow` and `completeFlow` take a `Request`
 - **unjwt included** — `unauth/jwk`, `unauth/jws`, `unauth/jwe`, `unauth/utils`, `unauth/session` and `unauth/dpop` are unjwt's subpaths, one dependency to install
 
@@ -51,31 +52,27 @@ export async function useAuthSession(event: H3Event) {
 }
 ```
 
-An opaque token in the application's own storage: `createOpaqueToken()` gives a random `token` for an httpOnly cookie and its `hash`, the only part stored; `hashOpaqueToken(token)` finds the row again.
+An opaque session with `defineOpaqueSession`: the cookie carries a random token, the store (any `CacheDriver`: a table, a KV namespace, an ocache storage) its hash and the data, so sessions can be listed and revoked. The manager speaks the JWE session's vocabulary, with `rotate()` on top:
 
 ```ts
-import { type H3Event, getCookie, setCookie } from "h3";
-import { createOpaqueToken, hashOpaqueToken } from "unauth/n";
+import type { H3Event } from "h3";
+import { defineOpaqueSession } from "unauth/session";
+
+const sessions = defineOpaqueSession<{ userId: string }>({ store, maxAge: "7d", rolling: "1d" });
 
 export async function createSession(event: H3Event, { userId }: { userId: string }) {
-  const { token, hash } = await createOpaqueToken();
-  await db.sql`INSERT INTO sessions (token_hash, user_id) VALUES (${hash}, ${userId})`;
-  setCookie(event, "__Host-session", token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-  });
+  const session = await sessions.use(event);
+  await session.clear();
+  await session.update({ userId });
 }
 
 export async function useAuthSession(event: H3Event) {
-  const token = getCookie(event, "__Host-session");
-  if (!token) return;
-  const { rows } =
-    await db.sql`SELECT user_id FROM sessions WHERE token_hash = ${await hashOpaqueToken(token)}`;
-  return rows[0] ? { userId: rows[0].user_id } : undefined;
+  const session = await sessions.use(event);
+  return session.id ? { userId: session.data.userId } : undefined;
 }
 ```
+
+`sessionHeader: true` also reads a `Bearer` token from `x-<name>-session`; `issue(data)` mints one without a request, `open(token)` reads it back. The lower-level `createOpaqueToken()` and `hashOpaqueToken()` of `unauth/token` are what the session is built on, for a store shape of your own.
 
 The full versions, with expiry, rolling and sign-out, are [`playgrounds/nuxt-4`](./playgrounds/nuxt-4) and [`playgrounds/nuxt-4-opaque`](./playgrounds/nuxt-4-opaque).
 
@@ -159,7 +156,8 @@ app.all(
 A custom provider runs its own two legs over the engine's flow. `state` and the flow cookie only prove that the callback came back to the browser that started the sign-in, and that browser may be anyone's: `complete` must take the identity from a proof the provider issued and verifies there, never from what `start` was told. A magic link, with the proof a one-time token sent to the address:
 
 ```ts
-import { UnauthError, defineOneTimeToken, defineProvider } from "unauth/n";
+import { UnauthError, defineProvider } from "unauth/n";
+import { defineOneTimeToken } from "unauth/token";
 
 const magicLinks = defineOneTimeToken<{ email: string; state: string }>({
   key: signingKey,

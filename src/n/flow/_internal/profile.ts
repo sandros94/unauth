@@ -1,4 +1,4 @@
-import { stringField } from "./http/shared.ts";
+import { stringField } from "../../../_internal/shared.ts";
 import type { ProfileResult } from "../types.ts";
 
 /**

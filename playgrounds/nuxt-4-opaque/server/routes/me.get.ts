@@ -2,7 +2,7 @@ import { defineEventHandler } from "nuxt/server";
 
 export default defineEventHandler(async (event) => {
   const session = await requireAuthSession(event);
-  const identities = await listIdentities(session.userId);
+  const identities = await listIdentities(session.data.userId);
 
-  return { ...session, identities };
+  return { id: session.id, ...session.data, identities, expiresAt: session.expiresAt };
 });

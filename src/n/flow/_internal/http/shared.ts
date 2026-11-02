@@ -1,13 +1,19 @@
 import type { ExpiresIn } from "unjwt/session";
-import { computeDurationInSeconds } from "unjwt/utils";
 import { safeJsonParse } from "unsecure/sanitize";
 import { UnauthError, type UnauthErrorCauseMap } from "../../../../error.ts";
+import {
+  configError as prefixedConfigError,
+  durationSeconds as prefixedDurationSeconds,
+  isRecord,
+} from "../../../../_internal/shared.ts";
 import { PROVIDER_DOCUMENT_MAX_BYTES, readText } from "./body.ts";
 
 /** The longest endpoint URL accepted; it also bounds the cache keys built from one. */
 export const MAX_URL_LENGTH: number = 2048;
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+const PREFIX = "[unauth/n]";
 
 /** A `fetch` the caller injects; the global one otherwise. */
 export type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -22,11 +28,6 @@ export function fetchOf(options: { fetch?: Fetch } | undefined): Fetch {
 
 /** The global `fetch`, looked up at each call (a test may stub it) and called unbound. */
 const globalFetch: Fetch = (input, init) => globalThis.fetch(input, init);
-
-/** The injected clock in ms, else `Date.now`. */
-export function nowOf(options: { now?: () => number } | undefined): () => number {
-  return options?.now ?? Date.now;
-}
 
 /** What {@link readObject} found: the object (`undefined` when the body is neither), or the cap it exceeded. */
 export type ObjectBody = { object: Record<string, unknown> | undefined } | { tooLarge: number };
@@ -60,18 +61,6 @@ export function formObject(form: URLSearchParams): Record<string, string> {
     if (name !== "__proto__") object[name] = value;
   }
   return object;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function stringField(
-  object: Record<string, unknown> | undefined,
-  name: string,
-): string | undefined {
-  const value = object?.[name];
-  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 /**
@@ -157,14 +146,7 @@ export function assertRemoteUrl(
 
 /** `value` in seconds when it is a positive duration (`30`, `"10m"`), else `ERR_UNAUTH_CONFIG_INVALID`. */
 export function durationSeconds(value: ExpiresIn, options: { label: string }): number {
-  let seconds: number;
-  try {
-    seconds = computeDurationInSeconds(value);
-  } catch (error) {
-    throw durationError(value, options, error);
-  }
-  if (!Number.isFinite(seconds) || seconds <= 0) throw durationError(value, options);
-  return seconds;
+  return prefixedDurationSeconds(value, { label: options.label, prefix: PREFIX });
 }
 
 /** `ERR_UNAUTH_CONFIG_INVALID` (500) with the `[unauth/n]` prefix. */
@@ -172,10 +154,7 @@ export function configError(
   message: string,
   cause?: unknown,
 ): UnauthError<"ERR_UNAUTH_CONFIG_INVALID"> {
-  return new UnauthError(`[unauth/n] ${message}`, "ERR_UNAUTH_CONFIG_INVALID", {
-    status: 500,
-    cause,
-  });
+  return prefixedConfigError(message, { prefix: PREFIX, cause });
 }
 
 /** The declared `cause` of `ERR_AUTHN_PROVIDER_ERROR`. */
@@ -206,17 +185,6 @@ export function profileError(
 function insecureHost(hostname: string, insecureHosts: string[] | undefined): boolean {
   if (LOOPBACK.has(hostname)) return true;
   return insecureHosts?.some((host) => host.toLowerCase() === hostname) ?? false;
-}
-
-function durationError(
-  value: ExpiresIn,
-  options: { label: string },
-  cause?: unknown,
-): UnauthError<"ERR_UNAUTH_CONFIG_INVALID"> {
-  return configError(
-    `${options.label} needs a positive "maxAge", got ${JSON.stringify(value)}.`,
-    cause,
-  );
 }
 
 /** `<label> at <url>` for a message, the URL without its query and fragment. */

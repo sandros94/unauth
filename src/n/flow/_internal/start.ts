@@ -1,5 +1,6 @@
 import { isUnauthError } from "../../../error.ts";
-import { fetchOf, nowOf } from "./http/shared.ts";
+import { fetchOf } from "./http/shared.ts";
+import { nowOf } from "../../../_internal/shared.ts";
 import { resolveRedirectUri, safeRedirect } from "./redirect.ts";
 import { assertFormStart } from "./form-start.ts";
 import { type ResumedIntent, resumeIntent, withSealedIntent } from "./carrier/intent.ts";

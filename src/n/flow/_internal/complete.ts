@@ -1,14 +1,8 @@
 import { secureCompare } from "unsecure/compare";
 import { UnauthError, isUnauthError } from "../../../error.ts";
-import {
-  type Fetch,
-  fetchOf,
-  formObject,
-  nowOf,
-  profileError,
-  providerError,
-} from "./http/shared.ts";
-import type { CacheDriver } from "./cache/load.ts";
+import { type Fetch, fetchOf, formObject, profileError, providerError } from "./http/shared.ts";
+import { nowOf } from "../../../_internal/shared.ts";
+import type { CacheDriver } from "../../../_internal/cache-driver.ts";
 import { CALLBACK_BODY_MAX_BYTES, readText } from "./http/body.ts";
 import type { RelocatedFailure } from "./carrier/handoff.ts";
 import { type FlowCarrierOptions, openFlow } from "./carrier/transient.ts";

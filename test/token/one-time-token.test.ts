@@ -2,14 +2,13 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { isJWTError } from "unjwt/error";
 import { type JWK_oct, defineJWSSession, generateJWK } from "unjwt/session";
 
+import { UnauthError, isUnauthError } from "../../src/error.ts";
 import {
   type OneTimeTokenKeyLookup,
-  UnauthError,
   createOpaqueToken,
   defineOneTimeToken,
   hashOpaqueToken,
-  isUnauthError,
-} from "../../src/n/index.ts";
+} from "../../src/token/index.ts";
 
 let key: JWK_oct<"HS256">;
 

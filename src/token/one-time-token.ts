@@ -5,12 +5,9 @@ import {
   type SessionConfigJWS,
   defineJWSSession,
 } from "unjwt/session";
-import { secureRandomBytes } from "unsecure/random";
-import { base64Stringify } from "unsecure/utils";
-import { hash } from "unsecure/hash";
 import { UnauthError } from "../error.ts";
-import { configError, durationSeconds, isRecord } from "./flow/_internal/http/shared.ts";
-import { definedSession, keyLookupFailure } from "./_internal/session-error.ts";
+import { configError, durationSeconds, isRecord } from "../_internal/shared.ts";
+import { definedSession, keyLookupFailure } from "../_internal/session-error.ts";
 
 /** What `consume` is asked to burn. */
 export interface OneTimeTokenUse {
@@ -85,26 +82,30 @@ export function defineOneTimeToken<TData extends object>(
   config: OneTimeTokenConfig,
 ): OneTimeToken<TData> {
   const { key, jws, onKeyLookup, purpose, consume } = config;
-  durationSeconds(config.maxAge, { label: "A one-time token" });
+  durationSeconds(config.maxAge, { label: "A one-time token", prefix: PREFIX });
   if (!jws?.alg && !keysOf(key).every(namesAlgorithm)) {
-    throw configError('A one-time token key naming no algorithm needs "jws": its "alg".');
+    throw configError('A one-time token key naming no algorithm needs "jws": its "alg".', {
+      prefix: PREFIX,
+    });
   }
   // Own `typ`: a session token signed with the same key never opens here.
   const protectedHeader = { typ: ONE_TIME_TOKEN_TYP };
-  const tokens = definedSession(() =>
-    defineJWSSession<{ purpose: string; data: TData }, ExpiresIn>({
-      key,
-      maxAge: config.maxAge,
-      cookie: false,
-      sessionHeader: false,
-      jws: jws
-        ? {
-            signOptions: { protectedHeader, alg: jws.alg },
-            verifyOptions: { algorithms: [jws.alg] },
-          }
-        : { signOptions: { protectedHeader } },
-      ...(onKeyLookup && { hooks: { onKeyLookup: ({ header }) => onKeyLookup({ header }) } }),
-    }),
+  const tokens = definedSession(
+    () =>
+      defineJWSSession<{ purpose: string; data: TData }, ExpiresIn>({
+        key,
+        maxAge: config.maxAge,
+        cookie: false,
+        sessionHeader: false,
+        jws: jws
+          ? {
+              signOptions: { protectedHeader, alg: jws.alg },
+              verifyOptions: { algorithms: [jws.alg] },
+            }
+          : { signOptions: { protectedHeader } },
+        ...(onKeyLookup && { hooks: { onKeyLookup: ({ header }) => onKeyLookup({ header }) } }),
+      }),
+    { prefix: PREFIX },
   );
 
   return {
@@ -131,30 +132,7 @@ export function defineOneTimeToken<TData extends object>(
   };
 }
 
-/**
- * A random base64url token and its {@link hashOpaqueToken} hash: hand out `token`, store only
- * `hash`.
- *
- * @throws `ERR_UNAUTH_CONFIG_INVALID` for `bytes` below 16 or not an integer.
- */
-export async function createOpaqueToken(options?: {
-  /** Random bytes, at least 16. @default 32 */
-  bytes?: number;
-}): Promise<{ token: string; hash: string }> {
-  const bytes = options?.bytes ?? 32;
-  if (!Number.isInteger(bytes) || bytes < 16) {
-    throw configError(
-      `An opaque token needs a whole number of at least 16 random bytes, got ${bytes}.`,
-    );
-  }
-  const token = base64Stringify(secureRandomBytes(bytes), { alphabet: "base64url" });
-  return { token, hash: await hashOpaqueToken(token) };
-}
-
-/** The SHA-256 (base64url) under which an opaque token is stored and looked up. */
-export function hashOpaqueToken(token: string): Promise<string> {
-  return hash(token, { algorithm: "SHA-256", returnAs: "base64url" });
-}
+const PREFIX = "[unauth/token]";
 
 /** The JWS `typ` of one-time tokens. */
 const ONE_TIME_TOKEN_TYP = "unauth-ott+jwt";
@@ -179,5 +157,5 @@ function namesAlgorithm(key: unknown): boolean {
 function tokenError<
   TCode extends "ERR_AUTHN_TOKEN_INVALID" | "ERR_AUTHN_TOKEN_PURPOSE" | "ERR_AUTHN_TOKEN_USED",
 >(message: string, code: TCode, cause?: unknown): UnauthError<TCode> {
-  return new UnauthError(`[unauth/n] ${message}`, code, { status: 401, cause });
+  return new UnauthError(`${PREFIX} ${message}`, code, { status: 401, cause });
 }

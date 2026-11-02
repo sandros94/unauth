@@ -1,5 +1,7 @@
-import { type CacheDriver, loadCache } from "./load.ts";
-import { type Fetch, isRecord, providerError, stringField } from "../http/shared.ts";
+import type { CacheDriver } from "../../../../_internal/cache-driver.ts";
+import { loadCache } from "./load.ts";
+import { type Fetch, providerError } from "../http/shared.ts";
+import { isRecord, stringField } from "../../../../_internal/shared.ts";
 import { getObject } from "../http/json.ts";
 
 /** What every {@link MetadataLoader} takes. */

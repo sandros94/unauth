@@ -1,3 +1,4 @@
+import type { CacheDriver } from "../../../../_internal/cache-driver.ts";
 import { type Envelope, driverKey, fitsDriver, readEnvelope } from "./driver.ts";
 
 /** How long a provider document (discovery, JWK Set) is trusted before it is fetched again. */
@@ -14,37 +15,6 @@ export const JWKS_REFRESH_COOLDOWN: number = 30_000;
 
 /** The scope of callers that inject no `fetch`. */
 const GLOBAL_SCOPE = {};
-
-/**
- * The application's store for provider documents (discovery, JWK Sets), shared across instances
- * and by every `fetch`. Member for member ocache's `StorageInterface`, so an ocache storage is a
- * `CacheDriver` as is.
- *
- * - `get(key)` returns the stored value; `null` or `undefined` is a miss.
- * - `set(key, value, { ttl })` stores it; `ttl` is in seconds and advisory.
- *
- * unauth stores the envelope `{ v: 1, loadedAt, value }` under `unauth:<cache>:<sha256 hex>` and
- * re-validates every hit (shape, age, issuer): a driver that drops `ttl` or returns junk costs a
- * refetch, never trust. A driver that throws fails the call.
- *
- * An entry whose JSON exceeds `maxEntryBytes` is not set and stays in this instance's memory.
- * `binary` is ignored: entries are JSON.
- *
- * @example
- * // a storage whose methods are named differently
- * const cache: CacheDriver = {
- *   get: (key) => storage.getItem(key),
- *   set: (key, value, options) => storage.setItem(key, value, options),
- * };
- * discover(issuer, { cache });
- */
-export interface CacheDriver {
-  get<T = unknown>(key: string): T | null | Promise<T | null>;
-  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `T` types the stored value at the call site, as in `get`
-  set<T = unknown>(key: string, value: T, opts?: { ttl?: number }): void | Promise<void>;
-  maxEntryBytes?: number;
-  binary?: boolean;
-}
 
 /** Options of {@link LoadCache.get}. */
 export interface LoadOptions {

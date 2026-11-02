@@ -9,7 +9,8 @@ import type {
   SessionDecryptOptions,
   SessionEncryptOptions,
 } from "unjwt/session";
-import { configError, isRecord } from "../flow/_internal/http/shared.ts";
+import { configError } from "../flow/_internal/http/shared.ts";
+import { isRecord } from "../../_internal/shared.ts";
 
 /**
  * A key that seals a sign-in's flow, intent and handoff tokens, as unjwt's JWE session takes it:
