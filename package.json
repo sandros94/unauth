@@ -60,8 +60,9 @@
     "stub": "obuild --stub",
     "dev": "pnpm --dir playgrounds/h3 dev",
     "dev:nuxt": "pnpm --dir playgrounds/nuxt-4 dev",
+    "dev:nuxt-opaque": "pnpm --dir playgrounds/nuxt-4-opaque dev",
     "dev:nitro": "pnpm --dir playgrounds/nitro dev",
-    "dev:prepare": "obuild --stub && pnpm --dir playgrounds/nuxt-4 prepare && pnpm simple-git-hooks",
+    "dev:prepare": "obuild --stub && pnpm --dir playgrounds/nuxt-4 prepare && pnpm --dir playgrounds/nuxt-4-opaque prepare && pnpm simple-git-hooks",
     "lint": "oxlint --deny-warnings . && oxfmt --check .",
     "fmt": "automd && oxlint --fix . && oxfmt .",
     "prepack": "pnpm build",
@@ -69,7 +70,7 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "bench": "vitest bench --run",
-    "typecheck:playgrounds": "tsc -p playgrounds/h3 && tsc -p playgrounds/nitro && pnpm --dir playgrounds/nuxt-4 typecheck"
+    "typecheck:playgrounds": "tsc -p playgrounds/h3 && tsc -p playgrounds/nitro && pnpm --dir playgrounds/nuxt-4 typecheck && pnpm --dir playgrounds/nuxt-4-opaque typecheck"
   },
   "dependencies": {
     "unjwt": "catalog:",
