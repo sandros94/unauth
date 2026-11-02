@@ -32,7 +32,7 @@
     "import/no-nodejs-modules": "error",
     "no-restricted-globals": [
       "error",
-      { "name": "Buffer", "message": "Use Uint8Array; Buffer is Node-specific." },
+      { "name": "Buffer", "message": "Use Uint8Array, Buffer is Node-specific." },
       { "name": "process", "message": "Not available in all runtimes." }
     ],
     "eqeqeq": "error",
@@ -51,7 +51,7 @@
 
   "overrides": [
     {
-      "files": ["test/**", "playground/**", "*.config.ts"],
+      "files": ["test/**", "playgrounds/**", "*.config.ts"],
       "rules": {
         "import/no-nodejs-modules": "off",
         "no-restricted-globals": "off",

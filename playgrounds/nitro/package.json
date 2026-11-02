@@ -1,0 +1,19 @@
+{
+  "name": "unauth-playground-nitro",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nitro dev",
+    "build": "nitro build",
+    "start": "node .output/server/index.mjs"
+  },
+  "dependencies": {
+    "db0": "^0.4.2",
+    "nitro": "3.0.261029-rc",
+    "unauth": "workspace:*",
+    "undici": "^8.12.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5"
+  }
+}

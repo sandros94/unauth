@@ -11,6 +11,10 @@
     "**/pnpm*.yaml",
     "**/dist/**",
     "**/*.gen.ts",
+    "**/.output/**",
+    "**/.data/**",
+    "**/.nuxt/**",
+    "**/.nitro/**",
     "**/.cache/**",
     "**/node_modules/**",
     "**/coverage/**"
