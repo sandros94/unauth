@@ -2,7 +2,7 @@ packages:
   - playgrounds/*
 
 catalog:
-  unjwt: https://pkg.pr.new/sandros94/unjwt@27a2892
+  unjwt: ^0.9.1
 
 allowBuilds:
   "@parcel/watcher": false
