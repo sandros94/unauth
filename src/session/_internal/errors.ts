@@ -12,6 +12,13 @@ export function tokenError(
   });
 }
 
+/** `ERR_SESSION_NONE` (401): the request has no session to rotate. */
+export function noSessionError(prefix: string): UnauthError<"ERR_SESSION_NONE"> {
+  return new UnauthError(`${prefix} There is no session to rotate.`, "ERR_SESSION_NONE", {
+    status: 401,
+  });
+}
+
 /**
  * What `run` returns; a JWTError of unjwt's session helpers, already prefixed, becomes the
  * `UnauthError` of the same meaning: `ERR_SESSION_READONLY_EVENT` as it is, a config refusal as

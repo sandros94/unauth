@@ -8,14 +8,18 @@
     "start": "node .output/server/index.mjs",
     "prepare": "nuxt prepare",
     "postinstall": "pnpm prepare",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.14",
+    "drizzle-orm": "1.0.0-rc.5",
     "nuxt": "^4.6.2",
     "unauth": "workspace:*",
     "vue": "^3.5.0"
   },
   "devDependencies": {
+    "drizzle-kit": "1.0.0-rc.5",
     "typescript": "^6.0.3",
     "vue-tsc": "^3.3.13"
   }

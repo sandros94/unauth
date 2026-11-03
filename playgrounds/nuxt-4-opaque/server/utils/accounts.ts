@@ -1,5 +1,7 @@
-import { createError } from "nuxt/server";
+import { type RequestEvent, createError } from "nuxt/server";
+import { and, eq } from "drizzle-orm";
 import { argon2Hash, argon2NeedsRehash, argon2Verify } from "unauth/argon2";
+import { credentials, identities, users } from "../db/schema";
 
 export interface AccountIdentity {
   provider: string;
@@ -12,165 +14,186 @@ export interface LinkedIdentity extends AccountIdentity {
   linkedAt: number;
 }
 
-export async function findOrCreateUser(identity: AccountIdentity): Promise<{ id: string }> {
-  // A real application runs this read-then-insert in a transaction.
-  const owner = await ownerOf(identity);
-  if (owner !== undefined) return { id: owner };
-  return createUser(identity);
+export function findOrCreateUser(
+  event: RequestEvent,
+  identity: AccountIdentity,
+): Promise<{ id: string }> {
+  return useDB(event).transaction(async (tx) => {
+    const owner = await ownerOf(tx, identity);
+    if (owner !== undefined) return { id: owner };
+    return createUser(tx, identity);
+  });
 }
 
 export async function registerPassword(
+  event: RequestEvent,
   username: string,
   password: string,
 ): Promise<{ id: string }> {
+  const handle = useDB(event);
   const identity = { provider: "password", subject: username };
-  if ((await ownerOf(identity)) !== undefined) {
+  if ((await ownerOf(handle, identity)) !== undefined) {
     throw createError({ statusCode: 409, message: "This user is already registered" });
   }
   const passwordHash = await argon2Hash(password);
-  const user = await createUser(identity);
-  await storePasswordHash(user.id, passwordHash);
-  return user;
+  return handle.transaction(async (tx) => {
+    const user = await createUser(tx, identity);
+    await storePasswordHash(tx, user.id, passwordHash);
+    return user;
+  });
 }
 
 export async function verifyPassword(
+  event: RequestEvent,
   username: string,
   password: string,
 ): Promise<{ id: string } | undefined> {
-  const db = await useAccounts();
-  const { rows } = await db.sql<{
-    rows: { user_id: string; password_hash: string }[];
-  }>`SELECT credentials.user_id, credentials.password_hash FROM identities JOIN credentials ON credentials.user_id = identities.user_id WHERE identities.provider = 'password' AND identities.subject = ${username}`;
-  const credential = rows[0];
-  if (credential === undefined) {
-    await argon2Verify(dummyHash, password);
+  const handle = useDB(event);
+  const identity = await handle.query.identities.findFirst({
+    where: { provider: "password", subject: username },
+    columns: { userId: true },
+    with: { user: { columns: {}, with: { credentials: { columns: { passwordHash: true } } } } },
+  });
+  const credential = identity?.user.credentials;
+  if (!credential) {
+    await argon2Verify(await dummyHash(), password);
     return undefined;
   }
-  if (!(await argon2Verify(credential.password_hash, password))) return undefined;
-  if (argon2NeedsRehash(credential.password_hash)) {
-    await storePasswordHash(credential.user_id, await argon2Hash(password));
+  if (!(await argon2Verify(credential.passwordHash, password))) return undefined;
+  if (argon2NeedsRehash(credential.passwordHash)) {
+    await storePasswordHash(handle, identity.userId, await argon2Hash(password));
   }
-  return { id: credential.user_id };
+  return { id: identity.userId };
 }
 
-export async function linkIdentity(userId: string, identity: AccountIdentity): Promise<void> {
-  const owner = await ownerOf(identity);
+export async function linkIdentity(
+  event: RequestEvent,
+  userId: string,
+  identity: AccountIdentity,
+): Promise<void> {
+  const handle = useDB(event);
+  const owner = await ownerOf(handle, identity);
   if (owner === userId) return;
   if (owner !== undefined) {
     throw createError({ statusCode: 409, message: "This account is linked to another user" });
   }
-  await insertIdentity(userId, identity, Date.now());
+  await insertIdentity(handle, userId, identity, Date.now());
 }
 
 export async function unlinkIdentity(
-  userId: string,
+  event: RequestEvent,
+  sessionKey: string,
   identity: Pick<AccountIdentity, "provider" | "subject">,
-): Promise<void> {
-  if ((await ownerOf(identity)) !== userId) {
+): Promise<string> {
+  const handle = useDB(event);
+  const owned = await handle.query.identities.findFirst({
+    where: {
+      provider: identity.provider,
+      subject: identity.subject,
+      user: {
+        sessions: {
+          tokenHash: sessionKey,
+          OR: [{ expiresAt: { gt: Date.now() } }, { expiresAt: { isNull: true } }],
+        },
+      },
+    },
+    columns: { userId: true },
+    with: { user: { columns: {}, with: { identities: { columns: { provider: true } } } } },
+  });
+  if (!owned) {
     throw createError({ statusCode: 404, message: "This account is not linked to you" });
   }
-  const db = await useAccounts();
-  const { rows } = await db.sql<{
-    rows: { count: number }[];
-  }>`SELECT COUNT(*) AS count FROM identities WHERE user_id = ${userId}`;
-  if (rows[0]!.count <= 1) {
+  if (owned.user.identities.length <= 1) {
     throw createError({
       statusCode: 409,
       message: "This is the last account you can sign in with",
     });
   }
-  await db.sql`DELETE FROM identities WHERE provider = ${identity.provider} AND subject = ${identity.subject} AND user_id = ${userId}`;
+  await handle
+    .delete(identities)
+    .where(
+      and(
+        eq(identities.provider, identity.provider),
+        eq(identities.subject, identity.subject),
+        eq(identities.userId, owned.userId),
+      ),
+    );
   if (identity.provider === "password") {
-    await db.sql`DELETE FROM credentials WHERE user_id = ${userId}`;
+    await handle.delete(credentials).where(eq(credentials.userId, owned.userId));
   }
+  return owned.userId;
 }
 
-export async function deleteUser(userId: string): Promise<void> {
-  const db = await useAccounts();
-  await db.sql`DELETE FROM credentials WHERE user_id = ${userId}`;
-  await db.sql`DELETE FROM identities WHERE user_id = ${userId}`;
-  await db.sql`DELETE FROM users WHERE id = ${userId}`;
+export async function deleteUser(event: RequestEvent, userId: string): Promise<void> {
+  const handle = useDB(event);
+  await handle.delete(credentials).where(eq(credentials.userId, userId));
+  await handle.delete(identities).where(eq(identities.userId, userId));
+  await handle.delete(users).where(eq(users.id, userId));
 }
 
-export async function listIdentities(userId: string): Promise<LinkedIdentity[]> {
-  const db = await useAccounts();
-  const { rows } = await db.sql<{
-    rows: IdentityRow[];
-  }>`SELECT provider, subject, name, email, linked_at FROM identities WHERE user_id = ${userId} ORDER BY linked_at`;
+export async function listIdentities(
+  event: RequestEvent,
+  userId: string,
+): Promise<LinkedIdentity[]> {
+  const rows = await useDB(event).query.identities.findMany({
+    where: { userId },
+    columns: { provider: true, subject: true, name: true, email: true, linkedAt: true },
+    orderBy: { linkedAt: "asc" },
+  });
   return rows.map((row) => ({
     provider: row.provider,
     subject: row.subject,
     ...(row.name === null ? {} : { name: row.name }),
     ...(row.email === null ? {} : { email: row.email }),
-    linkedAt: row.linked_at,
+    linkedAt: row.linkedAt,
   }));
 }
 
-interface IdentityRow {
-  provider: string;
-  subject: string;
-  name: string | null;
-  email: string | null;
-  linked_at: number;
+let dummy: Promise<string> | undefined;
+
+function dummyHash(): Promise<string> {
+  return (dummy ??= argon2Hash(crypto.randomUUID()));
 }
 
-let dummyHash = "";
-
-let accounts: ReturnType<typeof setUp> | undefined;
-
-function useAccounts(): ReturnType<typeof setUp> {
-  return (accounts ??= setUp());
+async function ownerOf(
+  db: Db,
+  identity: Pick<AccountIdentity, "provider" | "subject">,
+): Promise<string | undefined> {
+  const row = await db.query.identities.findFirst({
+    where: { provider: identity.provider, subject: identity.subject },
+    columns: { userId: true },
+  });
+  return row?.userId;
 }
 
-async function setUp() {
-  const db = useDatabase();
-  const [hash] = await Promise.all([
-    argon2Hash(crypto.randomUUID()),
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS identities (
-        provider TEXT NOT NULL,
-        subject TEXT NOT NULL,
-        user_id TEXT NOT NULL REFERENCES users(id),
-        name TEXT,
-        email TEXT,
-        linked_at INTEGER NOT NULL,
-        PRIMARY KEY (provider, subject)
-      );
-      CREATE TABLE IF NOT EXISTS credentials (
-        user_id TEXT PRIMARY KEY REFERENCES users(id),
-        password_hash TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-    `),
-  ]);
-  dummyHash = hash;
-  return db;
-}
-
-async function ownerOf(identity: AccountIdentity): Promise<string | undefined> {
-  const db = await useAccounts();
-  const { rows } = await db.sql<{
-    rows: { user_id: string }[];
-  }>`SELECT user_id FROM identities WHERE provider = ${identity.provider} AND subject = ${identity.subject}`;
-  return rows[0]?.user_id;
-}
-
-async function createUser(identity: AccountIdentity): Promise<{ id: string }> {
-  const db = await useAccounts();
+async function createUser(db: Db, identity: AccountIdentity): Promise<{ id: string }> {
   const id = crypto.randomUUID();
   const now = Date.now();
-  await db.sql`INSERT INTO users (id, created_at) VALUES (${id}, ${now})`;
-  await insertIdentity(id, identity, now);
+  await db.insert(users).values({ id, createdAt: now });
+  await insertIdentity(db, id, identity, now);
   return { id };
 }
 
-async function storePasswordHash(userId: string, passwordHash: string) {
-  const db = await useAccounts();
-  await db.sql`INSERT INTO credentials (user_id, password_hash, updated_at) VALUES (${userId}, ${passwordHash}, ${Date.now()}) ON CONFLICT (user_id) DO UPDATE SET password_hash = excluded.password_hash, updated_at = excluded.updated_at`;
+async function storePasswordHash(db: Db, userId: string, passwordHash: string): Promise<void> {
+  const updatedAt = Date.now();
+  await db
+    .insert(credentials)
+    .values({ userId, passwordHash, updatedAt })
+    .onConflictDoUpdate({ target: credentials.userId, set: { passwordHash, updatedAt } });
 }
 
-async function insertIdentity(userId: string, identity: AccountIdentity, now: number) {
-  const db = await useAccounts();
-  await db.sql`INSERT INTO identities (provider, subject, user_id, name, email, linked_at) VALUES (${identity.provider}, ${identity.subject}, ${userId}, ${identity.name ?? null}, ${identity.email ?? null}, ${now})`;
+async function insertIdentity(
+  db: Db,
+  userId: string,
+  identity: AccountIdentity,
+  now: number,
+): Promise<void> {
+  await db.insert(identities).values({
+    provider: identity.provider,
+    subject: identity.subject,
+    userId,
+    name: identity.name ?? null,
+    email: identity.email ?? null,
+    linkedAt: now,
+  });
 }

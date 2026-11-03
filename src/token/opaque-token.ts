@@ -1,6 +1,6 @@
 import { secureRandomBytes } from "unsecure/random";
 import { base64Stringify } from "unsecure/utils";
-import { hash } from "unsecure/hash";
+import { type DigestAlgorithm, hash } from "unsecure/hash";
 import { configError } from "../_internal/shared.ts";
 
 /**
@@ -28,6 +28,9 @@ export async function createOpaqueToken(options?: {
 export const MAX_TOKEN_BYTES: number = 384;
 
 /** The SHA-256 (base64url) under which an opaque token is stored and looked up. */
-export function hashOpaqueToken(token: string): Promise<string> {
-  return hash(token, { algorithm: "SHA-256", returnAs: "base64url" });
+export function hashOpaqueToken(
+  token: string,
+  options?: { algorithm?: DigestAlgorithm },
+): Promise<string> {
+  return hash(token, { algorithm: options?.algorithm ?? "SHA-256", returnAs: "base64url" });
 }

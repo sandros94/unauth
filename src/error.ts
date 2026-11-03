@@ -7,6 +7,7 @@ export type KnownUnauthErrorCode =
   // session (`unauth/session`)
   | "ERR_SESSION_TOKEN_INVALID" // the request's session token names no live session, or its session header holds no token
   | "ERR_SESSION_READONLY_EVENT" // the session cannot change: the event has no response, or it was already sent
+  | "ERR_SESSION_NONE" // the request has no session to rotate
   // authn (`unauth/n`)
   | "ERR_AUTHN_UNAUTHENTICATED" // no signed-in session; for the application's own guards, never thrown by unauth
   | "ERR_AUTHN_LOGIN_HINT_REQUIRED" // the provider needs to know which account signs in (`loginHint`)

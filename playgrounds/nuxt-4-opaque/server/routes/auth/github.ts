@@ -20,28 +20,30 @@ export default defineEventHandler(
     },
     origin: useRuntimeConfig().public.origin,
     onStart: async (event: RequestEvent) => {
-      const session = await useAuthSession(event);
-      return session.id ? { memo: { userId: session.data.userId } } : undefined;
+      const { data } = await useAuthSession(event).record;
+      return data ? { memo: { userId: data.userId } } : undefined;
     },
     onSuccess: async (event, { identity, memo }) => {
-      const session = await useAuthSession(event);
+      const session = useAuthSession(event);
 
       if (memo) {
-        if (session.data.userId !== memo.userId) {
+        const { data } = await session.record;
+        if (data?.userId !== memo.userId) {
           throw createError({ statusCode: 401, message: "The session changed during the link" });
         }
-        await linkIdentity(memo.userId, identity);
-        await session.rotate();
+        await withTransaction(event, async () => {
+          await linkIdentity(event, memo.userId, identity);
+          await session.rotate();
+        });
         return;
       }
 
-      const user = await findOrCreateUser(identity);
+      const user = await findOrCreateUser(event, identity);
       await session.clear();
       await session.update({
         userId: user.id,
         ...(identity.name ? { name: identity.name } : {}),
         signedInAt: Date.now(),
-        family: crypto.randomUUID(),
       });
     },
     onError: (_event, error) => {

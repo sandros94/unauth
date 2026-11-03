@@ -52,29 +52,29 @@ export async function useAuthSession(event: H3Event) {
 }
 ```
 
-An opaque session with `defineOpaqueSession`: the cookie carries a random token, the store (any `CacheDriver`: a table, a KV namespace, an ocache storage) its hash and the data, so sessions can be listed and revoked. The manager speaks the JWE session's vocabulary, with `rotate()` on top:
+An opaque session with `defineOpaqueSession`: the cookie carries a random token, a store of yours (five verbs over a table, or `kvSessionStore` over any `CacheDriver`) holds the session under it, so sessions can be listed and revoked. Unlike the JWE manager, whose data travels in the cookie, this one reads the store only when asked: `use()` is synchronous, `record` is a promise.
 
 ```ts
 import type { H3Event } from "h3";
 import { defineOpaqueSession } from "unauth/session";
 
-const sessions = defineOpaqueSession<{ userId: string }>({ store, maxAge: "7d", rolling: "1d" });
+const sessions = defineOpaqueSession<{ userId: string }>({ store, maxAge: "30D", idle: "7D" });
 
 export async function createSession(event: H3Event, { userId }: { userId: string }) {
-  const session = await sessions.use(event);
+  const session = sessions.use(event);
   await session.clear();
   await session.update({ userId });
 }
 
 export async function useAuthSession(event: H3Event) {
-  const session = await sessions.use(event);
-  return session.id ? { userId: session.data.userId } : undefined;
+  const { data } = await sessions.use(event).record;
+  return data;
 }
 ```
 
-`sessionHeader: true` also reads a `Bearer` token from `x-<name>-session`; `issue(data)` mints one without a request, `open(token)` reads it back. The lower-level `createOpaqueToken()` and `hashOpaqueToken()` of `unauth/token` are what the session is built on, for a store shape of your own.
+`maxAge` is the absolute lifetime, `idle` ends a session left alone, either or both. `rotate()` moves a session under a new token, `issue(data)` mints one without a request, `sessionHeader: true` also reads a `Bearer` token. The store may be a function of the request event, so a session write joins the transaction the request opened. A route that queries the database anyway can skip the session read and filter on the carried `session.token` (hashed as the store hashes it) inside its own query; [`playgrounds/nuxt-4-opaque`](./playgrounds/nuxt-4-opaque) does both over drizzle.
 
-The full versions, with expiry, rolling and sign-out, are [`playgrounds/nuxt-4`](./playgrounds/nuxt-4) and [`playgrounds/nuxt-4-opaque`](./playgrounds/nuxt-4-opaque).
+The full versions, with lifetimes, rotation and sign-out, are [`playgrounds/nuxt-4`](./playgrounds/nuxt-4) and [`playgrounds/nuxt-4-opaque`](./playgrounds/nuxt-4-opaque).
 
 ### Sign in with a provider
 

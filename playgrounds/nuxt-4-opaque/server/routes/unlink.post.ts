@@ -1,15 +1,17 @@
-import { createError, defineEventHandler, readBody } from "nuxt/server";
+import { createError, readBody } from "nuxt/server";
 
-export default defineEventHandler(async (event) => {
-  const session = await requireAuthSession(event);
+export default defineTransactionalHandler(async (event) => {
   const body: { provider?: unknown; subject?: unknown } | undefined = await readBody(event);
-
   if (typeof body?.provider !== "string" || typeof body.subject !== "string")
     throw createError({ statusCode: 400, message: "provider and subject required" });
 
-  const { userId } = session.data;
-  await unlinkIdentity(userId, { provider: body.provider, subject: body.subject });
-  await session.rotate();
+  const key = await sessionKey(event);
+  if (!key) throw createError({ statusCode: 401, message: "Sign in first" });
+  const userId = await unlinkIdentity(event, key, {
+    provider: body.provider,
+    subject: body.subject,
+  });
+  await useAuthSession(event).rotate();
 
-  return { identities: await listIdentities(userId) };
+  return { identities: await listIdentities(event, userId) };
 });

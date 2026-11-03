@@ -11,17 +11,12 @@ export default defineEventHandler(async (event) => {
   )
     throw createError({ statusCode: 400, message: "user and password required" });
 
-  const user = await verifyPassword(body.user, body.password);
+  const user = await verifyPassword(event, body.user, body.password);
   if (user === undefined) throw createError({ statusCode: 401, message: "Wrong user or password" });
 
-  const session = await useAuthSession(event);
+  const session = useAuthSession(event);
   await session.clear();
-  await session.update({ userId: user.id, signedInAt: Date.now(), family: crypto.randomUUID() });
+  const record = await session.update({ userId: user.id, signedInAt: Date.now() });
 
-  return {
-    id: session.id,
-    userId: session.data.userId,
-    family: session.data.family,
-    expiresAt: session.expiresAt,
-  };
+  return { id: record?.id, userId: record?.data.userId, expiresAt: record?.expiresAt };
 });

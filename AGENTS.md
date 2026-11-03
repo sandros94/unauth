@@ -33,7 +33,7 @@ Each script is independent — `test` does **not** run lint or type-check. **Alw
 - `.github/` — GitHub configuration (funding, workflows).
 - `src/` — Library source code.
 - `test/` — Tests (unit, nuxt environment, e2e).
-- `playground/` — App for manual testing and development of the library.
+- `playgrounds/` — Apps for manual testing and development of the library (h3, nitro, nuxt-4, nuxt-4-opaque).
 - `docs/` — Documentation site (planned, not started: the API still shifts).
 
 ## Testing Strategy

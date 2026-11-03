@@ -50,7 +50,7 @@ function durationError(
   options: { label: string; prefix: string },
   cause?: unknown,
 ): UnauthError<"ERR_UNAUTH_CONFIG_INVALID"> {
-  return configError(`${options.label} needs a positive "maxAge", got ${JSON.stringify(value)}.`, {
+  return configError(`${options.label} needs a positive duration, got ${JSON.stringify(value)}.`, {
     prefix: options.prefix,
     cause,
   });

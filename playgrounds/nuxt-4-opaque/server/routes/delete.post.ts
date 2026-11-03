@@ -1,10 +1,8 @@
-import { defineEventHandler } from "nuxt/server";
-
-export default defineEventHandler(async (event) => {
-  const session = await requireAuthSession(event);
-  await revokeSessions(session.data.userId);
-  await deleteUser(session.data.userId);
-  await session.clear();
+export default defineTransactionalHandler(async (event) => {
+  const { userId } = await requireAuthSession(event);
+  await revokeSessions(event, userId);
+  await deleteUser(event, userId);
+  await useAuthSession(event).clear();
 
   return { ok: true };
 });
