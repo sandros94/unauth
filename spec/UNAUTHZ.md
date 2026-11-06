@@ -26,7 +26,7 @@ A **catalog** is the closed list of permissions an application recognises, toget
 
 A **place** is where a statement applies: a position in a path that starts at the single, unnamed **root** and continues through typed **segments**. A segment pairs a **level**, a kind of place the application declared such as `org` or `unit`, with a value the application assigns to name which org, which unit, and that the model compares only for equality. The **structure** is the application's declaration of its levels and of which level may sit under which. The **key** is the string form of a place, for example `/org/org-1/unit/u7`; the root's key is `/`. One place **covers** another when a statement placed at the first applies at the second, and is **wider** than it when it covers it and is not the same place. The **chain** of a place is the ordered list of the places covering it, from the place itself up to the root. [Section 6](#6-place) defines the structure, the key syntax and how coverage is computed.
 
-A **subject** is whom a statement is about: the application's own identifier for a user or a machine. It has the meaning of the `sub` claim in JSON Web Token (JWT) [RFC7519].
+A **subject** is whom a statement is about: the application's own identifier for a user, an application or a machine. It has the meaning of the `sub` claim in JSON Web Token (JWT) [RFC7519].
 
 A **statement** is one stored assertion about one subject at one place. There are two kinds:
 
@@ -39,11 +39,11 @@ A **role** is a named list of **entries**, defined once and independent of any p
 
 A **question** is one permission at one **target** place: "may Alice `event:manage` at `/org/org-1`?". A **decision** is the answer to a question together with its reason: allowed or not, and which statement determined it ([Section 7](#7-decision)).
 
-A **grant** is one permission a subject effectively holds at one place, as derived from the subject's statements. A subject's **grants** are all of them, computed once and carried outside the statements so that questions can be answered without reading the statements. A statement is stored, a grant is derived. [Section 8](#8-grants) defines the format of grants and when they must be reissued.
+A subject's **grants** are what the subject's statements amount to, written in a form that can be carried outside the statements and read without them. A **grant** is one entry of that form: what the statements sitting at one place allow the subject and what they deny. Grants repeat nothing that the chain already gives, so what a subject may do at a place is derived when grants are read, not written into them. A statement is stored, grants are carried. [Section 8](#8-grants) defines their format, how they are read and when they must be reissued.
 
-A **manager** of a place is a subject holding `permission:manage` at that place, from the place itself or from a wider one. `permission:manage` is the reserved permission that allows changing the statements at a place: placing or removing a statement about a subject, or editing a stored role. Only a manager of a place may change the statements there. A manager is a subject whenever their own permissions are checked. A subject holding `permission:manage` through a permanent statement at a root is a **permanent manager** of that root.
+A **manager** of a place is a subject who may change the statements there: place or remove a statement about a subject, or edit a stored role. A subject is a manager of a place by holding, at that place or at a wider one, the permission the catalog designates for it ([Section 5](#5-catalog)). Only a manager of a place may change the statements there. A manager is a subject whenever their own permissions are checked. A manager through a permanent statement at the root is a **permanent manager**.
 
-**Genesis** is the first permanent allow rule of `*` placed at a root that has no manager yet. It is the only change to the statements performed by someone who is not a manager, and it is possible only while the root has no manager.
+**Genesis** is the first permanent allow rule of `*` placed at the root while it has no manager yet. It is the only change to the statements performed by someone who is not a manager, and it is possible only while the root has no manager.
 
 This document addresses three parties. An **engine** is software that computes according to this document: it resolves roles, answers questions, issues and reads grants, and checks who may change statements. An engine keeps no statements. A **store** is software that keeps statements and applies changes to them; the application provides it, and [Section 9](#9-sources-of-answers) states what the model requires of it. The **application** is the software using an engine and a store: it defines the catalog and the structure, chooses where grants are carried, and decides who performs genesis. Everything this document leaves to the application is outside the model.
 
@@ -60,6 +60,8 @@ Permissions, place keys and grants each have exactly one canonical text form, de
 TBD. Content already settled for this section:
 
 A permission not in the catalog is unknown. An engine MUST refuse it wherever it appears: in a rule, in a role entry, in a question.
+
+A catalog MAY designate one of its permissions as the one that makes its holder a manager. It is an ordinary permission, named as the application likes: this document reserves no permission name. A catalog is valid without it, since answering questions and issuing grants do not need it. An engine MUST refuse every change to the statements when the catalog designates none.
 
 The wildcard `*` MAY stand for the resource (`*:read`), for the action (`event:*`) or for both, and a bare `*` is the short form of `*:*`. A wildcard resolves, at the time of the check, to every value the catalog has for that segment, so a catalog that grows is covered without a new write. Wildcards are legal in rules and in role entries, never in a question. No other pattern is recognised.
 
@@ -116,9 +118,13 @@ A role with no references has `P_in` and `E_in` empty, so `P` is its includes mi
 
 TBD. Content already settled for this section:
 
-Grants are carried where the application chooses, for example in a session token or in a server-side session record. The place is the application's choice; the format is normative.
+Grants are carried where the application chooses, for example in a session token or in a server-side session record. The place is the application's choice, the format is normative. An application MAY issue grants for the whole tree or for one place and what lies under it.
 
-Grants never contain wildcards. Issuing grants expands every wildcard against the catalog in force, and the catalog fingerprint carried in the grants version forces a reissue when the catalog changes.
+Grants carry no redundant information. A grant holds only what the statements sitting at its own place give: the permissions allowed there and the permissions denied there. A permission that comes from a wider place is written once, in the grant of that place, and never repeated in the grants below it.
+
+A wildcard is carried as it was written, not expanded: the catalog fingerprint in the version of the grants pins its meaning, and a changed catalog forces a reissue. An assignment of a preset is carried as the name of the preset, which an engine resolves from the presets it already has. An assignment of a stored role is carried as the permissions that role resolves to when the grants are issued, so that reading grants never requires a store.
+
+A question is answered from grants by walking the chain of the target: it is allowed when some grant on the chain allows the permission and no grant on the chain denies it. This is the decision rule of [Section 7](#7-decision) applied to grants, so grants and statements agree by construction. Reading needs the grants at the keys of the chain and nothing else.
 
 ## 9. Sources of answers
 
@@ -139,6 +145,8 @@ TBD.
 TBD. Content already settled for this section:
 
 The model does not restrict which subjects a manager may place statements about. A manager of a place may place an allow for any subject there, bounded by what the manager holds, and a deny for any subject, bounded by the rules on restrictions. In practice an application often wants a narrower circle, for example only the members of a team or the users of a tenant. That notion of membership is the application's, not the model's: the model knows no grouping of subjects other than the statements themselves. Applications SHOULD therefore constrain, before calling the engine, which subjects a manager may place statements about, and SHOULD treat the resulting refusal as their own, not as a decision of the model.
+
+A deny restricts an identity, not content. A subject denied a permission still obtains whatever the application serves without identification, by asking from another browser, another device or another network. An application that needs content kept from someone MUST NOT serve that content to requests that do not identify themselves.
 
 ## 13. References
 

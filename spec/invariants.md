@@ -19,14 +19,14 @@ Transitional file for the UnAuthZ RFC rewrite. The identifiers (D, A, G) are the
 
 | Id | Plain sentence | Status |
 | --- | --- | --- |
-| A1 | Manage where you change: a change to the statements at place R requires the manager to hold `permission:manage` at R. | settled |
+| A1 | Manage where you change: only a manager of place R changes the statements at R. | settled |
 | A2 | Hand out only what you hold: placing an allow or deny of P, or assigning a role, at R requires the manager to hold P (every P of the role) at R. | settled |
-| A3 | Only members: a statement about X at a place other than the root requires X to be a member of that place per an application hook. | removed from the model: membership is a projection of the statements (who has something at a place) or an application concern; stated as a SHOULD in Section 12 |
+| A3 | Only members: a statement about X at a place other than the root requires X to be a member of that place per an application hook. | removed from the model: membership is a fact the application supplies, never derived from statements; narrowing whom a manager may place statements about is a SHOULD on the application in Section 12 |
 | A4 | Never yourself: no manager places a statement about themselves; removing their own is allowed. | to re-examine |
 | A5 | Removal needs management only: removing any statement at R requires A1 and nothing else; a restriction is protected by placing it wider. | to re-examine |
 | A6 | The root's permanent managers never empty through an operation. | settled; no dedicated term for that set, the invariant is stated over "managers of the root" |
 | A7 | Genesis: placing a permanent allow rule of the wildcard permission `*` (every permission, resolved per check) at the root while it has no manager; closes once a manager exists; who triggers it is application logic. | settled; the word is `genesis`; no reserved role name |
-| A8 | Restrictions come from at least as wide a place: a deny of P on X at R is refused when X holds P from a place strictly wider than R. | to re-examine |
+| A8 | Restrictions come from at least as wide a place: a deny of P on X at R is refused when X holds P from a place strictly wider than R. | to re-examine: as written it also refuses the wider manager who granted P and wants "everywhere except R"; candidate restatement keyed on the author's width, see ledger Section 10 |
 | A9 | A stored role owned at place O is assignable only at O or under it. | to re-examine |
 
 ## G: authority invariants (what the A rules together guarantee)
