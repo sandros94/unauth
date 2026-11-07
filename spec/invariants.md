@@ -8,12 +8,12 @@ Transitional file for the UnAuthZ RFC rewrite. The identifiers (D, A, G) are the
 | --- | --- | --- |
 | D1 | Nothing stated means denied. | settled |
 | D2 | A live deny of the asked permission at any place covering the target decides against it. | settled |
-| D3 | Deny is exact: denying `event:manage` does not deny `event:read`; implications never deny. | settled |
-| D4 | Roles only add; they never deny. A personal deny rule removes one permission from whatever roles give, and survives any later role change. | settled |
+| D3 | Deny is exact on what it names and complete on what includes it: denying `event:read` also denies every permission that implies `event:read`, such as `event:manage`; denying `event:manage` leaves `event:read` untouched. | settled |
+| D4 | Roles only add; they never deny. A personal deny rule removes a permission, and every permission that implies it, from whatever roles give, and survives any later role change. | settled |
 | D5 | Statements at places not covering the target never influence the answer. | settled |
 | D6 | Same statements, same question and same clock give the same answer. | settled; which statement is reported as "the reason" when several apply is still open |
 | D7 | Width never ranks statements: a narrow allow does not beat a wider deny, nor the reverse. | settled; nearest-first precedence rejected: allows accumulate along the chain, denies veto everywhere |
-| D8 | Grants issued from statements answer exactly as checking the statements would. | settled |
+| D8 | Grants issued from statements answer exactly as checking the statements would, for every target the grants cover; a target outside every base is reported as not covered, never as denied. | settled |
 
 ## A: authority rules (who may change statements about others)
 
