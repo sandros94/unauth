@@ -20,13 +20,13 @@ Transitional file for the UnAuthZ RFC rewrite. The identifiers (D, A, G) are the
 | Id | Plain sentence | Status |
 | --- | --- | --- |
 | A1 | Manage where you change: only a manager of place R changes the statements at R. | settled |
-| A2 | Hand out only what you hold: placing an allow or deny of P, or assigning a role, at R requires the manager to hold P (every P of the role) at R. | settled |
+| A2 | Hand out only what you hold: placing an allow or an assignment at R requires the author to hold what it gives at R. Placing a deny or an exclusion of P at R requires the author to hold P at R. | settled |
 | A3 | Only members: a statement about X at a place other than the root requires X to be a member of that place per an application hook. | removed from the model: membership is a fact the application supplies, never derived from statements; narrowing whom a manager may place statements about is a SHOULD on the application in Section 12 |
-| A4 | Never yourself: no manager places a statement about themselves; removing their own is allowed. | to re-examine |
-| A5 | Removal needs management only: removing any statement at R requires A1 and nothing else; a restriction is protected by placing it wider. | to re-examine |
-| A6 | The root's permanent managers never empty through an operation. | settled; no dedicated term for that set, the invariant is stated over "managers of the root" |
-| A7 | Genesis: placing a permanent allow rule of the wildcard permission `*` (every permission, resolved per check) at the root while it has no manager; closes once a manager exists; who triggers it is application logic. | settled; the word is `genesis`; no reserved role name |
-| A8 | Restrictions come from at least as wide a place: a deny of P on X at R is refused when X holds P from a place strictly wider than R. | to re-examine: as written it also refuses the wider manager who granted P and wants "everywhere except R"; candidate restatement keyed on the author's width, see ledger Section 10 |
+| A4 | Never about yourself: an author never places or removes a statement whose subject is the author's own identifier. Genesis is the one exception. | settled |
+| A5 | Removal needs management only: removing any statement at R requires A1 and nothing else. A restriction is protected by placing it wider than the places its target manages. | settled |
+| A6 | The root's permanent managers never empty through a change. Only statements about subjects count, never statements about groups. | settled |
+| A7 | Genesis: the first permanent allow of `*` placed at the root about one subject while the root has no manager yet. It is the only change made by someone who is not a manager, and it is possible only while the root has no manager. Who triggers it is the application's decision. | settled |
+| A8 | Restrictions stay within the author's width: a deny or an exclusion may reach a statement only when that statement's place is covered by the widest place where the author is a manager. | settled |
 | A9 | A stored role owned at place O is assignable only at O or under it. | to re-examine |
 
 ## G: authority invariants (what the A rules together guarantee)
@@ -34,7 +34,7 @@ Transitional file for the UnAuthZ RFC rewrite. The identifiers (D, A, G) are the
 | Id | Plain sentence | Status |
 | --- | --- | --- |
 | G1 | No change to the statements places a permission the manager lacks at the place of the change. | settled |
-| G2 | The only statement anyone places about themselves is genesis. | depends on A4 |
-| G3 | No live deny of P on X at R was placed while X held P from wider than R. | depends on A8 |
+| G2 | The only statement anyone places about themselves is genesis. | settled |
+| G3 | No live deny or exclusion reaches a statement placed wider than its author's width. | settled |
 | G4 | Once any statement exists, the root has at least one permanent manager; expiry never removes the last one. | settled |
 | G5 | Every live statement has someone who may remove it: no hard lock is constructible. | settled; the theorem the RFC proves |
