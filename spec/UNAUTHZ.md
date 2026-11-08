@@ -24,7 +24,7 @@ A **permission** is one action on one kind of resource, written `resource:action
 
 A **catalog** is the closed list of permissions an application recognises, together with its **implications**: a permission MAY imply others (`event:manage` implies `event:read`), meaning that it includes them. Holding the implying permission satisfies the implied one, a deny of the implied one reaches every permission that implies it ([Section 5.1](#51-implications)). Nothing in a catalog denies by itself.
 
-A **place** is where a statement applies: a position in a path that starts at the single, unnamed **root** and continues through typed **segments**. A segment pairs a **level**, a kind of place the application declared such as `org` or `unit`, with a value the application assigns to name which org, which unit, and that the model compares only for equality. The **structure** is the application's declaration of its levels and of which level may sit under which. The **key** is the string form of a place, for example `/org/org-1/unit/u7`, the root's key is `/`. One place **covers** another when a statement placed at the first applies at the second, and is **wider** than it when it covers it and is not the same place. The **chain** of a place is the ordered list of the places covering it, from the place itself up to the root. [Section 6](#6-place) defines the structure, the key syntax and how coverage is computed.
+A **place** is where a statement applies: a position in a path that starts at the single, unnamed **root** and continues through typed **segments**. A segment pairs a **level**, a kind of place the application declared such as `org` or `unit`, with a value the application assigns to name which org, which unit, and that the model compares only for equality. The **structure** is the application's declaration of its levels and of which level may sit under which. The **key** is the string form of a place, for example `/org=org-1/unit=u7`, the root's key is `/`. One place **covers** another when a statement placed at the first applies at the second, and is **wider** than it when it covers it and is not the same place. The **chain** of a place is the ordered list of the places covering it, from the place itself up to the root. [Section 6](#6-place) defines the structure, the key syntax and how coverage is computed.
 
 A **subject** is whom a statement is about: an identifier the application chooses. For a single user, application or machine it has the meaning of the `sub` claim in JSON Web Token (JWT) [RFC7519]. The application may also choose an identifier for a **group** of them, such as the members of an organisation or a team. Which subjects belong to a group is a fact the application keeps and supplies, never one the model derives. A statement about a group applies to every subject the application says belongs to it, except a deny, which applies to a single subject only ([Section 7](#7-decision)).
 
@@ -41,7 +41,7 @@ A statement is **live** at a given time when it has no `expiresAt` or `expiresAt
 
 A **role** is a named list of **entries**, defined once and independent of any place. An entry names a permission, names another role, or, prefixed with `-`, is an **exclusion** that removes what it names from what the other entries give. The same role can be assigned at many places. A role defined in code is a **preset**. A role defined in data is a **stored role**. A role only ever adds to what a subject may do. A deny statement blocks a subject from a permission, an exclusion takes a permission out of what a source gives. [Section 7](#7-decision) defines how a role resolves to permissions.
 
-A **question** is one permission at one **target** place, asked for a subject together with the groups the application says it belongs to: "may Alice, a member of `acme-team`, `event:manage` at `/org/org-1`?". A **decision** is the answer to a question together with its reason: allowed or not, and which statement determined it ([Section 7](#7-decision)).
+A **question** is one permission at one **target** place, asked for a subject together with the groups the application says it belongs to: "may Alice, a member of `acme-team`, `event:manage` at `/org=org-1`?". A **decision** is the answer to a question together with its reason: allowed or not, and which statement determined it ([Section 7](#7-decision)).
 
 A subject's **grants** are what the statements about the subject and about its groups amount to, written in a form that can be carried outside the statements and read without them. A **grant** is one entry of that form: what the statements sitting at one place allow the subject and what they deny. Grants repeat nothing that the chain already gives, so what a subject may do at a place is derived when grants are read, not written into them. A statement is stored, grants are carried. Grants are issued for one or more **bases**, places under which they answer. A target under no base is **not covered**, and a read says so instead of answering. [Section 8](#8-grants) defines their format, how they are read and when they must be reissued.
 
@@ -75,9 +75,9 @@ An implication is declared in the catalog, from one permission to another: `repo
 
 Because the implying permission includes the implied one, a deny reaches downward along implications: a deny of a permission also denies every permission that implies it, directly or through a chain, since exercising any of those would exercise the denied one. A deny never reaches upward: denying `report:write` leaves `report:read` as it was. An exclusion in a role removes the permissions it names and every permission that implies them, for the same reason: the role `["*:*", "-report:read"]` yields neither `report:read` nor `report:write`. A deny and an exclusion both reach what includes the named permission. They differ in what the named permission itself gave: an exclusion removes the permission from the role, so nothing it implied is given by that role any more, while a deny refuses the action and leaves what the permission implied as it was.
 
-Example. Catalog: `report:list`, `report:read`, `report:write`, with `report:write` implying `report:read` and `report:read` implying `report:list`. One role, `analyst = ["report:write"]`, for staff who write their own reports, resolved as [Section 7.1](#71-role-resolution) describes. Alice and Bob are both assigned `analyst` at `/org/acme`, Bob also holds a deny of `report:read` there.
+Example. Catalog: `report:list`, `report:read`, `report:write`, with `report:write` implying `report:read` and `report:read` implying `report:list`. One role, `analyst = ["report:write"]`, for staff who write their own reports, resolved as [Section 7.1](#71-role-resolution) describes. Alice and Bob are both assigned `analyst` at `/org=acme`, Bob also holds a deny of `report:read` there.
 
-| Question at `/org/acme/report/q3` | Alice | Bob |
+| Question at `/org=acme/report=q3` | Alice | Bob |
 | --- | --- | --- |
 | `report:write` | **allowed**: `analyst` gives it | **denied**: writing would read, and the deny reaches down to it |
 | `report:read` | **allowed**: `report:write` implies it | **denied**: the deny names it |
@@ -85,19 +85,27 @@ Example. Catalog: `report:list`, `report:read`, `report:write`, with `report:wri
 
 ## 6. Place
 
-TBD. Content already settled for this section:
+A place says where a statement applies. Places form one tree. At the top is the root, which has no name and whose key is `/`. Under it, every place is named by a path of segments, and each segment pairs a level with a value: the level says what kind of place it is (`org`, `unit`), the value says which one (`acme`, `u7`). A statement at a place applies there and everywhere under it.
 
-There is exactly one root. It has no segment, and its key is `/`. The structure declares the level names and the nesting edges: which level may sit directly under the root, and which under which other level. A level MAY have several child levels, MAY have several parent levels, and MAY nest under itself, so depth is unbounded unless the structure declares a maximum. Whatever the structure, places form a tree: a place has exactly one parent, obtained by dropping its last segment. Whether a given place exists, whether `org-1` is a real tenant, is not part of the model; the application answers that before it calls the engine. Segments under the same parent have no order among themselves: `org-1` and `org-2` are different orgs, not a first and a second.
+The application declares the **structure**: the level names, and which level may sit under the root and under which other level. A level MAY have several child levels, MAY sit under several parents, and MAY nest under itself, so a tree may be as deep as the application wants unless its structure says otherwise. The structure is the application's: an engine checks a key against the grammar of [Appendix C](#appendix-c-abnf), never against the structure, and knows nothing about which resources or permissions belong at a level. Whether a given place exists, whether `acme` is a real organisation, is likewise the application's knowledge: it answers that before it asks the engine. Places under the same parent have no order among themselves. One thing has one place at a time: a level that sits under several parents holds different things under each, never one thing with two keys, since a deny at one key would be bypassed at the other.
 
-A key writes the root as `/` and every segment as `/level/value`, level and value alternating: `/org/org-1/unit/u7`. Alternation is chosen so that no character beyond `/` is claimed from values: a value MAY contain `:` and other characters that specifications or applications give meaning to, such as a decentralized identifier. [Appendix C](#appendix-c-abnf) gives the grammar. A value is written with percent-encoding as in [RFC3986], uppercase hexadecimal, and only for the bytes that require it, so that one place has exactly one spelling. The values `*`, `.` and `..` are reserved and MUST NOT be used. A key is either canonical or refused: an engine MUST NOT accept a key that is not in canonical form, and MUST NOT normalise one into it.
+The **key** is the text of a place, and the only form an engine reads or writes. The root is `/`. Every other key writes its segments from the root down, each as `/`, the level, `=`, the value: `/org=acme/unit=u7`. A `/` starts every segment and appears nowhere else, so a key has as many segments as it has `/` characters. A level never contains `=`, so a segment splits at its first `=`, and a value MAY contain `=`, `:` or any other character that identifiers in the wild use: `/account=did:plc:abc`. [Appendix C](#appendix-c-abnf) gives the grammar.
 
-A value is matched by equality only. No pattern or prefix matching exists on values: two patterns could cover one target without covering each other, and the places covering a target would no longer form a chain. An application that wants one place to cover a family of values declares the family as a level and builds the key accordingly, for example `/family/shop/app/shop-preview`, so that a statement at `/family/shop` covers every shop application by plain coverage. The key is the model's text for a place in questions, in grants and in records. A store MAY represent a place any way it likes, provided it yields the identical key back.
+A level is a lowercase ASCII identifier. A value is a non-empty sequence of Unicode scalar values, written in UTF-8 [RFC3629] and then percent-encoded as in [RFC3986], in uppercase hexadecimal, for every octet that [Appendix C](#appendix-c-abnf) does not allow literally. An octet that is allowed literally MUST be written literally. One place therefore has exactly one spelling, made of ASCII characters only. One value is reserved and MUST NOT be used: `*`, because it would read as a wildcard. No segment can equal `.` or `..`, since every segment holds a `=`, so a URI parser leaves a key as it is [RFC3986].
 
-Example: a structure declares `org` under the root, and `unit` and `project` under `org`. The places `/org/org-1/unit/u7` and `/org/org-1/project/p3` both sit under `/org/org-1`, and the level in each segment tells a unit from a project even when their values collide.
+A key is either canonical or refused. An engine MUST check that a key is canonical before computing anything from it, and MUST refuse one that is not. It MUST NOT repair a key into canonical form. An application MUST NOT build a key by joining text that was not encoded as a value. It parses a key, or asks an engine to build a key under another.
+
+A value is matched by equality only. There is no pattern or prefix matching on values, because two patterns could cover one target without covering each other, and the places covering a target would no longer form a single line. An application that wants one place to cover a family of values declares the family as a level: `/family=shop/app=preview`, so that a statement at `/family=shop` covers every shop application.
+
+Because no value contains `/`, the keys of the places under a place `K` are exactly the keys that begin with `K/`. A store that keeps keys as text and sorts them byte by byte finds them in one run: they all sort at or after `K/` and before `K0`, where `0` is simply the character that follows `/` in ASCII, so `K0` is the first key that begins with `K` and something other than `/`. `K` itself sorts before that run, and a sibling such as `/org=acme-x` MAY sort between `/org=acme` and the keys under it, so the run is the places under `K`, not `K` together with them. A store MAY keep a place in any form it likes, provided it yields the identical key back.
+
+Example. The structure declares `org` under the root, and `unit` and `project` under `org`. `/org=acme/unit=u7` and `/org=acme/project=p3` both sit under `/org=acme`, and the level in each segment tells a unit from a project even when their values collide.
 
 ### 6.1. Coverage
 
-A place covers itself and every place below it. The procedure takes two keys, `S` where a statement sits and the target `T` of a question, and answers whether `S` covers `T`.
+A place covers itself and every place under it. The places covering a target are its **chain**, from the target up to the root, and they are totally ordered: each covers the next. That order is what "wider than" means wherever the model uses it. Coverage is the only ordering the model knows.
+
+The procedure takes two keys, `S` where a statement sits and the target `T` of a question, and answers whether `S` covers `T`.
 
 ```
 covers(S, T):
@@ -107,7 +115,19 @@ covers(S, T):
   return false
 ```
 
-The chain of `T` is `T`, then `T` with its last segment dropped, and so on up to `/`. The places covering `T` are exactly its chain, so they are totally ordered from `T` up to the root. This order is what makes "strictly wider than" well defined wherever later sections use it. In the example, the chain of `/org/org-1/unit/u7` is itself, `/org/org-1` and `/`. Something like `/org/org-2` does not cover it, because the segments differ, and `/org/org-1/unit/u7` does not cover `/org/org-1`, because it is longer. Coverage is the only ordering the model knows. There is no other grouping of subjects or places.
+The chain of a key is computed from the key alone:
+
+```
+chain(T):
+  result = [T]
+  while T != "/":
+    T = T with everything from its last "/" removed
+    if T == "": T = "/"
+    append T to result
+  return result
+```
+
+In the example, the chain of `/org=acme/unit=u7` is itself, `/org=acme` and `/`. `/org=globex` does not cover it, because the segments differ, and `/org=acme/unit=u7` does not cover `/org=acme`, because it is longer.
 
 ## 7. Decision
 
@@ -168,9 +188,13 @@ TBD. Content already settled for this section:
 
 Grants are carried where the application chooses, for example in a session token or in a server-side session record. The place is the application's choice, the format is normative.
 
-Grants are issued for one or more bases. When no base is named, the base is the root `/`: the grants then cover every place and hold what every live statement about the subject and its groups gives. Issuing for a base writes the entry of the base place, even when nothing is granted there, and folds into it every statement at a place strictly covering the base, so that no key above a base appears in the grants. A statement at the base or under it is written at its own place. A target is covered by the grants when some entry's key lies on the target's chain, because every entry lies at or under a base and every base has an entry, this holds exactly when some base covers the target. Several bases MAY be issued into one set of grants, and an engine MUST accept several sets of grants for one read, treating a target as covered when any set covers it.
+Grants are issued for one or more **bases**, the places they answer for. When no base is named, the base is the root `/` and the grants cover every place.
 
-Issuing takes the subject and its groups, as the application supplies them at that moment ([Section 7](#7-decision)). Grants hold what the statements about all of them give, per place, without recording which identifier gave what. When the application's notion of who belongs to a group changes, grants already issued keep the old answer until they are reissued.
+Issuing for a base writes the entry of the base place, even when nothing is granted there, and folds into it everything the places above the base give, so that no key above a base appears. A statement at the base or under it is written at its own place. A target is covered when some entry's key lies on its chain, which happens exactly when some base covers it.
+
+Several bases MAY be issued into one set of grants, and an engine MUST accept several sets for one read, treating a target as covered when any set covers it. The bases of sets read together SHOULD NOT cover each other, since the wider set would then answer inside the narrower one too. For example a platform that hosts shared folder splits along the tree instead: one set for `/area=platform` in a cookie, one for `/area=drive` server side, each covering what the other does not.
+
+Issuing takes the subject and its groups, as the application supplies them at that moment ([Section 7](#7-decision)). Grants hold what the statements about all of them give, per place, without recording which identifier gave what. When the application's notion of who belongs to a group changes, grants already issued keep the old answer until they are reissued. A key is a position: when a thing moves to another place, or a place is deleted and its value used again, grants issued before keep entries at keys that no longer mean the same thing, and a deny or an exclusion carried at the old key no longer lies on the new key's chain while allows from wider places still do. An application MUST reissue, or stop trusting, grants that cover a place whose statements it moved or removed.
 
 Grants carry no redundant information. A grant holds only what the statements sitting at its own place give: the permissions allowed there, the permissions denied there, and the permissions that exclusions there take out of what wider places gave. A permission that comes from a wider place is written once, in the grant of that place, and never repeated in the grants below it.
 
@@ -178,9 +202,9 @@ A wildcard is carried as it was written, not expanded: the catalog fingerprint i
 
 A read of grants has three outcomes: **allowed**, **denied**, or **not covered**. A target that is not covered yields not covered and nothing else, what follows is the application's decision and outside this document. A covered target is read by the walk of [Section 7](#7-decision) over the entries of its chain, from the root down: a permission given by an entry counts unless an entry below it on the chain, at or above the target, lists that permission as taken out, and a permission denied by any entry blocks. The target is allowed when some permission left is the asked one or implies it, and denied otherwise. This is the decision rule of [Section 7](#7-decision) applied to grants, so for every covered target grants and statements agree by construction. A question against the statements never yields not covered, since the statements cover every place.
 
-The canonical form of grants is an object with two fields defined by this document, `g` and `v`. Any other field of the object belongs to the application. An engine MUST ignore fields it does not define.
+The canonical form of grants is an object with two fields defined by this document, `g` and `v`, and one optional field, `at`. Any other field of the object belongs to the application. An engine MUST ignore fields it does not define.
 
-`v` is the version of the grants. `g` holds the entries, one per place, keyed by the canonical key of that place. An engine MUST NOT accept a key inside `g` that is not a canonical place key.
+`v` is the version of the grants. `at`, when present, is the time the grants were issued, in the unit the application uses for every time in the model, the same as `expiresAt`. The engine never reads it: it is there so that an application can compare it with the time its statements last changed and decide for itself whether to reissue. `g` holds the entries, one per place, keyed by the canonical key of that place. An engine MUST NOT accept a key inside `g` that is not a canonical place key.
 
 An entry has up to four fields, each a list of permissions or of names:
 
@@ -189,7 +213,7 @@ An entry has up to four fields, each a list of permissions or of names:
 - `r`: the names of the presets assigned there.
 - `x`: the permissions taken out, at and under this place, of what the entries above give.
 
-`x` is how an exclusion is carried. At issuing, an engine lists under `x` every permission that an exclusion at this place takes out and that no other statement at a wider place still gives. The permissions are written in full, never as wildcards or role names, because the exclusion was already applied when the entry was written. `x` never lists what a statement at this place or under it gives.
+`x` is how an exclusion is carried. At issuing, an engine lists under `x` every permission that an exclusion at this place takes out and that no other statement at a wider place still gives. The permissions are written in full, never as wildcards or role names, because the exclusion was already applied when the entry was written. `x` takes nothing away from what statements at this place or under it give: those are written at their own places and a read meets them after the mask.
 
 Example. Every member of the platform may read profiles. The staff of one organisation write that organisation's reports, its editors publish them, and a report in the archive is closed: it can be read and published, not created or changed. The subject belongs to three groups: `members`, assigned `member = ["profile:read"]` at the root, `acme-writers`, assigned `writer = ["report:read", "report:write"]` at the organisation, and `acme-editors`, assigned `editor = ["report:publish"]` there. The subject is also allowed `report:export` at the organisation by a statement about the subject alone, and denied `report:delete` there. The group `acme-writers` is excluded from `report:write` under the archive. Issued for the whole tree:
 
@@ -198,13 +222,13 @@ Example. Every member of the platform may read profiles. The staff of one organi
   "v": "<version>",
   "g": {
     "/": { "r": ["member"] },
-    "/org/acme": { "a": ["report:export"], "d": ["report:delete"], "r": ["editor", "writer"] },
-    "/org/acme/archive/2024": { "x": ["report:write"] }
+    "/org=acme": { "a": ["report:export"], "d": ["report:delete"], "r": ["editor", "writer"] },
+    "/org=acme/archive=2024": { "x": ["report:write"] }
   }
 }
 ```
 
-Under the archive, `report:write` is taken out of what `writer` gave at the organisation, so `x` lists it, and nothing else gives it. `report:read` stays, `writer` names it on its own. `editor` and `report:export` are not listed: the exclusion is about `acme-writers`, and the subject holds those through `acme-editors` and through its own statement. Nothing in the organisation reaches another organisation, since every statement about the organisation's groups sits at `/org/acme`.
+Under the archive, `report:write` is taken out of what `writer` gave at the organisation, so `x` lists it, and nothing else gives it. `report:read` stays, `writer` names it on its own. `editor` and `report:export` are not listed: the exclusion is about `acme-writers`, and the subject holds those through `acme-editors` and through its own statement. Nothing in the organisation reaches another organisation, since every statement about the organisation's groups sits at `/org=acme`.
 
 The organisation's managers are not held back by the archive. The group `acme-managers` is assigned `manager = ["writer", "editor", "report:delete"]` at the organisation. A second subject, a member of `members` and `acme-managers` only, is issued:
 
@@ -213,7 +237,7 @@ The organisation's managers are not held back by the archive. The group `acme-ma
   "v": "<version>",
   "g": {
     "/": { "r": ["member"] },
-    "/org/acme": { "r": ["manager"] }
+    "/org=acme": { "r": ["manager"] }
   }
 }
 ```
@@ -226,7 +250,13 @@ Reading needs the entries at the keys of the target's chain and nothing else, to
 
 TBD. Content already settled for this section:
 
-What the model requires of a store, and nothing more: a store MUST look up the statements of a subject at a place by exact key, for every key of a chain; it MUST keep a statement at the place the engine gave; and whatever form it keeps permissions, places and statements in, what it hands back MUST be the canonical form, as [Section 4](#4-invariants) requires. The lifecycle of statements whose place no longer exists in the application is the application's business: the engine never asks whether a place exists, so such a statement is garbage, not an error. Listing the places under a given one is useful to administration interfaces and MAY be offered, the engine never requires it.
+A store is whatever keeps the statements and answers for them, over any protocol and in any layout. The model says what it must be able to answer, never how it is built. Whatever it keeps inside, what it hands back MUST be the canonical form of every key, permission and statement, as [Section 4](#4-invariants) requires.
+
+A store MUST answer three questions. Given a subject with its groups and a list of place keys: the live statements about any of them at exactly those places. Given a place key: the statements at the places under it. Given role names: the stored roles of those names, with the roles they reference. A store MUST keep a statement at the place the engine gave. It MAY record the time at which each statement was placed or removed, in the unit the application uses for every time in the model, so that an application can compare it with the `at` of issued grants ([Section 8](#8-grants)). A store MUST compare keys and subjects byte by byte, for equality and for order, since a collation that folds case or ignores punctuation returns another place's or another subject's statements.
+
+A store SHOULD also answer, in one exchange, everything issuing needs: given a subject with its groups and the bases, the live statements about them on the chain of each base and under each base, with the stored roles those statements name. A store that can combine reads then answers in one round trip. One that cannot answers in several, and the model asks nothing about how many. Presets are never asked of a store: an engine holds the catalog, and the presets with it.
+
+The lifecycle of statements whose place no longer exists in the application is the application's business: the engine never asks whether a place exists, so such a statement is garbage, not an error. Listing the places under a given one is useful to administration interfaces and MAY be offered, the engine never requires it.
 
 ## 10. Authority
 
@@ -246,6 +276,8 @@ A change to the statements is one of: placing a statement, removing a statement,
 
 **Genesis.** While the root has no manager, anyone MAY place one permanent allow of `*` at the root about one subject. From then on every change follows the rules above. Who triggers genesis is the application's decision.
 
+**A move is not a change of the model.** Moving a thing to another place rewrites the keys of the statements at and under its old place, which the application does on its store, within the places it manages. The rules of this section hold at the moment a statement is placed. A restriction that was within its author's width when placed may reach wider after a move, and the application that moves places accepts that, or checks the moved restrictions again.
+
 **The root keeps a permanent manager.** An engine MUST refuse a change after which the root would have no permanent manager. Only statements about subjects count, never statements about groups. Expiry cannot remove the last permanent manager, since a permanent statement does not expire.
 
 ## 11. Errors
@@ -256,6 +288,10 @@ TBD.
 
 TBD. What the model does not do, with what an application does instead.
 
+**A key is a position, not an identity.** The model knows a thing only by where it sits. When a thing moves, its key and the keys under it change, and the application rewrites the statements there and reissues the grants that covered them ([Section 8](#8-grants), [Section 10](#10-authority)). When a place is deleted and its value used again for another thing, the statements left there apply to the new thing. An application that must tell two things apart over time uses stable identifiers as values and removes the statements of what it deletes.
+
+**Deep trees cost space.** A key carries its whole ancestry, so the chain of a place at depth 100 is tens of kilobytes and a few entries at depth 20 exceed what a cookie holds. An application with deep trees carries grants server side, or issues them for a base near the target.
+
 **The tree has a root manager.** Someone must make the first change, and an author hands out only what they hold ([Section 10](#10-authority)). So the first manager holds everything at the root, and the root keeps at least one such permanent manager so that every statement stays removable. The model offers no tree without such a subject. The subject is the application's choice and need not be a person: an application that must keep humans away from that power gives it to an identifier nobody signs in as, used only by its own deployment and migration code, and gives people narrower permissions at narrower places from there. An actor who gains write access to the statements store is outside what the model or an engine can address.
 
 ## 13. Security considerations
@@ -263,6 +299,8 @@ TBD. What the model does not do, with what an application does instead.
 TBD. Content already settled for this section:
 
 The model does not restrict which subjects a manager may place statements about. A manager of a place may place an allow for any subject there, bounded by what the manager holds, and a deny for any subject, bounded by the rules on restrictions. In practice an application often wants a narrower circle, for example only the members of a team or the users of a tenant. That notion of membership is the application's, not the model's: the model knows no grouping of subjects other than the statements themselves. Applications SHOULD therefore constrain, before calling the engine, which subjects a manager may place statements about, and SHOULD treat the resulting refusal as their own, not as a decision of the model.
+
+An engine trusts the ancestry written in a key. A key built from a request alone, from a route or a parameter, lets a caller claim a position its thing does not have and be answered for that position. An application MUST derive the key from where the thing actually is, or check the claimed key in the action's own read of the thing, and MUST NOT take the ancestry from the request alone.
 
 A deny restricts an identity, not content. A subject denied a permission still obtains whatever the application serves without identification, by asking from another browser, another device or another network. An application that needs content kept from someone MUST NOT serve that content to requests that do not identify themselves.
 
@@ -272,6 +310,7 @@ Citations in the text, such as [RFC2119], link to the documents below.
 
 - [RFC2119]: Bradner, S., "Key words for use in RFCs to Indicate Requirement Levels", BCP 14, RFC 2119, March 1997.
 - [RFC8174]: Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14, RFC 8174, May 2017.
+- [RFC3629]: Yergeau, F., "UTF-8, a transformation format of ISO 10646", STD 63, RFC 3629, November 2003.
 - [RFC3986]: Berners-Lee, T., Fielding, R. and L. Masinter, "Uniform Resource Identifier (URI): Generic Syntax", STD 66, RFC 3986, January 2005.
 - [RFC5234]: Crocker, D. and P. Overell, "Augmented BNF for Syntax Specifications: ABNF", STD 68, RFC 5234, January 2008.
 - [RFC7519]: Jones, M., Bradley, J. and N. Sakimura, "JSON Web Token (JWT)", RFC 7519, May 2015.
@@ -287,7 +326,25 @@ TBD.
 
 ## Appendix C. ABNF
 
-TBD.
+Keys of places ([Section 6](#6-place)):
+
+```
+place       = root / 1*segment
+root        = "/"
+segment     = "/" level "=" value
+level       = lowalpha *31( lowalpha / DIGIT / "-" )
+value       = 1*( literal / pct-encoded )
+literal     = ALPHA / DIGIT / "-" / "." / "_" / "~"
+            / "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / ","
+            / ";" / "=" / ":" / "@"
+pct-encoded = "%" uphex uphex
+uphex       = DIGIT / %x41-46
+lowalpha    = %x61-7A
+```
+
+ALPHA and DIGIT are defined in [RFC5234]. `level` never matches `=`, so a segment ends its level at its first `=` and no key parses in two ways. The grammar alone admits keys that are not canonical. A key is canonical when, in addition, `pct-encoded` appears only for an octet that `literal` does not match, the octets of each value once decoded form valid UTF-8 [RFC3629], and no decoded value equals `*`. Every canonical key is a `path-absolute` of [RFC3986].
+
+TBD: permissions, role entries, the canonical form of grants.
 
 [RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
@@ -295,3 +352,4 @@ TBD.
 [RFC7519]: https://www.rfc-editor.org/rfc/rfc7519
 [RFC8259]: https://www.rfc-editor.org/rfc/rfc8259
 [RFC3986]: https://www.rfc-editor.org/rfc/rfc3986
+[RFC3629]: https://www.rfc-editor.org/rfc/rfc3629

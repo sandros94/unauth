@@ -11,7 +11,7 @@ Transitional file for the UnAuthZ RFC rewrite. The identifiers (D, A, G) are the
 | D3 | Deny is exact on what it names and complete on what includes it: denying `event:read` also denies every permission that implies `event:read`, such as `event:manage`; denying `event:manage` leaves `event:read` untouched. | settled |
 | D4 | Roles only add; they never deny. A personal deny rule removes a permission, and every permission that implies it, from whatever roles give, and survives any later role change. | settled |
 | D5 | Statements at places not covering the target never influence the answer. | settled |
-| D6 | Same statements, same question and same clock give the same answer. | settled; which statement is reported as "the reason" when several apply is still open |
+| D6 | Same statements, same question and same clock give the same answer. | settled |
 | D7 | Width never ranks statements: a narrow allow does not beat a wider deny, nor the reverse. | settled; nearest-first precedence rejected: allows accumulate along the chain, denies veto everywhere |
 | D8 | Grants issued from statements answer exactly as checking the statements would, for every target the grants cover; a target outside every base is reported as not covered, never as denied. | settled |
 
@@ -35,6 +35,6 @@ Transitional file for the UnAuthZ RFC rewrite. The identifiers (D, A, G) are the
 | --- | --- | --- |
 | G1 | No change to the statements places a permission the manager lacks at the place of the change. | settled |
 | G2 | The only statement anyone places about themselves is genesis. | settled |
-| G3 | No live deny or exclusion reaches a statement placed wider than its author's width. | settled |
+| G3 | No deny or exclusion, at the moment it is placed, reaches a statement placed wider than its author's width. A later move of places may change what it reaches. | settled |
 | G4 | Once any statement exists, the root has at least one permanent manager; expiry never removes the last one. | settled |
 | G5 | Every live statement has someone who may remove it: no hard lock is constructible. | settled; the theorem the RFC proves |
