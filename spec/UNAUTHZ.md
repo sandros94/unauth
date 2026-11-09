@@ -43,7 +43,7 @@ A statement is **live** at a given time when it has no `expiresAt` or `expiresAt
 
 A **role** is a named list of **entries**, defined once and independent of any place. An entry names a permission, names another role, or, prefixed with `-`, is an **exclusion** that removes what it names from what the other entries give. The same role can be assigned at many places. A role declared in the catalog is a **preset**. A role defined in data is a **stored role**, and it has a **home**, the place where it is defined ([Section 10](#10-authority)). A role only ever adds to what a subject may do. A deny statement blocks a subject from a permission, an exclusion takes a permission out of what a source gives. [Section 7](#7-decision) defines how a role resolves to permissions.
 
-A **question** is one permission at one **target** place, asked for a subject together with the groups the application says it belongs to: "may Alice, a member of `acme-team`, `event:manage` at `/org=org-1`?". A **decision** is the answer to a question together with its reason: allowed or not, and which statement determined it ([Section 7](#7-decision)).
+A **question** is one or more permissions at one **target** place, asked for a subject together with the groups the application says it belongs to: "may Alice, a member of `acme-team`, `event:manage` at `/org=org-1`?". A question naming several permissions also says whether **all** of them or **any** of them must be satisfied, and MAY ask for every answer. A statement **relates to** a question when it can change its answer. A **decision** is the answer to a question together with its reason: allowed or not, and which statement determined it, for the permission that settled the question or for each permission when every answer is asked for ([Section 7](#7-decision)).
 
 A subject's **grants** are what the statements about the subject and about its groups amount to, written in a form that can be carried outside the statements and read without them. A **grant** is one entry of that form: what the statements sitting at one place allow the subject and what they deny. Grants repeat nothing that the chain already gives, so what a subject may do at a place is derived when grants are read, not written into them. A statement is stored, grants are carried. Grants are issued for one or more **bases**, places under which they answer. A target under no base is **not covered**, and a read says so instead of answering. [Section 8](#8-grants) defines their format, how they are read and when they must be reissued.
 
@@ -69,8 +69,8 @@ What a decision guarantees ([Section 7](#7-decision), [Section 5.1](#51-implicat
 | D2 | A live deny about the subject, of the asked permission, at any place covering the target, decides against it. |
 | D3 | A deny is exact on what it names and complete on what includes it: denying `event:read` also denies every permission that implies `event:read`, denying `event:manage` leaves `event:read` untouched. |
 | D4 | Roles and statements about groups only add. A deny names one subject and blocks whatever gives the permission. An exclusion takes out only what its own subject's wider statements give. |
-| D5 | Statements at places not covering the target never influence the answer. |
-| D6 | The same statements, the same question and the same clock give the same answer. |
+| D5 | Statements at places not covering the target, and statements that do not relate to the permissions asked, never influence the answer. |
+| D6 | The same statements, the same question and the same clock give the same answer. The time of a question is fixed when it is asked, however many permissions it names. |
 | D7 | Width never ranks statements. Allows add up along the chain, a deny blocks from any covering place, an exclusion reaches only wider statements of its own subject. |
 | D8 | Grants issued from statements answer exactly as the statements would, for every target the grants cover. A target outside every base is reported as not covered, never as denied. |
 
@@ -175,13 +175,15 @@ In the example, the chain of `/org=acme/unit=u7` is itself, `/org=acme` and `/`.
 
 A question carries a subject and its groups. A statement applies to the question when its subject equals the subject or any of those groups, with one exception: a deny applies only when its subject equals the subject itself. A deny written about a group therefore has no effect, and an application SHOULD NOT write one. The identifiers are supplied by the application, an engine takes them as given and infers nothing about who belongs to what.
 
-A question is answered in two steps, from the live statements at the places covering the target.
+A question is answered from the live statements at the places covering the target, and only from those that **relate to** the permission asked. A deny relates to it when it names the asked permission or a permission the asked one implies ([Section 5.1](#51-implications)). An allow relates to it when it names the asked permission or one that implies it, an assignment when its role resolves to one ([Section 7.1](#71-role-resolution)), an exclusion when it takes one out. No other statement can change the answer (D5), and an engine MUST NOT need any other to answer. Which permissions these are follows from the catalog alone, so it is known before any statement is read. Only the assignment of a stored role needs that role's definition to tell.
 
-First, what is given (D4, D5). Each allow and each assignment about the subject or one of its groups gives a set of permissions: what the permission of an allow expands to, or what the role of an assignment resolves to ([Section 7.1](#71-role-resolution)). An exclusion about the same subject or group takes out of that set the permission it names and every permission that implies it, but only from statements placed at places wider than the exclusion's own, and only for targets at or under the exclusion's place.
+A question has one time, fixed when it is asked. An engine MUST decide every step of the question against that one time (D6).
 
-Second, the denies. If a deny about the subject itself names the asked permission, or a permission the asked one implies ([Section 5.1](#51-implications)), the answer is denied, whatever was given (D2, D3). A deny MAY name a wildcard: it then blocks every permission the wildcard expands to, so a deny of `*` at a place blocks the subject from everything at and under that place. Otherwise the answer is allowed when some permission left is the asked one or implies it, and denied when none is (D1). The same statements, question and clock always give the same answer (D6).
+First, the denies. If a live deny about the subject itself relates to the question, the answer is denied, whatever is given, and nothing more needs to be read (D2, D3). A deny MAY name a wildcard: it then blocks every permission the wildcard expands to, so a deny of `*` at a place blocks the subject from everything at and under that place.
 
-Width never ranks statements (D7), it orders the walk. Read the chain from the root down to the target, carrying for the subject and for each of its groups what has been given so far. At each place, first take out what the exclusions there remove from what that same subject or group carried in, then add what the allows and assignments there give. At the target, a deny about the subject at any place on the chain blocks the asked permission and whatever implies it. What is left decides.
+Second, what is given (D4). Each allow and each assignment about the subject or one of its groups gives a set of permissions: what the permission of an allow expands to, or what the role of an assignment resolves to ([Section 7.1](#71-role-resolution)). An exclusion about the same subject or group takes out of that set the permission it names and every permission that implies it, but only from statements placed at places wider than the exclusion's own, and only for targets at or under the exclusion's place. The answer is allowed when some permission left is the asked one or implies it, and denied when none is (D1). The same statements, question and time always give the same answer (D6).
+
+Width never ranks statements (D7), it orders the walk. Read the chain from the root down to the target, carrying for the subject and for each of its groups what has been given so far of the permissions that satisfy the question. At each place, first take out what the exclusions there remove from what that same subject or group carried in, then add what the allows and assignments there give. What is left at the target decides.
 
 Two consequences follow. A subject denied a permission at a wide place does not obtain it from an allow at a narrow place inside: a guest who must see one document under a place where they are denied has to lose the deny, not gain an allow. And a group granted something at a wide place is kept out of a narrower place only by an exclusion about that group, since a deny names one subject.
 
@@ -189,23 +191,49 @@ The decision names the statement that decided: the deny that blocked, or the all
 
 ```
 decide(subject, groups, permission, target, now):
+  blocking = permission and every permission it implies
+  wanted   = permission and every permission that implies it
+  for each live deny d about subject at a place on the chain of target:
+    if some p in expand(value(d)) is in blocking:
+      return denied, d
   carried = empty map from identifier to set of permissions
   for each place K on the chain of target, from the root down to target:
     for each live exclusion e at K about an identifier I in {subject} and groups:
       carried[I] = carried[I] minus removed(value(e))
     for each live allow or assignment s at K about an identifier I in {subject} and groups:
-      carried[I] = carried[I] union given(s)
-  for each live deny d about subject at a place on the chain:
-    if permission == p or permission implies p, for some p in expand(value(d)):
-      return denied, d
-  if some p in the union of all carried sets satisfies permission:
-    return allowed, the statement that gave p
+      carried[I] = carried[I] union (given(s) intersected with wanted)
+  if some carried set is not empty:
+    return allowed, the statement that gave one of its permissions
   return denied
 ```
 
-`given(s)` is the expansion of the permission of an allow, or the `P` of the role of an assignment ([Section 7.1](#71-role-resolution)). `expand` resolves a wildcard against the catalog in force. `removed(X)` is the expansion of `X` together with every permission that implies one of them. `p satisfies permission` when `p` is the permission or implies it.
+`given(s)` is the expansion of the permission of an allow, or the `P` of the role of an assignment ([Section 7.1](#71-role-resolution)). `expand` resolves a wildcard against the catalog in force. `removed(X)` is the expansion of `X` together with every permission that implies one of them. A permission in `wanted` satisfies the question, a permission in `blocking` is what a deny must name to block it.
 
-TBD: a question naming several permissions, satisfied by all of them or by any of them.
+A question MAY name several permissions at its one target. It then MUST say whether all of them or any of them must be satisfied: the question says it, never the answer, and there is no default. Each permission is decided as its own question would be, against the one time of the question, from the statements that relate to any of the permissions named. The question is allowed under all when every permission is allowed, and under any when at least one is. A question naming one permission is the same under both and says neither.
+
+By default an engine stops as soon as the question is settled. It looks at the denies first, for every permission named: under all, one permission blocked by a deny settles the question as denied, under any, a blocked permission is set aside. It then looks at what is given, permission by permission in the order asked: under all, the first permission that nothing gives settles the question as denied, under any, the first permission given settles it as allowed. The decision carries the outcome and the answer that settled it, with the permission it is about. When nothing settles the question early, every answer was needed and the decision carries them all.
+
+A question MAY ask for **every answer** instead, for an interface that shows what is missing or for diagnosis. An engine then decides every permission and MUST return one answer per permission, each with its reason. The outcome is the same either way. Whatever answers a decision carries, an engine MUST return them in the order in which their permissions were asked.
+
+```
+decide_several(subject, groups, permissions, mode, every, target, now):
+  if every:
+    answers = decide(subject, groups, p, target, now) for each p in permissions, in the order asked
+    return combined(mode, answers), answers
+  for each p in permissions, in the order asked:
+    if a live deny d about subject at a place on the chain of target blocks p:
+      if mode is all: return denied, the answer for p naming d
+      set p aside, denied by d
+  for each p in permissions not set aside, in the order asked:
+    answer = decide(subject, groups, p, target, now)
+    if mode is all and answer is denied: return denied, answer
+    if mode is any and answer is allowed: return allowed, answer
+  return combined(mode, answers), every answer in the order asked
+```
+
+`combined` is allowed under all when every answer is allowed, under any when some answer is allowed, and denied otherwise. A deny blocks `p` when it names `p` or a permission `p` implies.
+
+An engine MUST refuse, as a whole, a question that names no permission, an unknown permission or a wildcard, and one that names several permissions without saying all or any. A permission named twice counts once, and is answered at each of its positions when every answer is asked for. A question has one target, so the same permissions at several places are several questions. Any other combination, one permission together with either of two others for example, is the application's to compute from every answer.
 
 ### 7.1. Role resolution
 
@@ -244,7 +272,7 @@ Grants carry no redundant information. A grant holds only what the statements si
 
 A wildcard is carried as it was written, not expanded: the catalog fingerprint in the version of the grants pins its meaning, and a changed catalog forces a reissue. An assignment of a preset is carried as the name of the preset, which an engine resolves from the presets it already has. An assignment of a stored role is carried as the permissions that role resolves to when the grants are issued, so that reading grants never requires a store.
 
-A read of grants has three outcomes: **allowed**, **denied**, or **not covered**. A target that is not covered yields not covered and nothing else, what follows is the application's decision and outside this document. A covered target is read by the walk of [Section 7](#7-decision) over the entries of its chain, from the root down: a permission given by an entry counts unless an entry below it on the chain, at or above the target, lists that permission as taken out, and a permission denied by any entry blocks. The target is allowed when some permission left is the asked one or implies it, and denied otherwise. This is the decision rule of [Section 7](#7-decision) applied to grants, so for every covered target grants and statements agree by construction (D8). A question against the statements never yields not covered, since the statements cover every place.
+A read of grants has three outcomes: **allowed**, **denied**, or **not covered**. A target that is not covered yields not covered and nothing else, what follows is the application's decision and outside this document. A covered target is read by the walk of [Section 7](#7-decision) over the entries of its chain, from the root down: a permission given by an entry counts unless an entry below it on the chain, at or above the target, lists that permission as taken out, and a permission denied by any entry blocks. The target is allowed when some permission left is the asked one or implies it, and denied otherwise. This is the decision rule of [Section 7](#7-decision) applied to grants, so for every covered target grants and statements agree by construction (D8). A question against the statements never yields not covered, since the statements cover every place. A read needs the entries on the chain of the target and, within them, only the values that relate to the question, the denies first. Grants carry presets by name and stored roles already resolved, so for a read those values follow from the catalog alone. A read naming several permissions settles as [Section 7](#7-decision) states. Coverage depends on the target alone, so such a read is not covered as a whole or covered as a whole.
 
 The canonical form of grants is an object with two fields defined by this document, `g` and `v`, and one optional field, `at`. Any other field of the object belongs to the application. An engine MUST ignore fields it does not define.
 
