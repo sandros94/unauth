@@ -36,12 +36,6 @@ Evidence base. Sentences below marked "Evidence" come from a study made on 2026-
   - The version string of grants identifies the minifier and its version next to the catalog and structure fingerprints; a change in any of the three forces a reissue. Without a minifier the version carries no minifier part.
   - Because the substitution is word by word, a reader answers a question by minifying the chain keys of the target and the asked permission and matching tokens against the carried entries, with the same result as expanding every entry first. An engine still reads and writes canonical forms only; the minifier is a tool at the carrier boundary, library-provided or application-provided, never part of the engine.
 
-## Section 10, Authority
-
-- **Editing a referenced role.** Adding a permission to `support` adds it to every role that references `support`, at every place where any of those roles is assigned. Decide who may edit an upstream role and at which place they must hold what they add. This is the escalation surface the old audit hit (a stored role that reached the root) and merges with the open question on stored-role ownership and where a stored role may be assigned.
-- **Deleting or renaming a referenced role.** Refuse while references exist, or cascade; decide, and decide what the audit record shows.
-- **Role name spaces.** A stored role MUST NOT reuse a preset's name: references are by name, so a duplicate could redirect a reference. State where uniqueness is enforced (definition, validation, both).
-
 ## Seen on several platforms, not in the model
 
 To expand later, after the entries above are drained. Four constructs recur across the eleven platforms and have no counterpart in the draft: a stored deny about a subject that the platform's customers write and that beats any grant (two platforms; close to the model's personal deny); a condition attached to a grant and evaluated with attributes of the thing, the request or the time (six, the four infrastructure platforms among them); a narrower place holding less than the wider one (three, all content or chat products, by a flag on the folder, an overwrite, or a restricted subpage); a boundary attached to the principal rather than the place, capping what it may reach anywhere (two). None is copied; each is a question of whether an invariant of this model needs it or whether the guidance shows how an application gets it.
