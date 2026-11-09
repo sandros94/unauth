@@ -24,7 +24,7 @@ This document addresses three parties. An **engine** is software that computes a
 
 A **permission** is one action on one kind of resource, written `resource:action`, for example `event:manage`. A permission says what, it never says where. The reserved token `*` is a **wildcard**: in place of the resource, the action or both, it stands for every value the catalog has there. [Section 5](#5-catalog) defines how wildcards resolve and where they are legal.
 
-A **catalog** is the closed list of permissions an application recognises, together with its **implications**: a permission MAY imply others (`event:manage` implies `event:read`), meaning that it includes them. Holding the implying permission satisfies the implied one, a deny of the implied one reaches every permission that implies it ([Section 5.1](#51-implications)). Nothing in a catalog denies by itself.
+A **catalog** is the closed list of permissions an application recognises, together with its **implications**: a permission MAY imply others (`event:manage` implies `event:read`), meaning that it includes them. Holding the implying permission satisfies the implied one, a deny of the implied one reaches every permission that implies it ([Section 5.1](#51-implications)). A catalog also declares the application's presets and MAY designate the permission that makes a manager ([Section 5](#5-catalog)). Nothing in a catalog denies by itself.
 
 A **place** is where a statement applies: a position in a path that starts at the single, unnamed **root** and continues through typed **segments**. A segment pairs a **level**, a kind of place the application declared such as `org` or `unit`, with a value the application assigns to name which org, which unit, and that the model compares only for equality. The **structure** is the application's declaration of its levels and of which level may sit under which. The **key** is the string form of a place, for example `/org=org-1/unit=u7`, the root's key is `/`. One place **covers** another when a statement placed at the first applies at the second, and is **wider** than it when it covers it and is not the same place. The **chain** of a place is the ordered list of the places covering it, from the place itself up to the root. [Section 6](#6-place) defines the structure, the key syntax and how coverage is computed.
 
@@ -41,7 +41,7 @@ A **statement** is one stored assertion about one subject at one place. Every st
 
 A statement is **live** at a given time when it has no `expiresAt` or `expiresAt` is later than that time. A statement with no `expiresAt` is **permanent**.
 
-A **role** is a named list of **entries**, defined once and independent of any place. An entry names a permission, names another role, or, prefixed with `-`, is an **exclusion** that removes what it names from what the other entries give. The same role can be assigned at many places. A role defined in code is a **preset**. A role defined in data is a **stored role**, and it has a **home**, the place where it is defined ([Section 10](#10-authority)). A role only ever adds to what a subject may do. A deny statement blocks a subject from a permission, an exclusion takes a permission out of what a source gives. [Section 7](#7-decision) defines how a role resolves to permissions.
+A **role** is a named list of **entries**, defined once and independent of any place. An entry names a permission, names another role, or, prefixed with `-`, is an **exclusion** that removes what it names from what the other entries give. The same role can be assigned at many places. A role declared in the catalog is a **preset**. A role defined in data is a **stored role**, and it has a **home**, the place where it is defined ([Section 10](#10-authority)). A role only ever adds to what a subject may do. A deny statement blocks a subject from a permission, an exclusion takes a permission out of what a source gives. [Section 7](#7-decision) defines how a role resolves to permissions.
 
 A **question** is one permission at one **target** place, asked for a subject together with the groups the application says it belongs to: "may Alice, a member of `acme-team`, `event:manage` at `/org=org-1`?". A **decision** is the answer to a question together with its reason: allowed or not, and which statement determined it ([Section 7](#7-decision)).
 
@@ -99,13 +99,17 @@ What those rules guarantee together ([Section 10](#10-authority)):
 
 ## 5. Catalog
 
-TBD. Content already settled for this section:
+The catalog is the vocabulary an engine holds without a store. It declares the permissions the application recognises, the implications between them, the presets, and, when the application wants managers, the permission that makes one. It is defined in code, next to the structure, and an engine reads it as it was given. Nothing in a catalog is asked of a store.
 
-A permission not in the catalog is unknown. An engine MUST refuse it wherever it appears: in a rule, in a role entry, in a question.
+A resource, an action, a role name and a level of the structure ([Section 6](#6-place)) are each one **token**: a lowercase ASCII letter followed by at most thirty-one lowercase letters, digits, `-` or `_`, as [Appendix C](#appendix-c-abnf) gives it. A permission is a resource and an action joined by `:`. This spelling is the canonical form of [Section 4](#4-invariants), compared byte by byte, and there is no other: `Report:read` is not a permission in another form, it is refused. An application whose vocabulary is spelled otherwise maps it onto tokens where it defines the catalog.
 
-A catalog MAY designate one of its permissions as the one that makes its holder a manager. It is an ordinary permission, named as the application likes: this document reserves no permission name. A catalog is valid without it, since answering questions and issuing grants do not need it. An engine MUST refuse every change to the statements when the catalog designates none.
+A permission not in the catalog is **unknown**. An engine MUST refuse an unknown permission in the catalog itself, in a statement being placed, in a stored role being defined or edited, and in a question. A statement or a stored role read from a store that names an unknown permission, because the catalog changed after it was written, is **inert**: an allow or an exclusion of it gives or removes nothing, a deny of it blocks nothing, and the rest of the statement or role applies as written. Grants issued before the change are reissued through their version ([Section 8](#8-grants)). Whether such a statement is rewritten or removed is the application's.
 
-The wildcard `*` MAY stand for the resource (`*:read`), for the action (`event:*`) or for both, and a bare `*` is the short form of `*:*`. A wildcard resolves, at the time of the check, to every value the catalog has for that segment, so a catalog that grows is covered without a new write. Wildcards are legal in rules and in role entries, never in a question. No other pattern is recognised.
+A catalog MAY designate one of its permissions as the one that makes its holder a manager. It is an ordinary permission, named as the application likes: this document reserves no permission name. The designated permission is concrete, never a wildcard. A catalog is valid without it, since answering questions and issuing grants do not need it. An engine MUST refuse every change to the statements when the catalog designates none.
+
+The wildcard `*` MAY stand for the resource (`*:read`), for the action (`event:*`) or for both, and a bare `*` is the short form of `*:*`. A wildcard resolves, at the time of the check, to every value the catalog has for that segment, so a catalog that grows is covered without a new write. Wildcards are legal in statements and in role entries, never in a question, in an implication or in the manager designation. No other pattern is recognised.
+
+An engine MUST refuse a catalog that declares the same permission twice, a name that is not a token, an implication whose permissions are not both concrete and declared, a cycle of implications, since two permissions that imply each other are one permission, a manager designation that is not a concrete declared permission, or a preset that references a stored role or breaks a rule of [Section 7.1](#71-role-resolution). A refused catalog defines nothing: an engine has a catalog or has none.
 
 ### 5.1. Implications
 
@@ -129,7 +133,7 @@ The application declares the **structure**: the level names, and which level may
 
 The **key** is the text of a place, and the only form an engine reads or writes. The root is `/`. Every other key writes its segments from the root down, each as `/`, the level, `=`, the value: `/org=acme/unit=u7`. A `/` starts every segment and appears nowhere else, so a key has as many segments as it has `/` characters. A level never contains `=`, so a segment splits at its first `=`, and a value MAY contain `=`, `:` or any other character that identifiers in the wild use: `/account=did:plc:abc`. [Appendix C](#appendix-c-abnf) gives the grammar.
 
-A level is a lowercase ASCII identifier. A value is a non-empty sequence of Unicode scalar values, written in UTF-8 [RFC3629] and then percent-encoded as in [RFC3986], in uppercase hexadecimal, for every octet that [Appendix C](#appendix-c-abnf) does not allow literally. An octet that is allowed literally MUST be written literally. One place therefore has exactly one spelling, made of ASCII characters only. One value is reserved and MUST NOT be used: `*`, because it would read as a wildcard. No segment can equal `.` or `..`, since every segment holds a `=`, so a URI parser leaves a key as it is [RFC3986].
+A level is one token ([Section 5](#5-catalog)). A value is a non-empty sequence of Unicode scalar values, written in UTF-8 [RFC3629] and then percent-encoded as in [RFC3986], in uppercase hexadecimal, for every octet that [Appendix C](#appendix-c-abnf) does not allow literally. An octet that is allowed literally MUST be written literally. One place therefore has exactly one spelling, made of ASCII characters only. One value is reserved and MUST NOT be used: `*`, because it would read as a wildcard. No segment can equal `.` or `..`, since every segment holds a `=`, so a URI parser leaves a key as it is [RFC3986].
 
 A key is either canonical or refused. An engine MUST check that a key is canonical before computing anything from it, and MUST refuse one that is not. It MUST NOT repair a key into canonical form. An application MUST NOT build a key by joining text that was not encoded as a value. It parses a key, or asks an engine to build a key under another.
 
@@ -200,6 +204,8 @@ decide(subject, groups, permission, target, now):
 ```
 
 `given(s)` is the expansion of the permission of an allow, or the `P` of the role of an assignment ([Section 7.1](#71-role-resolution)). `expand` resolves a wildcard against the catalog in force. `removed(X)` is the expansion of `X` together with every permission that implies one of them. `p satisfies permission` when `p` is the permission or implies it.
+
+TBD: a question naming several permissions, satisfied by all of them or by any of them.
 
 ### 7.1. Role resolution
 
@@ -292,7 +298,7 @@ A store is whatever keeps the statements and answers for them, over any protocol
 
 A store MUST answer three questions. Given a subject with its groups and a list of place keys: the live statements about any of them at exactly those places. Given a place key: the statements at the places under it. Given role names: the stored roles of those names, with the roles they reference. A store MUST keep a statement at the place the engine gave. It MAY record the time at which each statement was placed or removed, in the unit the application uses for every time in the model, so that an application can compare it with the `at` of issued grants ([Section 8](#8-grants)). A store MUST compare keys and subjects byte by byte, for equality and for order, since a collation that folds case or ignores punctuation returns another place's or another subject's statements.
 
-A store SHOULD also answer, in one exchange, everything issuing needs: given a subject with its groups and the bases, the live statements about them on the chain of each base and under each base, with the stored roles those statements name. A store that can combine reads then answers in one round trip. One that cannot answers in several, and the model asks nothing about how many. Presets are never asked of a store: an engine holds the catalog, and the presets with it.
+A store SHOULD also answer, in one exchange, everything issuing needs: given a subject with its groups and the bases, the live statements about them on the chain of each base and under each base, with the stored roles those statements name. A store that can combine reads then answers in one round trip. One that cannot answers in several, and the model asks nothing about how many. Presets are never asked of a store, they are part of the catalog an engine holds.
 
 The lifecycle of statements whose place no longer exists in the application is the application's business: the engine never asks whether a place exists, so such a statement is garbage, not an error. Listing the places under a given one is useful to administration interfaces and MAY be offered, the engine never requires it.
 
@@ -372,19 +378,31 @@ Keys of places ([Section 6](#6-place)):
 place       = root / 1*segment
 root        = "/"
 segment     = "/" level "=" value
-level       = lowalpha *31( lowalpha / DIGIT / "-" )
+level       = token
 value       = 1*( literal / pct-encoded )
 literal     = ALPHA / DIGIT / "-" / "." / "_" / "~"
             / "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / ","
             / ";" / "=" / ":" / "@"
 pct-encoded = "%" uphex uphex
 uphex       = DIGIT / %x41-46
+token       = lowalpha *31( lowalpha / DIGIT / "-" / "_" )
 lowalpha    = %x61-7A
 ```
 
-ALPHA and DIGIT are defined in [RFC5234]. `level` never matches `=`, so a segment ends its level at its first `=` and no key parses in two ways. The grammar alone admits keys that are not canonical. A key is canonical when, in addition, `pct-encoded` appears only for an octet that `literal` does not match, the octets of each value once decoded form valid UTF-8 [RFC3629], and no decoded value equals `*`. Every canonical key is a `path-absolute` of [RFC3986].
+ALPHA and DIGIT are defined in [RFC5234]. `token` is shared with permissions and role names below. `level` never matches `=`, so a segment ends its level at its first `=` and no key parses in two ways. The grammar alone admits keys that are not canonical. A key is canonical when, in addition, `pct-encoded` appears only for an octet that `literal` does not match, the octets of each value once decoded form valid UTF-8 [RFC3629], and no decoded value equals `*`. Every canonical key is a `path-absolute` of [RFC3986].
 
-TBD: permissions, role entries, the canonical form of grants.
+Permissions and role entries ([Section 5](#5-catalog), [Section 7.1](#71-role-resolution)):
+
+```
+permission  = token ":" token
+pattern     = "*" / ( token / "*" ) ":" ( token / "*" )
+role-name   = token
+role-entry  = pattern / role-name / "-" ( pattern / role-name )
+```
+
+A `permission` is a `pattern` without `*`. Every `permission` and `role-name` is canonical as written, since the grammar admits one spelling of each. A `pattern` is canonical when `*:*` is written `*`.
+
+TBD: the canonical form of grants.
 
 [RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
