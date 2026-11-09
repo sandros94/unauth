@@ -27,13 +27,13 @@ Transitional file for the UnAuthZ RFC rewrite. The identifiers (D, A, G) are the
 | A6 | The root's permanent managers never empty through a change. Only statements about subjects count, never statements about groups. | settled |
 | A7 | Genesis: the first permanent allow of `*` placed at the root about one subject while the root has no manager yet. It is the only change made by someone who is not a manager, and it is possible only while the root has no manager. Who triggers it is the application's decision. | settled |
 | A8 | Restrictions stay within the author's width: a deny or an exclusion may reach a statement only when that statement's place is covered by the widest place where the author is a manager. | settled |
-| A9 | A stored role owned at place O is assignable only at O or under it. | to re-examine |
+| A9 | A stored role has a home place: assignable at its home or under it, referencing roles whose home is the same or wider, named uniquely along every chain. Defining or editing it is a change at the home: a manager there, holding what the role resolves to after the change. | settled |
 
 ## G: authority invariants (what the A rules together guarantee)
 
 | Id | Plain sentence | Status |
 | --- | --- | --- |
-| G1 | No change to the statements places a permission the manager lacks at the place of the change. | settled |
+| G1 | No change places a permission the author lacks at the place of the change, a stored-role edit included. | settled |
 | G2 | The only statement anyone places about themselves is genesis. | settled |
 | G3 | No deny or exclusion, at the moment it is placed, reaches a statement placed wider than its author's width. A later move of places may change what it reaches. | settled |
 | G4 | Once any statement exists, the root has at least one permanent manager; expiry never removes the last one. | settled |
