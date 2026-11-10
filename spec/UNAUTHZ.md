@@ -1,105 +1,109 @@
 # UnAuthZ: A Model for Place-Scoped Authorization with Guaranteed Recoverability
 
-Status: working draft, not yet versioned, first committed 2026-11-04. Author: Sandro Circi. Licensed under the MIT licence. Sections marked "TBD" are not written yet.
+Status: working draft, not yet versioned. Author: Sandro Circi. Licensed under the MIT licence.
 
 ## Abstract
 
-UnAuthZ is a model that grounds authorization implementations of any sort and size, from a flat set of roles in a single application to multi-tenant platforms that share resources with guests. It defines how a set of stored statements answers "may this subject perform this permission at this place?", how the answers can be carried and verified away from the statements, and how changes to the statements are governed so that no permission can be escalated and no place can be left without someone able to recover it. The application defines the goal. The model defines the how. A library implementing it provides the tools. The model is independent of any programming language, storage system or transport.
+UnAuthZ is a model that grounds authorization implementations of any size, from a flat set of roles in one application to multi-tenant platforms that share resources with guests. It defines how stored statements about subjects answer "may this subject do this, here, now", how the answers are carried as grants and read away from the statements without losing exactness over time, and how changes to the statements are governed so that nobody hands out more than they hold and nobody is ever locked out. It addresses three parties, an engine that computes, a store that keeps, and the application that decides, and says what each must do and nothing of how.
 
 ## 1. Introduction
 
-TBD. Content already settled for this section:
+This document specifies the UnAuthZ model. It defines the statements an application keeps about its subjects ([Section 3](#3-terminology)), the catalog of permissions they draw from ([Section 5](#5-catalog)), the places they apply to ([Section 6](#6-place)), how they answer a question ([Section 7](#7-decision)), how the answers are carried as grants and read ([Section 8](#8-grants)), what a store must be able to answer ([Section 9](#9-sources-of-answers)), and who may change what ([Section 10](#10-authority)). [Section 4](#4-invariants) lists what the model guarantees. [Section 11](#11-errors) names the refusals. [Section 12](#12-limitations) says what the model does not do, and [Section 13](#13-security-considerations) what an application must do for the guarantees to hold. [Appendix A](#appendix-a-scenarios) gives scenarios with the answers the model requires.
 
-This document specifies the UnAuthZ model. It defines the statements an application keeps about its subjects, how those statements answer a question, how the answers are carried as grants, and how changes to the statements are governed. It does not define how statements are laid out in storage, how parties communicate, or any programming interface. Those belong to the application, to the store it provides, and to companion documents that bind the model to a language or a platform.
+The model does not define how statements are laid out in storage, how the parties communicate, how grants are transported, or any programming interface. Those belong to the application and to the store it chooses.
+
+Three design choices run through the whole text. Nothing is matched by pattern: a place is addressed by one key compared byte by byte, and a permission by one spelling. Time only ever removes: a statement may end, nothing starts later, so what grants carry is exact from the moment they are issued until someone writes. And a read looks only for what it asks: which carried values can bear on a question follows from the catalog alone, so an engine never needs to parse what does not relate to it.
 
 ## 2. Conventions and notation
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [BCP 14](https://www.rfc-editor.org/info/bcp14) [RFC2119] [RFC8174] when, and only when, they appear in all capitals, as shown here.
 
-Wire formats (place keys, the grants payload, the version string) are given in ABNF [RFC5234] in [Appendix C](#appendix-c-abnf). Procedures are given in the pseudocode notation of [Appendix B](#appendix-b-pseudocode-notation). Examples are JSON [RFC8259] or plain prose, they are illustrative and never normative.
+Place keys, permissions and role entries are given in ABNF [RFC5234] in [Appendix C](#appendix-c-abnf). The text of grants is JSON [RFC8259] under the rules of [Section 8.4](#84-canonical-text). Procedures are given in the pseudocode notation of [Appendix B](#appendix-b-pseudocode-notation). Examples are JSON or plain prose, they are illustrative and never normative.
+
+Every time in this document, the end of a statement, the time grants are issued, the time of a question, is an integer count of seconds since 1970-01-01T00:00:00Z, ignoring leap seconds, the `NumericDate` of [RFC7519] without fractions. Two times compare as integers.
 
 ## 3. Terminology
 
-This document addresses three parties. An **engine** is software that computes according to this document: it resolves roles, answers questions, issues and reads grants, and checks who may change statements. An engine keeps no statements. A **store** is software that keeps statements and applies changes to them, the application provides it and [Section 9](#9-sources-of-answers) states what the model requires of it. The **application** is the software using an engine and a store: it defines the catalog and the structure, chooses where grants are carried, and decides who performs genesis. Everything this document leaves to the application is outside the model.
+This document addresses three parties. An **engine** is software that computes according to this document: it resolves roles, answers questions, issues and reads grants, and checks who may change statements. An engine keeps no statements and performs no input or output. A **store** is software that keeps statements and stored roles and applies changes to them. The application provides it, and [Section 9](#9-sources-of-answers) states what the model requires of it. The **application** is the software using an engine and a store: it defines the catalog and the structure, supplies who belongs to which group, chooses where grants are carried, and decides who performs genesis. Everything this document leaves to the application is outside the model.
 
 A **permission** is one action on one kind of resource, written `resource:action`, for example `event:manage`. A permission says what, it never says where. The reserved token `*` is a **wildcard**: in place of the resource, the action or both, it stands for every value the catalog has there. [Section 5](#5-catalog) defines how wildcards resolve and where they are legal.
 
 A **catalog** is the closed list of permissions an application recognises, together with its **implications**: a permission MAY imply others (`event:manage` implies `event:read`), meaning that it includes them. Holding the implying permission satisfies the implied one, a deny of the implied one reaches every permission that implies it ([Section 5.1](#51-implications)). A catalog also declares the application's presets and MAY designate the permission that makes a manager ([Section 5](#5-catalog)). Nothing in a catalog denies by itself.
 
-A **place** is where a statement applies: a position in a path that starts at the single, unnamed **root** and continues through typed **segments**. A segment pairs a **level**, a kind of place the application declared such as `org` or `unit`, with a value the application assigns to name which org, which unit, and that the model compares only for equality. The **structure** is the application's declaration of its levels and of which level may sit under which. The **key** is the string form of a place, for example `/org=org-1/unit=u7`, the root's key is `/`. One place **covers** another when a statement placed at the first applies at the second, and is **wider** than it when it covers it and is not the same place. The **chain** of a place is the ordered list of the places covering it, from the place itself up to the root. [Section 6](#6-place) defines the structure, the key syntax and how coverage is computed.
+A **place** is where a statement applies: a position in a path that starts at the single, unnamed **root** and continues through typed **segments**. A segment pairs a **level**, a kind of place the application declared such as `org` or `unit`, with a value the application assigns to name which org, which unit, and that the model compares only for equality. The **structure** is the application's declaration of its levels and of which level may sit under which. The **key** is the string form of a place, for example `/org=org-1/unit=u7`, the root's key is `/`. One place **covers** another when a statement placed at the first applies at the second, and is **wider** than it when it covers it and is not the same place. The **chain** of a place is the ordered list of the places covering it, from the place itself up to the root. [Section 6](#6-place) defines the structure, the key syntax and how coverage is computed. An application whose things need no separation has only the root and writes no place.
 
-A **subject** is whom a statement is about: an identifier the application chooses. For a single user, application or machine it has the meaning of the `sub` claim in JSON Web Token (JWT) [RFC7519]. The application may also choose an identifier for a **group** of them, such as the members of an organisation or a team. Which subjects belong to a group is a fact the application keeps and supplies, never one the model derives. A statement about a group applies to every subject the application says belongs to it, except a deny, which applies to a single subject only ([Section 7](#7-decision)).
+A **subject** is whom a statement is about: an identifier the application chooses. For a single user, application or machine it has the meaning of the `sub` claim in JSON Web Token (JWT) [RFC7519]. The application may also choose an identifier for a **group** of them, such as the members of an organisation or a team. Which subjects belong to a group is a fact the application keeps and supplies, never one the model derives. A statement about a group applies to every subject the application says belongs to it ([Section 7](#7-decision)). The subject and its groups together are the subject's **identifiers**, and each identifier is a **source** of what the subject holds.
 
 A **statement** is one stored assertion about one subject at one place. Every statement has the same shape, `{ kind, subject, value, place?, expiresAt? }`, and `kind` names what it asserts:
 
 - `allow`: makes the subject hold the permission in `value` at the place.
-- `assign`: makes the subject hold the role named in `value` at the place. An assignment only ever adds.
-- `deny`: blocks the subject from the permission in `value` at the place, whatever gives it. A deny is the only kind that blocks, and it never names a group ([Section 7](#7-decision)).
-- `exclude`: takes the permission in `value` out of what the subject's own statements at wider places give at this place ([Section 7](#7-decision)). An exclusion narrows the reach of those statements and touches nothing else.
+- `assign`: makes the subject hold the role named in `value` at the place.
+- `deny`: blocks the subject from the permission in `value` at the place and under it, whatever gives it. Nothing placed lower undoes a deny.
+- `exclude`: takes the permission in `value` out of what the subject holds at the place and under it. About a group, it takes out only what that group gave. About the subject itself, it takes out whatever gave it. A statement placed lower gives the permission back there ([Section 7](#7-decision)).
 
-`value` is a permission, with wildcards allowed, for `allow`, `deny` and `exclude`, and a role name for `assign`. `place` MAY be absent: an absent place is the root, so an application without places writes none.
+`value` is a permission, with wildcards allowed, for `allow`, `deny` and `exclude`, and a role name for `assign`. `place` MAY be absent: an absent place is the root, so an application without places writes none. `expiresAt`, when present, is the time at which the statement ends.
 
-A statement is **live** at a given time when it has no `expiresAt` or `expiresAt` is later than that time. A statement with no `expiresAt` is **permanent**.
+A statement is **live** at a given time when it has no `expiresAt` or `expiresAt` is later than that time. A statement with no `expiresAt` is **permanent**. Nothing in the model starts at a later time: time only ever ends statements.
 
-A **role** is a named list of **entries**, defined once and independent of any place. An entry names a permission, names another role, or, prefixed with `-`, is an **exclusion** that removes what it names from what the other entries give. The same role can be assigned at many places. A role declared in the catalog is a **preset**. A role defined in data is a **stored role**, and it has a **home**, the place where it is defined ([Section 10](#10-authority)). A role only ever adds to what a subject may do. A deny statement blocks a subject from a permission, an exclusion takes a permission out of what a source gives. [Section 7](#7-decision) defines how a role resolves to permissions.
+A **role** is a named list of **entries**, defined once and independent of any place. An entry names a permission, names another role, or, prefixed with `-`, is an **exclusion** that removes what it names from what the other entries give. The same role can be assigned at many places. A role declared in the catalog is a **preset**. A role defined in data is a **stored role**, and it has a **home**, the place where it is defined ([Section 10](#10-authority)). [Section 7.1](#71-role-resolution) defines how a role resolves to permissions.
 
-A **question** is one or more permissions at one **target** place, asked for a subject together with the groups the application says it belongs to: "may Alice, a member of `acme-team`, `event:manage` at `/org=org-1`?". A question naming several permissions also says whether **all** of them or **any** of them must be satisfied, and MAY ask for every answer. A statement **relates to** a question when it can change its answer. A **decision** is the answer to a question together with its reason: allowed or not, and which statement determined it, for the permission that settled the question or for each permission when every answer is asked for ([Section 7](#7-decision)).
+A **question** is one or more permissions at one **target** place, asked for a subject together with its identifiers, its own and those of the groups it belongs to, at one **time**: "may Alice, a member of `acme-team`, `event:manage` at `/org=org-1`, now?". A question naming several permissions also says whether **all** of them or **any** of them must be satisfied, and MAY ask for every answer. A statement **relates to** a question when it can change its answer. A **decision** is the answer to a question together with its reason: allowed or not, and which statement determined it, for the permission that settled the question or for each permission when every answer is asked for ([Section 7](#7-decision)).
 
-A subject's **grants** are what the statements about the subject and about its groups amount to, written in a form that can be carried outside the statements and read without them. A **grant** is one entry of that form: what the statements sitting at one place allow the subject and what they deny. Grants repeat nothing that the chain already gives, so what a subject may do at a place is derived when grants are read, not written into them. A statement is stored, grants are carried. Grants are issued for one or more **bases**, places under which they answer. A target under no base is **not covered**, and a read says so instead of answering. [Section 8](#8-grants) defines their format, how they are read and when they must be reissued.
+A subject's **grants** are what the statements about the subject and about its groups amount to, written in a form that is carried outside the statements and read without them. Grants are issued at one time and hold a copy of every statement that can relate to a question about the subject, each with its end, so that a read at any later time answers as the statements would, until someone writes. Grants are issued for one or more **bases**, the places they speak for. A target under no base is **not covered**, and a read says so instead of answering. Several grants of one subject read together are **sets**. [Section 8](#8-grants) defines what grants hold, how they are issued and read, and their one written form.
 
-A **manager** of a place is a subject who may change the statements there, place or remove a statement about a subject, and may define and edit the stored roles whose home is that place. A subject is a manager of a place by holding, at that place or at a wider one, the permission the catalog designates for it ([Section 5](#5-catalog)). Only a manager of a place may change the statements there. A manager is a subject whenever their own permissions are checked. A subject who is a manager through a permanent statement about the subject itself at the root is a **permanent manager**. A statement about a group never makes a permanent manager, since an engine cannot see who belongs to a group.
+A **manager** of a place is a subject who may change the statements there and may define and edit the stored roles whose home is that place. A subject is a manager of a place by holding, at that place or at a wider one, the permission the catalog designates for it ([Section 5](#5-catalog)). Whether a subject is a manager is always asked of the statements, never of grants ([Section 10](#10-authority)). A permanent statement at the root that gives the manager permission is a **permanent management**, and a subject with such a statement about any of its identifiers is a **permanent manager**. The engine guarantees that such a statement exists, never that an actor stands behind its identifier: that is the application's, as for every identifier.
 
 **Genesis** is the first permanent allow of `*` placed at the root while it has no manager yet. It is the only change to the statements performed by someone who is not a manager, and it is possible only while the root has no manager.
 
-The **author** of a change is the subject who asks for it, with its groups. The **width** of an author is the widest place where the author is a manager. The **home** of a stored role is the place where it was defined, and the role may be assigned only there or under it. [Section 10](#10-authority) defines the rules that use them.
-
-TBD: the terms for how an engine obtains answers and statements from a store, if any are needed, defined with [Section 9](#9-sources-of-answers).
+The **author** of a change is the subject who asks for it, with its groups. The **width** of an author, for a change, is the widest place on the chain of the change where the author is a manager. [Section 10](#10-authority) defines the rules that use them.
 
 ## 4. Invariants
 
 What the model guarantees, in one place. Each row is a consequence of the sections named with it, which hold the rules and the procedures and cite a row by its identifier where they state it. Rows about a decision start with D, rows about authority with A, rows about what the authority rules guarantee with G.
 
-Canonical forms. Permissions, place keys and grants each have exactly one canonical text form, defined in this document. That form is the only one an engine reads or writes. Any other representation that a store, an application or a carrier uses, a column layout, a numeric id, a compressed token, MUST round-trip to the canonical form without loss, so that two things are equal exactly when their canonical forms are equal. This is what lets grants fit a size-constrained carrier such as a cookie-borne token without the model knowing about carriers at all ([Section 6](#6-place), [Section 8](#8-grants)).
+Canonical forms. Permissions, place keys, times and grants each have exactly one text form, defined in this document. That form is the only one an engine reads or writes. Any other representation that a store, an application or a carrier uses, a column layout, a numeric id, a compressed token, MUST round-trip to the canonical form without loss, so that two things are equal exactly when their canonical forms are equal. This is what lets grants fit a size-constrained carrier such as a cookie-borne token without the model knowing about carriers at all, and what lets engines written in different languages read each other's grants ([Section 6](#6-place), [Section 8](#8-grants)).
 
 What a decision guarantees ([Section 7](#7-decision), [Section 5.1](#51-implications)):
 
 | Id | Guarantee |
 | --- | --- |
 | D1 | Nothing stated means denied. |
-| D2 | A live deny about the subject, of the asked permission, at any place covering the target, decides against it. |
+| D2 | A live deny about the subject or about one of its groups, of the asked permission, at any place covering the target, decides against it. Nothing placed lower undoes it. |
 | D3 | A deny is exact on what it names and complete on what includes it: denying `event:read` also denies every permission that implies `event:read`, denying `event:manage` leaves `event:read` untouched. |
-| D4 | Roles and statements about groups only add. A deny names one subject and blocks whatever gives the permission. An exclusion takes out only what its own subject's wider statements give. |
+| D4 | An allow and an assignment only add. An exclusion about a group takes out only what that group gave, so belonging to one more group takes something away only through a deny on that group. An exclusion about the subject itself takes out whatever gave the permission, at its place and under it, and what is given lower stands. |
 | D5 | Statements at places not covering the target, and statements that do not relate to the permissions asked, never influence the answer. |
-| D6 | The same statements, the same question and the same clock give the same answer. The time of a question is fixed when it is asked, however many permissions it names. |
-| D7 | Width never ranks statements. Allows add up along the chain, a deny blocks from any covering place, an exclusion reaches only wider statements of its own subject. |
-| D8 | Grants issued from statements answer exactly as the statements would, for every target the grants cover. A target outside every base is reported as not covered, never as denied. |
+| D6 | The same statements, the same question and the same time give the same answer. A question has one time, fixed when it is asked, however many permissions it names. |
+| D7 | Width never ranks statements. Allows add up along the chain, a deny blocks from any covering place, an exclusion reaches its own place and what lies under it. |
+| D8 | Grants issued at a time answer, for every target they cover and at every later time, exactly as the statements live at issue would answer at that time. A target outside every base is reported as not covered, never as denied. |
+| D9 | A deny about a group never reaches a permanent manager of the root, so whoever holds a permanent management can always act. |
 
 What authority over a change requires ([Section 10](#10-authority)):
 
 | Id | Rule |
 | --- | --- |
-| A1 | Manage where you change: only a manager of a place changes the statements at that place, and defines or edits the stored roles whose home it is. |
-| A2 | Hand out only what you hold: an allow or an assignment requires the author to hold what it gives at that place, a deny or an exclusion requires the author to hold the permission it names there, a stored-role edit requires the author to hold at the home what the role resolves to after it. |
-| A3 | Never about yourself: an author never places or removes a statement whose subject is the author's own identifier. Genesis is the one exception. |
-| A4 | Removal needs management only: removing a statement at a place requires management of that place and nothing else. A restriction is protected by placing it wider than the places its target manages. |
+| A1 | Manage where you change: only a manager of a place changes the statements at that place and defines or edits the stored roles whose home it is, and whether the author is a manager is asked of the statements. |
+| A2 | Hand out only what you hold: an allow or an assignment requires the author to hold what it gives at that place and to be free of a deny of it under that place, a deny or an exclusion requires the author to hold the permission it names there, a stored-role edit requires the author to hold at the home what the role resolves to after it. A preset the catalog marks as assignable by a permission is assigned by whoever holds that permission there. |
+| A3 | Never for yourself: an author never places a statement about the author's own identifier, and never removes a deny or an exclusion about it. An author MAY remove an allow or an assignment about itself. Genesis is the one exception to placing. |
+| A4 | Remove only what you could give: removing a statement requires management of its place and holding what the statement gives or names, as placing it would. |
 | A5 | Restrictions stay within the author's width: a deny or an exclusion reaches only statements placed at the author's width or under it. |
 | A6 | Genesis: the first permanent allow of `*` at the root, about one subject, while the root has no manager. The only change made by someone who is not a manager, possible only while the root has no manager. |
 | A7 | A stored role has a home: assignable at the home or under it, referencing roles whose home is the same or wider, named uniquely along every chain. |
-| A8 | The root's permanent managers never empty through a change. Only statements about subjects count, never statements about groups. |
+| A8 | The root never loses its last permanent management through a change, whatever identifier it is about, and no deny or exclusion at the root may silence the last one. |
+| A9 | Never a deny on your own group: an author never places a deny about a group the author belongs to. |
 
 What those rules guarantee together ([Section 10](#10-authority)):
 
 | Id | Guarantee |
 | --- | --- |
-| G1 | No change places a permission the author lacks at the place of the change, a stored-role edit included. |
+| G1 | No change places a permission the author lacks at the place of the change or is denied under it, a stored-role edit included, unless the catalog names the author's permission as the one that assigns that preset. |
 | G2 | The only statement anyone places about themselves is genesis. |
 | G3 | No deny or exclusion, at the moment it is placed, reaches a statement placed wider than its author's width. A later move of places may change what it reaches. |
-| G4 | Once any statement exists, the root has at least one permanent manager, and expiry never removes the last one. |
-| G5 | Every live statement has someone who may remove it: no hard lock is constructible. |
+| G4 | Once any statement exists, the root holds at least one permanent management, expiry never removes the last one, and no deny on a group reaches whoever holds it. |
+| G5 | Every live statement has someone who may remove it: the root's permanent managers hold everything, so no hard lock is constructible. |
 
 ## 5. Catalog
 
-The catalog is the vocabulary an engine holds without a store. It declares the permissions the application recognises, the implications between them, the presets, and, when the application wants managers, the permission that makes one. It is defined in code, next to the structure, and an engine reads it as it was given. Nothing in a catalog is asked of a store.
+The catalog is the vocabulary an engine holds without a store. It declares the permissions the application recognises, the implications between them, the presets, and, when the application wants managers, the permission that makes one. A preset MAY also name the permission whose holders may assign it without holding what it gives ([Section 10](#10-authority)). It is defined in code, next to the structure, and an engine reads it as it was given. Nothing in a catalog is asked of a store.
 
 A resource, an action, a role name and a level of the structure ([Section 6](#6-place)) are each one **token**: a lowercase ASCII letter followed by at most thirty-one lowercase letters, digits, `-` or `_`, as [Appendix C](#appendix-c-abnf) gives it. A permission is a resource and an action joined by `:`. This spelling is the canonical form of [Section 4](#4-invariants), compared byte by byte, and there is no other: `Report:read` is not a permission in another form, it is refused. An application whose vocabulary is spelled otherwise maps it onto tokens where it defines the catalog.
 
@@ -107,15 +111,17 @@ A permission not in the catalog is **unknown**. An engine MUST refuse an unknown
 
 A catalog MAY designate one of its permissions as the one that makes its holder a manager. It is an ordinary permission, named as the application likes: this document reserves no permission name. The designated permission is concrete, never a wildcard. A catalog is valid without it, since answering questions and issuing grants do not need it. An engine MUST refuse every change to the statements when the catalog designates none.
 
-The wildcard `*` MAY stand for the resource (`*:read`), for the action (`event:*`) or for both, and a bare `*` is the short form of `*:*`. A wildcard resolves, at the time of the check, to every value the catalog has for that segment, so a catalog that grows is covered without a new write. Wildcards are legal in statements and in role entries, never in a question, in an implication or in the manager designation. No other pattern is recognised.
+The wildcard `*` MAY stand for the resource (`*:read`), for the action (`event:*`) or for both. Every permission is written `*`, and `*:*` is not a spelling of it: an engine MUST refuse `*:*`. A wildcard resolves, at the time of the check, to every value the catalog has for that segment, so a catalog that grows is covered without a new write. Wildcards are legal in statements and in role entries, never in a question, in an implication or in the manager designation. No other pattern is recognised.
 
 An engine MUST refuse a catalog that declares the same permission twice, a name that is not a token, an implication whose permissions are not both concrete and declared, a cycle of implications, since two permissions that imply each other are one permission, a manager designation that is not a concrete declared permission, or a preset that references a stored role or breaks a rule of [Section 7.1](#71-role-resolution). A refused catalog defines nothing: an engine has a catalog or has none.
+
+An engine derives from the catalog a **fingerprint**: a value that is equal for two catalogs that declare the same permissions, implications, presets and designations, and different otherwise. Grants carry it ([Section 8](#8-grants)). This document does not fix how it is computed. Engines written in several languages that must read each other's grants fix one computation between them, for example a hash over a canonical serialisation of the catalog, and the application is advised to do so from the start.
 
 ### 5.1. Implications
 
 An implication is declared in the catalog, from one permission to another: `report:write` implies `report:read`, since writing a report means reading it first. It means that the first permission includes the second: whoever holds `report:write` also satisfies a question about `report:read`. Implications are transitive, a permission may imply several others and be implied by several others, and both permissions of an implication MUST exist in the catalog.
 
-Because the implying permission includes the implied one, a deny reaches downward along implications: a deny of a permission also denies every permission that implies it, directly or through a chain, since exercising any of those would exercise the denied one. A deny never reaches upward: denying `report:write` leaves `report:read` as it was (D3). An exclusion in a role removes the permissions it names and every permission that implies them, for the same reason: the role `["*:*", "-report:read"]` yields neither `report:read` nor `report:write`. A deny and an exclusion both reach what includes the named permission. They differ in what the named permission itself gave: an exclusion removes the permission from the role, so nothing it implied is given by that role any more, while a deny refuses the action and leaves what the permission implied as it was.
+Because the implying permission includes the implied one, a deny reaches downward along implications: a deny of a permission also denies every permission that implies it, directly or through a chain, since exercising any of those would exercise the denied one. A deny never reaches upward: denying `report:write` leaves `report:read` as it was (D3). An exclusion in a role removes the permissions it names and every permission that implies them, for the same reason: the role `["*", "-report:read"]` yields neither `report:read` nor `report:write`. A deny and an exclusion both reach what includes the named permission. They differ in what the named permission itself gave: an exclusion removes the permission from the role, so nothing it implied is given by that role any more, while a deny refuses the action and leaves what the permission implied as it was.
 
 Example. Catalog: `report:list`, `report:read`, `report:write`, with `report:write` implying `report:read` and `report:read` implying `report:list`. One role, `analyst = ["report:write"]`, for staff who write their own reports, resolved as [Section 7.1](#71-role-resolution) describes. Alice and Bob are both assigned `analyst` at `/org=acme`, Bob also holds a deny of `report:read` there.
 
@@ -173,19 +179,25 @@ In the example, the chain of `/org=acme/unit=u7` is itself, `/org=acme` and `/`.
 
 ## 7. Decision
 
-A question carries a subject and its groups. A statement applies to the question when its subject equals the subject or any of those groups, with one exception: a deny applies only when its subject equals the subject itself. A deny written about a group therefore has no effect, and an application SHOULD NOT write one. The identifiers are supplied by the application, an engine takes them as given and infers nothing about who belongs to what.
+A question is asked for one subject, with the subject's identifiers: its own, and the identifier of every group it belongs to, as the application's source of memberships knows them at that moment. That source is a session, a directory, or the store itself, which can look the groups up in the same read as the statements ([Section 9](#9-sources-of-answers)).
+
+A statement applies to the question when its subject is one of those identifiers. That is all the engine does with them: it compares identifiers for equality and knows nothing about who is in which group.
+
+The list of identifiers must be whole. A group left out is a group whose statements do not count, and for a deny that is a block silently missed ([Section 13](#13-security-considerations)). Nothing else about the groups is needed, not their names, not their members, not their number.
+
+The identifiers are needed wherever the statements are read: for a question asked of them, for issuing grants, and for a change. A read of grants needs none, since the grants already hold what every identifier gave ([Section 8](#8-grants)).
 
 A question is answered from the live statements at the places covering the target, and only from those that **relate to** the permission asked. A deny relates to it when it names the asked permission or a permission the asked one implies ([Section 5.1](#51-implications)). An allow relates to it when it names the asked permission or one that implies it, an assignment when its role resolves to one ([Section 7.1](#71-role-resolution)), an exclusion when it takes one out. No other statement can change the answer (D5), and an engine MUST NOT need any other to answer. Which permissions these are follows from the catalog alone, so it is known before any statement is read. Only the assignment of a stored role needs that role's definition to tell.
 
 A question has one time, fixed when it is asked. An engine MUST decide every step of the question against that one time (D6).
 
-First, the denies. If a live deny about the subject itself relates to the question, the answer is denied, whatever is given, and nothing more needs to be read (D2, D3). A deny MAY name a wildcard: it then blocks every permission the wildcard expands to, so a deny of `*` at a place blocks the subject from everything at and under that place.
+First, the denies. If a live deny about the subject or about one of its groups relates to the question, the answer is denied, whatever is given, and nothing more needs to be read (D2, D3). A deny MAY name a wildcard: it then blocks every permission the wildcard expands to, so a deny of `*` at a place blocks the subject from everything at and under that place. One exception protects recovery (D9): a deny about a group does not apply to a subject who is a permanent manager of the root, which the engine sees in the same statements.
 
-Second, what is given (D4). Each allow and each assignment about the subject or one of its groups gives a set of permissions: what the permission of an allow expands to, or what the role of an assignment resolves to ([Section 7.1](#71-role-resolution)). An exclusion about the same subject or group takes out of that set the permission it names and every permission that implies it, but only from statements placed at places wider than the exclusion's own, and only for targets at or under the exclusion's place. The answer is allowed when some permission left is the asked one or implies it, and denied when none is (D1). The same statements, question and time always give the same answer (D6).
+Second, what is given (D4). Each allow and each assignment about one of the subject's identifiers gives that identifier a set of permissions: what the permission of an allow expands to, or what the role of an assignment resolves to ([Section 7.1](#71-role-resolution)). An exclusion about a group takes out of what that group was given, at the exclusion's place and under it, the permission it names and every permission that implies it. An exclusion about the subject itself takes the same out of what every identifier was given, at its place and under it. An exclusion wins at its own place: what the same place gives is taken out too, exactly as `-` wins inside a role. What a narrower place gives stands, whoever it is about. The answer is allowed when some permission left is the asked one or implies it, and denied when none is (D1).
 
-Width never ranks statements (D7), it orders the walk. Read the chain from the root down to the target, carrying for the subject and for each of its groups what has been given so far of the permissions that satisfy the question. At each place, first take out what the exclusions there remove from what that same subject or group carried in, then add what the allows and assignments there give. What is left at the target decides.
+Width never ranks statements (D7), it orders the walk. Read the chain from the root down to the target, carrying for each identifier what has been given so far of the permissions that satisfy the question. At each place, first add what the allows and assignments there give, then take out what the exclusions there remove. What is left at the target decides.
 
-Two consequences follow. A subject denied a permission at a wide place does not obtain it from an allow at a narrow place inside: a guest who must see one document under a place where they are denied has to lose the deny, not gain an allow. And a group granted something at a wide place is kept out of a narrower place only by an exclusion about that group, since a deny names one subject.
+Two consequences follow. A subject denied a permission at a wide place does not obtain it from an allow at a narrow place inside: a guest who must see one document under a place where they are denied has to lose the deny, not gain an allow. And an exclusion is the tool for "everything except one": excluded at the place that holds twenty archives and allowed at one of them, a subject writes in that one archive and in no other, and in no archive created later.
 
 The decision names the statement that decided: the deny that blocked, or the allow or assignment whose permissions were left and satisfied the question. When several statements would decide alike, an engine names one of them, and this document does not say which.
 
@@ -193,15 +205,19 @@ The decision names the statement that decided: the deny that blocked, or the all
 decide(subject, groups, permission, target, now):
   blocking = permission and every permission it implies
   wanted   = permission and every permission that implies it
-  for each live deny d about subject at a place on the chain of target:
+  exempt   = a live permanent statement at the root about subject or a group in groups gives the manager permission
+  for each live deny d at a place on the chain of target, about subject or about a group in groups:
+    if d is about a group and exempt: continue
     if some p in expand(value(d)) is in blocking:
       return denied, d
   carried = empty map from identifier to set of permissions
   for each place K on the chain of target, from the root down to target:
-    for each live exclusion e at K about an identifier I in {subject} and groups:
-      carried[I] = carried[I] minus removed(value(e))
     for each live allow or assignment s at K about an identifier I in {subject} and groups:
       carried[I] = carried[I] union (given(s) intersected with wanted)
+    for each live exclusion e at K about a group G in groups:
+      carried[G] = carried[G] minus removed(value(e))
+    for each live exclusion e at K about subject:
+      for each identifier I: carried[I] = carried[I] minus removed(value(e))
   if some carried set is not empty:
     return allowed, the statement that gave one of its permissions
   return denied
@@ -221,9 +237,9 @@ decide_several(subject, groups, permissions, mode, every, target, now):
     answers = decide(subject, groups, p, target, now) for each p in permissions, in the order asked
     return combined(mode, answers), answers
   for each p in permissions, in the order asked:
-    if a live deny d about subject at a place on the chain of target blocks p:
-      if mode is all: return denied, the answer for p naming d
-      set p aside, denied by d
+    if a live deny that applies blocks p:
+      if mode is all: return denied, the answer for p naming that deny
+      set p aside, denied by it
   for each p in permissions not set aside, in the order asked:
     answer = decide(subject, groups, p, target, now)
     if mode is all and answer is denied: return denied, answer
@@ -231,9 +247,9 @@ decide_several(subject, groups, permissions, mode, every, target, now):
   return combined(mode, answers), every answer in the order asked
 ```
 
-`combined` is allowed under all when every answer is allowed, under any when some answer is allowed, and denied otherwise. A deny blocks `p` when it names `p` or a permission `p` implies.
+`combined` is allowed under all when every answer is allowed, under any when some answer is allowed, and denied otherwise.
 
-An engine MUST refuse, as a whole, a question that names no permission, an unknown permission or a wildcard, and one that names several permissions without saying all or any. A permission named twice counts once, and is answered at each of its positions when every answer is asked for. A question has one target, so the same permissions at several places are several questions. Any other combination, one permission together with either of two others for example, is the application's to compute from every answer.
+An engine MUST refuse, as a whole, a question that names no permission, an unknown permission or a wildcard, one that names several permissions without saying all or any, and one that carries no time. A permission named twice counts once, and is answered at each of its positions when every answer is asked for. A question has one target, so the same permissions at several places are several questions. Any other combination, one permission together with either of two others for example, is the application's to compute from every answer.
 
 ### 7.1. Role resolution
 
@@ -256,147 +272,292 @@ A role with no references has `P_in` and `E_in` empty, so `P` is its includes mi
 
 ## 8. Grants
 
-TBD. Content already settled for this section:
+Grants are carried where the application chooses, in a signed token, in a server-side session record, in any store of its own. Where they live and how they travel is the application's decision. What they hold, how they are issued, how they are read and their one written form are normative.
 
-Grants are carried where the application chooses, for example in a session token or in a server-side session record. The place is the application's choice, the format is normative.
+### 8.1. What grants hold
 
-Grants are issued for one or more **bases**, the places they answer for. When no base is named, the base is the root `/` and the grants cover every place.
+Grants are issued for one subject, at one time, from the statements live at that time about the subject's identifiers, its own and those of its groups, as the application's source of memberships knows them. They hold:
 
-Issuing for a base writes the entry of the base place, even when nothing is granted there, and folds into it everything the places above the base give, so that no key above a base appears. A statement at the base or under it is written at its own place. A target is covered when some entry's key lies on its chain, which happens exactly when some base covers it.
+1. **The bases**, the places the grants speak for. The root when none is named. A target under no base is not covered.
+2. **A copy of every statement that can relate to a question** about the subject: its kind, its value as written, its place, and its end when it has one. A permission is kept as written, wildcards included. A preset is kept by name. A stored role is kept as the permissions it resolved to at issue, written once and referenced from every place where it is assigned.
+3. **A source number** on the values that came through a group which also has an exclusion in the grants, so that the exclusion can be applied to that group's values alone. Values of the subject itself and of groups without an exclusion carry none, and an exclusion without a number is the subject's own and applies to everything. Denies carry none. The number says only that values share a source, never which group it is.
+4. **The time they were issued**, so that a read at an earlier time is refused.
+5. **The revision of this format and the fingerprint of the catalog** they were written for, so that an engine refuses what it cannot read and says which of the two differs.
 
-Several bases MAY be issued into one set of grants, and an engine MUST accept several sets for one read, treating a target as covered when any set covers it. The bases of sets read together SHOULD NOT cover each other, since the wider set would then answer inside the narrower one too. For example a platform that hosts shared folder splits along the tree instead: one set for `/area=platform` in a cookie, one for `/area=drive` server side, each covering what the other does not.
+Grants hold nothing else about the subject: not the names of its groups, not who placed a statement, not statements that had ended at issue, not statements about other subjects. An application's own fields live beside the grants in its carrier, never inside the canonical text, and an engine reads only the grants.
 
-Issuing takes the subject and its groups, as the application supplies them at that moment ([Section 7](#7-decision)). Grants hold what the statements about all of them give, per place, without recording which identifier gave what. When the application's notion of who belongs to a group changes, grants already issued keep the old answer until they are reissued. A key is a position: when a thing moves to another place, or a place is deleted and its value used again, grants issued before keep entries at keys that no longer mean the same thing, and a deny or an exclusion carried at the old key no longer lies on the new key's chain while allows from wider places still do. An application MUST reissue, or stop trusting, grants that cover a place whose statements it moved or removed.
+Grants freeze what the statements held at issue. A statement that ends later ends in the grants too, because its end travels with it: a value whose end has passed does not count, and nothing else changes. A statement placed or removed later is not in the grants: the delay between such a write and the next issue is the application's choice, through where it keeps its session and for how long. An application that accepts no delay asks the statements directly ([Section 7](#7-decision)).
 
-Grants carry no redundant information. A grant holds only what the statements sitting at its own place give: the permissions allowed there, the permissions denied there, and the permissions that exclusions there take out of what wider places gave. A permission that comes from a wider place is written once, in the grant of that place, and never repeated in the grants below it.
+Membership is frozen too. Grants reflect the groups the subject was in when they were issued. Joining or leaving a group afterwards changes nothing until new grants are issued.
 
-A wildcard is carried as it was written, not expanded: the catalog fingerprint in the version of the grants pins its meaning, and a changed catalog forces a reissue. An assignment of a preset is carried as the name of the preset, which an engine resolves from the presets it already has. An assignment of a stored role is carried as the permissions that role resolves to when the grants are issued, so that reading grants never requires a store.
+### 8.2. Issuing
 
-A read of grants has three outcomes: **allowed**, **denied**, or **not covered**. A target that is not covered yields not covered and nothing else, what follows is the application's decision and outside this document. A covered target is read by the walk of [Section 7](#7-decision) over the entries of its chain, from the root down: a permission given by an entry counts unless an entry below it on the chain, at or above the target, lists that permission as taken out, and a permission denied by any entry blocks. The target is allowed when some permission left is the asked one or implies it, and denied otherwise. This is the decision rule of [Section 7](#7-decision) applied to grants, so for every covered target grants and statements agree by construction (D8). A question against the statements never yields not covered, since the statements cover every place. A read needs the entries on the chain of the target and, within them, only the values that relate to the question, the denies first. Grants carry presets by name and stored roles already resolved, so for a read those values follow from the catalog alone. A read naming several permissions settles as [Section 7](#7-decision) states. Coverage depends on the target alone, so such a read is not covered as a whole or covered as a whole.
+Issuing takes the subject, its groups, the bases and the time of issue, reads the statements that relate to the subject or its groups and are live at that time, and the definitions of the stored roles those statements assign, and writes the grants. A statement is kept when its place lies on the chain of a base or under a base. A deny about a group is left out when the subject is a permanent manager of the root (D9). Nothing is folded: a statement above a base stays at its own place.
 
-The canonical form of grants is an object with two fields defined by this document, `g` and `v`, and one optional field, `at`. Any other field of the object belongs to the application. An engine MUST ignore fields it does not define.
+Source numbers are assigned to the groups that have at least one exclusion kept in the grants, from 1 upwards, in the byte order of the canonical text of each group's own values with the number left blank. Two groups whose values are identical share one number. No group that has no exclusion receives a number.
 
-`v` is the version of the grants. `at`, when present, is the time the grants were issued, in the unit the application uses for every time in the model, the same as `expiresAt`. The engine never reads it: it is there so that an application can compare it with the time its statements last changed and decide for itself whether to reissue. `g` holds the entries, one per place, keyed by the canonical key of that place. An engine MUST NOT accept a key inside `g` that is not a canonical place key.
+Two engines issuing from the same statements for the same subject, groups, bases and time MUST produce the same text.
 
-An entry has up to four fields, each a list of permissions or of names:
+### 8.3. Reading
 
-- `a`: the permissions allowed at that place, written as in the statements, wildcards included.
-- `d`: the permissions denied there, written as in the statements.
-- `r`: the names of the presets assigned there.
-- `x`: the permissions taken out, at and under this place, of what the entries above give.
+A read takes grants, one permission, one target and one time, and gives one of three answers: **allowed**, **denied**, or **not covered**. It refuses instead of answering when the grants are malformed, when their format revision or catalog fingerprint is not the engine's own, or when the time of the question is earlier than the time of issue ([Section 11](#11-errors)). A refusal is not an answer, and the model does not say what the application does next.
 
-`x` is how an exclusion is carried. At issuing, an engine lists under `x` every permission that an exclusion at this place takes out and that no other statement at a wider place still gives. The permissions are written in full, never as wildcards or role names, because the exclusion was already applied when the entry was written. `x` takes nothing away from what statements at this place or under it give: those are written at their own places and a read meets them after the mask.
+The read needs no store and no walk. From the catalog alone it knows, for the permission `p`, `blocking(p)`, `wanted(p)` and `down(p)`: the permissions a deny must name, the permissions that satisfy `p`, and the permissions an exclusion must name to take one of those out, that is `wanted(p)` with everything one of them implies. The values it looks up are the spellings that can carry one of those permissions, four for each: for `report:write` they are `report:write`, `report:*`, `*:write` and `*`. It also looks up the presets whose resolution meets `wanted(p)` and the stored roles whose row meets it, and touches no other value.
 
-Example. Every member of the platform may read profiles. The staff of one organisation write that organisation's reports, its editors publish them, and a report in the archive is closed: it can be read and published, not created or changed. The subject belongs to three groups: `members`, assigned `member = ["profile:read"]` at the root, `acme-writers`, assigned `writer = ["report:read", "report:write"]` at the organisation, and `acme-editors`, assigned `editor = ["report:publish"]` there. The subject is also allowed `report:export` at the organisation by a statement about the subject alone, and denied `report:delete` there. The group `acme-writers` is excluded from `report:write` under the archive. Issued for the whole tree:
+```
+read(grants, p, target, t):
+  refuse when grants are malformed, or name another format revision or catalog fingerprint
+  refuse when t < issue time of grants
+  if no base covers target: return not covered
+  for each deny (value v, place P, end e) with v a spelling of blocking(p):
+    if live(e, t) and covers(P, target): return denied, that deny
+  X = every exclusion (value v, place E, end e, source m)
+        with v a spelling of down(p), live(e, t) and covers(E, target)
+  for each given value (value v, place A, end e, source m) that meets wanted(p):
+    if not live(e, t) or not covers(A, target): continue
+    for each q in given(v) that is in wanted(p):
+      if no x in X has covers(A, place of x) and q in removed(value of x)
+         and (x has no source or source of x = m):
+        return allowed, that value
+  return denied
+
+live(e, t): e is absent, or e > t
+```
+
+This read gives the answer of the walk of [Section 7](#7-decision): a given value counts when it is live, its place covers the target, and no live exclusion that applies to it sits at its place or under it on the chain. A deny on a group blocks every member, so denies need no source. For every covered target the grants and the statements live at issue agree at every time (D8), and the two readings never diverge before someone writes. A question naming several permissions is read as [Section 7](#7-decision) settles all and any, denies first, at one time.
+
+Several sets of one subject MAY be read together, for example a small set for the platform in a cookie and a deep set for a drive kept server side. A target is covered when any set covers it, and it is allowed only when every set covering it allows. A set that refuses makes the read refuse. Bases of sets read together SHOULD NOT cover each other, since the wider set then answers inside the narrower one too.
+
+### 8.4. Canonical text
+
+The canonical text of grants is one JSON object [RFC8259] with the members below and no others, serialised with no whitespace, members in the order listed, strings with the escapes RFC 8259 requires and no others, numbers as integers.
+
+- `v`: the revision of this format, the string `"1"` for this document. A later revision of this document raises it only when a read of grants written under the earlier one would differ.
+- `c`: the fingerprint of the catalog, a string ([Section 5](#5-catalog)).
+- `at`: the time of issue.
+- `b`: the bases, a list of canonical keys in byte order, each once. Absent when the only base is the root.
+- `p`: the **place table**, a list of canonical keys in byte order, each once, holding every place that some item names except the root. Absent when no item names a place.
+- `r`: the **role table**, a list of rows, each row the sorted list of concrete permissions a stored role resolved to, each row once, in byte order of the rows. Absent when no stored role is assigned.
+- `g`: the **entries**, an object whose member names are the values carried: a permission or a pattern as written, a preset name, or `#` followed by the index of a row of `r`. Members in byte order.
+
+An entry is an object with up to three members, in this order: `a` for what is given, `d` for what is denied, `x` for what is taken out. `d` and `x` appear only in entries whose name is a permission or a pattern. Each member is a list of **items**, and an item is a list of up to three elements: the index of the place in `p`, or `null` for the root, then the end, or `null` when permanent, then the source number. Trailing elements that are `null` or absent are omitted, so `[]` is the root with no end and no source, `[3]` is the fourth place of `p`, `[3,1794819600]` adds an end, and `[null,null,2]` is the root with source 2. Items of one list are sorted by place index, the root first, then by end, permanent first, then by source. Two items of one list with the same place and source are one item, with the later end, or no end if either has none. A value whose every item had ended at issue is not written, and an entry with no items is not written.
+
+The examples below are shown with whitespace for reading, the canonical text has none. Zoe is allowed `report:*` and excluded from `report:write` at the organisation:
 
 ```json
 {
-  "v": "<version>",
+  "v": "1",
+  "c": "9f2c…",
+  "at": 1794214800,
+  "p": ["/org=acme"],
+  "g": { "report:*": { "a": [[0]] }, "report:write": { "x": [[0]] } }
+}
+```
+
+The source number, in one case. Sue's team is assigned `writer` at the organisation and excluded from `report:write` in the archives. Sue herself is allowed `report:write` at the organisation until Friday. Three values come out of this, and the team has an exclusion, so everything that came from the team carries the number 1, while Sue's own allow carries none:
+
+```
+writer         given      at /org=acme                 source 1    from the team
+report:write   given      at /org=acme, ends Friday    no source   from Sue herself
+report:write   taken out  at /org=acme/area=archives   source 1    the team's exclusion
+```
+
+A read in the archives applies the exclusion with number 1 to the values with number 1 only: `writer` no longer gives `report:write` there. Sue's own allow has no number, so the exclusion does not touch it, and on Thursday she writes. On Saturday her allow has ended: denied. Had the exclusion been placed on Sue herself, it would carry no number and would take the permission out of everything, her own allow included. A group with no exclusion anywhere in the grants gets no number at all, and its values look exactly like the subject's own.
+
+The same grants as canonical text:
+
+```json
+{
+  "v": "1",
+  "c": "9f2c…",
+  "at": 1794214800,
+  "p": ["/org=acme", "/org=acme/area=archives"],
   "g": {
-    "/": { "r": ["member"] },
-    "/org=acme": { "a": ["report:export"], "d": ["report:delete"], "r": ["editor", "writer"] },
-    "/org=acme/archive=2024": { "x": ["report:write"] }
+    "report:write": { "a": [[0, 1794528000]], "x": [[1, null, 1]] },
+    "writer": { "a": [[0, null, 1]] }
   }
 }
 ```
 
-Under the archive, `report:write` is taken out of what `writer` gave at the organisation, so `x` lists it, and nothing else gives it. `report:read` stays, `writer` names it on its own. `editor` and `report:export` are not listed: the exclusion is about `acme-writers`, and the subject holds those through `acme-editors` and through its own statement. Nothing in the organisation reaches another organisation, since every statement about the organisation's groups sits at `/org=acme`.
+Elsewhere in the organisation `writer` still gives `report:write` to Sue on Saturday, since the exclusion covers the archives only.
 
-The organisation's managers are not held back by the archive. The group `acme-managers` is assigned `manager = ["writer", "editor", "report:delete"]` at the organisation. A second subject, a member of `members` and `acme-managers` only, is issued:
+A flat application with no places writes no `p` and items of `[]`. Ed, assigned `viewer` permanently and `editor` until next Monday:
 
 ```json
 {
-  "v": "<version>",
-  "g": {
-    "/": { "r": ["member"] },
-    "/org=acme": { "r": ["manager"] }
-  }
+  "v": "1",
+  "c": "9f2c…",
+  "at": 1794214800,
+  "g": { "editor": { "a": [[null, 1794819600]] }, "viewer": { "a": [[]] } }
 }
 ```
 
-There is no entry for the archive at all: the exclusion is about `acme-writers`, and this subject is not in that group, so nothing is taken out and `manager` writes and deletes under the archive as anywhere else in the organisation. A subject who is in both `acme-writers` and `acme-managers` has `"r": ["manager", "writer"]` at the organisation and no `x` either, because `manager` still gives `report:write` under the archive, so there is nothing to list.
+An application MAY carry grants in any other form, nested, abbreviated or split into rows, as long as it converts to this text and back without loss ([Section 4](#4-invariants)). An engine reads and writes the canonical text only.
 
-Reading needs the entries at the keys of the target's chain and nothing else, together with whether any of those keys exists. A store MAY keep grants in any layout, as one document, as one row per place key with `a`, `d`, `r` and `x` as columns, or split further, provided a read is handed canonical entries for the keys asked. A store MAY also answer the read itself by the same rule, in which case it MUST implement the rule of this section in full, wildcards and preset names included, and its answer MUST equal what an engine would give for the same entries.
+### 8.5. When grants are issued again
+
+Grants need no reissue for an expiry: every end travels with its value. They are issued again when the statements about the subject or its groups change by a write, when the subject's groups change, when a stored role they carry is edited, when the catalog changes, or when the application moved or removed places they cover ([Section 10](#10-authority)). A read that is refused because the catalog or the format changed is the signal for the first two cases. For the others the application decides, from the delay it accepts and the lifetime it gives its session, and a store MAY record when statements last changed so that the application can compare it with `at` where a read happens anyway.
 
 ## 9. Sources of answers
 
-TBD. Content already settled for this section:
+A store is whatever keeps the statements and the stored roles and answers for them, over any protocol and in any layout. The model says what it must be able to answer, never how it is built. Whatever it keeps inside, what it hands back MUST be the canonical form of every key, permission, time and statement, as [Section 4](#4-invariants) requires.
 
-A store is whatever keeps the statements and answers for them, over any protocol and in any layout. The model says what it must be able to answer, never how it is built. Whatever it keeps inside, what it hands back MUST be the canonical form of every key, permission and statement, as [Section 4](#4-invariants) requires.
+A store MUST answer four questions. Given a list of identifiers and a list of place keys: the live statements about any of them at exactly those places. Given a place key: the live statements at exactly that place, about any identifier, which the rules on the root need. Given a place key: the statements at the places under it, live or not, which moves and administration need. Given role names: the stored roles of those names, with the roles they reference. A store MUST keep a statement at the place the engine gave. It MAY record the time at which each statement was placed or removed, so that an application can compare it with the `at` of issued grants ([Section 8](#8-grants)). A store MUST compare keys and subjects byte by byte, for equality and for order, since a collation that folds case or ignores punctuation returns another place's or another subject's statements.
 
-A store MUST answer three questions. Given a subject with its groups and a list of place keys: the live statements about any of them at exactly those places. Given a place key: the statements at the places under it. Given role names: the stored roles of those names, with the roles they reference. A store MUST keep a statement at the place the engine gave. It MAY record the time at which each statement was placed or removed, in the unit the application uses for every time in the model, so that an application can compare it with the `at` of issued grants ([Section 8](#8-grants)). A store MUST compare keys and subjects byte by byte, for equality and for order, since a collation that folds case or ignores punctuation returns another place's or another subject's statements.
+A store SHOULD also answer, in one exchange, everything issuing needs: given a subject with its groups and the bases, the live statements about them on the chain of each base and under each base, with the stored roles those statements name. A store that can combine reads then answers in one round trip. One that cannot answers in several, and the model asks nothing about how many. A store MAY also take, with a question, the values that relate to it and return only the statements holding them, together with every assignment of a stored role, which only its definition can settle. Presets are never asked of a store, they are part of the catalog an engine holds.
 
-A store SHOULD also answer, in one exchange, everything issuing needs: given a subject with its groups and the bases, the live statements about them on the chain of each base and under each base, with the stored roles those statements name. A store that can combine reads then answers in one round trip. One that cannot answers in several, and the model asks nothing about how many. Presets are never asked of a store, they are part of the catalog an engine holds.
+A change to the statements is checked against the statements ([Section 10](#10-authority)): a change reads what the author holds, the statements it touches and the statements at the root, then writes. A store that combines those reads serves a change in one read and one write.
 
 The lifecycle of statements whose place no longer exists in the application is the application's business: the engine never asks whether a place exists, so such a statement is garbage, not an error. Listing the places under a given one is useful to administration interfaces and MAY be offered, the engine never requires it.
 
 ## 10. Authority
 
-A change is placing a statement, removing one, or defining or editing a stored role. Every change has an **author**, the subject who asks for it, with its groups. An engine MUST refuse a change that breaks any rule of this section, and an application MUST NOT apply a change the engine refused. The rules exist so that nobody hands out more than they hold (G1), nobody writes about themselves but at genesis (G2), no restriction reaches above its author when placed (G3), the root never loses its last permanent manager (G4), and every statement stays removable (G5). [Section 4](#4-invariants) lists them. They bound a change by what its author holds and nothing more. How much of the catalog a manager may use at all, presets included, and which managers may make which changes where, is the application's narrowing on top of them, and this document does not say it.
+A change is placing a statement, removing one, or defining or editing a stored role. Every change has an **author**, the subject who asks for it, with its identifiers as [Section 7](#7-decision) defines them. An engine MUST refuse a change that breaks any rule of this section, and an application MUST NOT apply a change the engine refused. The rules exist so that nobody hands out more than they hold (G1), nobody writes about themselves but at genesis (G2), no restriction reaches above its author when placed (G3), the root never loses its last permanent manager (G4), and every statement stays removable (G5). [Section 4](#4-invariants) lists them. They bound a change by what its author holds and nothing more. How much of the catalog a manager may use at all, presets included, and which managers may make which changes where, is the application's narrowing on top of them, and this document does not say it.
 
-**Manage where you change (A1).** Only a manager of a place changes the statements at that place. Whether the author is a manager is an ordinary question, so a group may make its members managers ([Section 7](#7-decision)).
+Everything a rule of this section asks about the author, whether the author manages the place and what the author holds, is asked of the statements at the time of the change, never of the author's grants (A1). Grants decide what a subject may do, the statements decide what a subject may change. A manager removed a minute ago cannot act from grants issued before.
 
-**Hand out only what you hold (A2).** Placing an allow of a permission at a place requires the author to hold that permission at that place. Placing an assignment requires the author to hold every permission the role resolves to, there. Placing a deny or an exclusion of a permission requires the author to hold that permission there too: one blocks or takes out only what one has. Holding is decided by the ordinary question, so a permission held through an implication or a wildcard counts.
+**Manage where you change (A1).** Only a manager of a place changes the statements at that place. Whether the author is a manager is an ordinary question against the statements, so a group may make its members managers ([Section 7](#7-decision)).
 
-**Never about yourself (A3).** An author never places or removes a statement whose subject is the author's own identifier. The one exception is genesis. A statement about a group the author belongs to is not about the author: an allow to the group gives the author nothing the author did not hold, and a deny about a group blocks nobody ([Section 7](#7-decision)).
+**Hand out only what you hold (A2).** Placing an allow of a permission at a place requires the author to hold that permission at that place, and no live deny of that permission that applies to the author, about the author or about one of its groups, at any place under it: what an allow gives reaches everything under its place, and an author banned somewhere inside does not hand out a way around the ban. Placing an assignment requires the same for every permission the role resolves to. An exclusion about the author under the place does not refuse the change, since an exclusion is answerable lower down by design ([Section 7](#7-decision)). Placing a deny or an exclusion of a permission requires the author to hold that permission at the place: one blocks or takes out only what one has. Holding is decided by the ordinary question, so a permission held through an implication or a wildcard counts.
 
-**Removal needs management only (A4).** Removing a statement at a place requires management of that place and nothing else. It does not matter who placed the statement, and an engine keeps no record of that for this purpose. A manager may therefore lift a deny or an exclusion that a wider manager placed inside the manager's own place, except one about the manager themselves. A restriction that must stay in force is placed wider than the places its target manages, where the target cannot reach it. The price is that it then applies to everything under that wider place. This is the trade the model makes: a place belongs to its managers, and whoever wants a decision to hold against them takes it at a level above them.
+One exception lets the management of people be separated from the use of content. The catalog MAY name, for a preset, a permission whose holders assign that preset without holding what it gives ([Section 5](#5-catalog)). Whoever holds that permission at a place assigns the preset there, bounded by nothing else in this rule. An application that wants a user manager who cannot read what the users read declares it this way.
 
-**Restrictions stay within the author's width (A5).** The **width** of an author is the widest place where the author is a manager. A deny or an exclusion reaches other statements: the ones it blocks or takes from. It MAY reach only statements placed at the author's width or under it, and an engine MUST refuse a deny or an exclusion that would reach a statement placed wider. Without this rule a manager of one unit could, inside the unit, block or take out what the organisation's managers granted themselves at the organisation.
+**Never for yourself (A3).** An author never places a statement whose subject is the author's own identifier, and never removes a deny or an exclusion about it. The one exception to placing is genesis. An author MAY remove an allow or an assignment about itself: leaving a role is one's own decision, lifting one's own restriction is not. That removal is exempt from A1, A2 and A4, and bound by A8 alone. Leaving a group needs no statement at all, since membership is the application's fact. A statement about a group the author belongs to is not about the author, with one exception below (A9).
 
-**Genesis (A6).** While the root has no manager, anyone MAY place one permanent allow of `*` at the root about one subject. From then on every change follows the rules above. Who triggers genesis is the application's decision.
+**Remove only what you could give (A4).** Removing a statement requires management of its place and holding what the statement gives or names, as placing it would. A manager who could not have placed a statement cannot remove it, so a lower manager never strips a higher one, while the higher one may strip the lower. It does not matter who placed the statement, and an engine keeps no record of that for this purpose. A manager may therefore lift a deny or an exclusion that a wider manager placed inside the manager's own place, if the manager holds the permission it names there. A restriction that must stay in force is placed wider than the places its target manages, where the target cannot reach it. The price is that it then applies to everything under that wider place. A place belongs to its managers, and whoever wants a decision to hold against them takes it at a level above them.
 
-**Stored roles have a home (A7).** A stored role's home is the place where it was defined, the root for a tree-wide one. It MAY be assigned only at its home or under it, and MAY reference presets and stored roles whose home is its own or a wider place, never a narrower one. Its name MUST NOT be the name of a preset, nor of a stored role with a wider home, so that a name read at any place has one meaning. An engine MUST refuse a definition that breaks any of these.
+**Restrictions stay within the author's width (A5).** The **width** of an author, for a change, is the widest place on the chain of the change where the author is a manager. A deny or an exclusion reaches other statements: the ones it blocks or takes from, about the same identifier it is about. It MAY reach only statements placed at the author's width or under it, and an engine MUST refuse a deny or an exclusion that would reach a statement placed wider. Without this rule a manager of one unit could, inside the unit, block or take out what the organisation's managers granted themselves at the organisation.
+
+**Genesis (A6).** While the root has no manager, anyone MAY place one permanent allow of `*` at the root about one subject. From then on every change follows the rules above. Who triggers genesis is the application's decision. A stranger's first access afterwards is placed by the application acting as a subject of its own that holds only what sign-up may give, so that this section checks it, or by one assignment on a group that every member is listed in.
+
+**Stored roles have a home (A7).** A stored role's home is the place where it was defined, the root for a tree-wide one. It MAY be assigned only at its home or under it, and MAY reference presets and stored roles whose home is its own or a wider place, never a narrower one. Its name MUST NOT be the name of a preset, nor of a stored role whose home lies on the same chain, wider or narrower, so that a name read at any place has one meaning. An engine MUST refuse a definition that breaks any of these.
 
 Defining or editing a stored role is a change at its home, and the two rules above apply to it as to any change: the author is a manager of the home, and holds there every permission the role resolves to after the change, since an edit hands its new permissions to everyone who holds the role, at every place where it or a role referencing it is assigned. Renaming or deleting a stored role that is assigned or referenced changes what those statements mean. Like a move, it is a rewrite the application performs on its store, within the places it manages, deciding itself whether to refuse, to cascade or to rewrite, and it reissues the grants that carried the role, since a stored role is carried as the permissions it resolved to when the grants were issued ([Section 8](#8-grants)).
 
 **A move is not a change of the model.** Moving a thing to another place rewrites the keys of the statements at and under its old place, which the application does on its store, within the places it manages. The rules of this section hold at the moment a statement is placed. A restriction that was within its author's width when placed may reach wider after a move, and the application that moves places accepts that, or checks the moved restrictions again.
 
-**The root keeps a permanent manager (A8).** An engine MUST refuse a change after which the root would have no permanent manager. Only statements about subjects count, never statements about groups. Expiry cannot remove the last permanent manager, since a permanent statement does not expire.
+**The root keeps a permanent management (A8).** An engine MUST refuse a change after which no permanent statement at the root would give the manager permission, whatever identifier the remaining one is about, a subject or a group. A permanent management counts only while no live deny or exclusion at the root takes the manager permission from its identifier, so a deny or an exclusion that would leave none counting is refused as well, whether or not it has an end. Expiry cannot remove the last one, since a permanent statement does not expire and a deny with an end on it is refused. The engine cannot tell a subject from a group and does not need to: it guarantees the statement, and the application keeps an actor behind its identifier. A deny about a group never reaches a permanent manager of the root (D9), so one always remains who can remove any statement (G5).
+
+**Never a deny on your own group (A9).** An author never places a deny about a group the author belongs to. The application supplies the author's groups with the change, as with any question. Without this rule a manager would block themselves with no way back but a wider manager.
 
 ## 11. Errors
 
-TBD.
+An engine refuses rather than guesses. Every refusal names one of the reasons below, so that an application can tell them apart in its own logic, and the model does not say how a refusal is carried in a given language or what the application does next. A refusal is never one of the answers allowed, denied or not covered.
+
+- **invalid catalog**: the catalog breaks a rule of [Section 5](#5-catalog). The engine has no catalog.
+- **unknown permission**: a permission not in the catalog, in a question, in a statement being placed or in a role being defined. Statements read from a store that name one are inert, never an error ([Section 5](#5-catalog)).
+- **malformed**: a key, a permission, a pattern, a role entry, a time or grants that do not match their canonical form, `*:*` and a non-canonical key included.
+- **invalid question**: no permission, a wildcard, several permissions with neither all nor any, or no time.
+- **invalid role**: a stored role that references an unknown role, a cycle, a home or a name that breaks [Section 10](#10-authority).
+- **refused change**: a change that breaks a rule of [Section 10](#10-authority), naming every rule it breaks, A1 to A9.
+- **other format**, **other catalog**: grants whose revision or fingerprint is not the engine's own, named apart so that the application knows whether its own code or the engine changed.
+- **before issue**: a read of grants at a time earlier than their time of issue.
 
 ## 12. Limitations
 
-TBD. What the model does not do, with what an application does instead.
+What the model does not do, with what an application does instead.
 
 **A key is a position, not an identity.** The model knows a thing only by where it sits. When a thing moves, its key and the keys under it change, and the application rewrites the statements there and reissues the grants that covered them ([Section 8](#8-grants), [Section 10](#10-authority)). When a place is deleted and its value used again for another thing, the statements left there apply to the new thing. An application that must tell two things apart over time uses stable identifiers as values and removes the statements of what it deletes.
 
-**Deep trees cost space.** A key carries its whole ancestry, so the chain of a place at depth 100 is tens of kilobytes and a few entries at depth 20 exceed what a cookie holds. An application with deep trees carries grants server side, or issues them for a base near the target.
+**Deep trees cost space, and so do many short-lived statements.** A key carries its whole ancestry, and grants write each place once. A subject with many dated shares carries one item per share, and a carrier the size of a cookie holds a few dozen of them, whatever the form. An application with deep trees or many shares carries grants server side, or issues them for a base near the target, and it states the limit of the carrier it chose.
 
-**The tree has a root manager.** Someone must make the first change, and an author hands out only what they hold ([Section 10](#10-authority)). So the first manager holds everything at the root, and the root keeps at least one such permanent manager so that every statement stays removable. The model offers no tree without such a subject. The subject is the application's choice and need not be a person: an application that must keep humans away from that power gives it to an identifier nobody signs in as, used only by its own deployment and migration code, and gives people narrower permissions at narrower places from there. An actor who gains write access to the statements store is outside what the model or an engine can address.
+**The tree has a root manager.** Someone must make the first change, and an author hands out only what they hold ([Section 10](#10-authority)). So the first manager holds everything at the root, and the root keeps at least one such permanent manager so that every statement stays removable. The model offers no tree without such an identifier, and it guarantees only the statement: whether a person, a job or a populated group stands behind the identifier is the application's to keep true. The identifier is the application's choice and need not be a person: an application that must keep humans away from that power gives it to an identifier nobody signs in as, used only by its own deployment and migration code, and gives people narrower permissions at narrower places from there. An actor who gains write access to the statements store is outside what the model or an engine can address.
+
+**No restriction on everyone except a few.** A deny on a group blocks every member, and nothing lifts it for some of them. An application that wants exceptions keeps the exempt subjects out of that group.
+
+**No conditions.** A statement's only condition is its end. A restriction that depends on the state of a thing is asked as a different permission for that state, named on the resource, such as `archived-report:write`. An attribute of the request, the network or the time of day is the application's to check before it asks.
+
+**No end on a membership.** A group has members as long as the application lists them. Access that must end at a time is given by a statement with an end, about the subject or about the group.
+
+**No rule for the direct children of a place only.** A statement reaches everything under its place. An application that wants a rule for one level gives those things a place of their own.
+
+**No cap cut against what statements give.** The model adds and blocks, it never intersects. A credential that may do less than its user is the application's, outside the statements.
+
+**Recovery is outside the model.** The model guarantees that someone may always remove any statement. Who that someone is, and how they sign in, is the application's.
 
 ## 13. Security considerations
 
-TBD. Content already settled for this section:
+**Supply the whole list of identifiers.** A deny about a group blocks only the subjects whose identifiers include that group. A group left out of a question or a change turns a block into nothing, silently. An application MUST hand the engine the subject's identifiers whole, from the same source of memberships each time, whether that source is a session, a directory or the store.
 
-The model does not restrict which subjects a manager may place statements about. A manager of a place may place an allow for any subject there, bounded by what the manager holds, and a deny for any subject, bounded by the rules on restrictions. In practice an application often wants a narrower circle, for example only the members of a team or the users of a tenant. That notion of membership is the application's, not the model's: the model knows no grouping of subjects other than the statements themselves. Applications SHOULD therefore constrain, before calling the engine, which subjects a manager may place statements about, and SHOULD treat the resulting refusal as their own, not as a decision of the model.
+**Ancestry comes from where the thing is.** An engine trusts the ancestry written in a key. A key built from a request alone, from a route or a parameter, lets a caller claim a position its thing does not have and be answered for that position. An application MUST derive the key from where the thing actually is, or check the claimed key in the action's own read of the thing, and MUST NOT take the ancestry from the request alone.
 
-An engine trusts the ancestry written in a key. A key built from a request alone, from a route or a parameter, lets a caller claim a position its thing does not have and be answered for that position. An application MUST derive the key from where the thing actually is, or check the claimed key in the action's own read of the thing, and MUST NOT take the ancestry from the request alone.
+**One spelling per name.** Two spellings of one accented name are two places, and a deny placed at one is missed at the other. An application MUST bring every name to one form before it becomes a value in a key.
 
-A deny restricts an identity, not content. A subject denied a permission still obtains whatever the application serves without identification, by asking from another browser, another device or another network. An application that needs content kept from someone MUST NOT serve that content to requests that do not identify themselves.
+**Clock and unit.** A read lifts an expired deny or exclusion on its own. A clock that runs ahead lifts them early, and a time counted in the wrong unit lifts them at once or never. Every time in the model is an integer count of seconds ([Section 2](#2-conventions-and-notation)), an engine applies no leeway, and an application that wants one applies it on its own clock, knowing that it moves denies and allows alike.
+
+**A deny restricts an identity, not content.** A subject denied a permission still obtains whatever the application serves without identification, by asking from another browser, another device or another network. An application that needs content kept from someone MUST NOT serve that content to requests that do not identify themselves.
+
+**Who may be written about.** The model does not restrict which subjects a manager may place statements about. A manager of a place may place an allow for any subject there, bounded by what the manager holds, and a deny for any subject or group, bounded by the rules on restrictions. In practice an application often wants a narrower circle, for example only the members of a team or the users of a tenant. That notion of membership is the application's, not the model's. Applications SHOULD therefore constrain, before calling the engine, which subjects a manager may place statements about, and SHOULD treat the resulting refusal as their own, not as a decision of the model.
+
+**What grants reveal.** Grants carry the places and permissions a subject holds or is kept out of, and a number that says which values share a group without naming it. Whoever reads the carrier learns that much, including the key of a place the subject is excluded from. An application that must hide the existence of a place from a subject keeps that subject's grants away from the subject, or keeps the restriction in a group deny whose place the subject never sees.
+
+**Keys have no bound in the model.** An engine checks a key against its grammar before computing anything, and an application MAY refuse keys over a length or depth it declares, so that a hostile request cannot hand it a chain of thousands of places.
+
+**Changes are checked live.** Whether an author manages a place and holds what they hand out is asked of the statements at the time of the change ([Section 10](#10-authority)). A change touches the store anyway, so the check costs no extra trip, and a removed manager cannot act from an earlier credential.
 
 ## 14. References
 
-Citations in the text, such as [RFC2119], link to the documents below.
+- [RFC2119] Bradner, S., "Key words for use in RFCs to Indicate Requirement Levels", BCP 14, RFC 2119, March 1997.
+- [RFC8174] Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14, RFC 8174, May 2017.
+- [RFC5234] Crocker, D. and P. Overell, "Augmented BNF for Syntax Specifications: ABNF", STD 68, RFC 5234, January 2008.
+- [RFC7519] Jones, M., Bradley, J. and N. Sakimura, "JSON Web Token (JWT)", RFC 7519, May 2015.
+- [RFC8259] Bray, T., "The JavaScript Object Notation (JSON) Data Interchange Format", STD 90, RFC 8259, December 2017.
+- [RFC3986] Berners-Lee, T., Fielding, R. and L. Masinter, "Uniform Resource Identifier (URI): Generic Syntax", STD 66, RFC 3986, January 2005.
+- [RFC3629] Yergeau, F., "UTF-8, a transformation format of ISO 10646", STD 63, RFC 3629, November 2003.
 
-- [RFC2119]: Bradner, S., "Key words for use in RFCs to Indicate Requirement Levels", BCP 14, RFC 2119, March 1997.
-- [RFC8174]: Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14, RFC 8174, May 2017.
-- [RFC3629]: Yergeau, F., "UTF-8, a transformation format of ISO 10646", STD 63, RFC 3629, November 2003.
-- [RFC3986]: Berners-Lee, T., Fielding, R. and L. Masinter, "Uniform Resource Identifier (URI): Generic Syntax", STD 66, RFC 3986, January 2005.
-- [RFC5234]: Crocker, D. and P. Overell, "Augmented BNF for Syntax Specifications: ABNF", STD 68, RFC 5234, January 2008.
-- [RFC7519]: Jones, M., Bradley, J. and N. Sakimura, "JSON Web Token (JWT)", RFC 7519, May 2015.
-- [RFC8259]: Bray, T., "The JavaScript Object Notation (JSON) Data Interchange Format", STD 90, RFC 8259, December 2017.
+## Appendix A. Scenarios
 
-## Appendix A. Worked example: Roma
+Each scenario lists a few statements and the answers the model gives. The answers hold when asked of the statements and when asked of grants issued from them. Unless a scenario says otherwise, nothing changes over time. Names are illustrative.
 
-TBD.
+**A.1. One person and an assistant, no places.** Ed signs in first, and genesis makes him the permanent manager: he holds `*` at the root. He runs an agent, `assistant`, and allows it `post:read` and `post:draft`.
+
+- The assistant reads a post: allowed. Drafts one: allowed. Publishes one: denied, nothing gives it.
+- Ed publishes a post: allowed.
+- The assistant allows itself `post:publish`: refused, nobody writes about themselves.
+- Ed allows the assistant `post:publish`: accepted, he holds it. From then on the assistant publishes.
+
+**A.2. A code forge.** Organisations hold repositories. Teams are groups. The web team is assigned `writer` at one repository, and Lea is assigned `developer` at one project by name. Mel holds `access:manage` at that project, and her grants live in a cookie the application accepts for an hour.
+
+- Lea removes her own `developer` assignment: accepted. Lea removes a deny placed on her: refused. Lea assigns `developer` to herself: refused.
+- A manager removes Mel's `access:manage`. Minutes later Mel assigns `maintainer` to her second account: refused, the statements say she no longer manages. In the same minute she reads the project from her cookie: allowed, within the delay the application chose.
+- Mia, a moderator holding `access:manage` and `member:kick`, removes the owner's `*`: refused, she does not hold it. The owner removes the moderators' `access:manage`: accepted.
+
+**A.3. A cloud account tree.** The platform's owner manages the root. Every subject of the organisation `acme` is in its members group. Tom administers `acme`, holds `*` there, and is in that group.
+
+- The owner places a deny of `audit-log:delete` on the members group at `acme`. Tom deletes an audit log: denied. A member who joins next month: denied. The owner's staff, outside the group and allowed at the root: allowed.
+- Tom places a deny on a group he belongs to: refused. The owner places a deny of `access:manage` on the staff group, which lists everyone but the owner, the deploy job included: the deploy job holds a permanent management, so the deny does not reach it, and it removes the deny.
+- Dan holds `*` at `acme` and is denied `report:read` in its archives. Dan allows Ike `report:read` at `acme`: refused, the allow reaches the archives. With an exclusion in place of the deny: accepted, and a manager of the archives could have given it back anyway.
+
+**A.4. A shared drive.** Folders nest under a drive. The marketing group is assigned `viewer` at the drive. Pat's grants are issued for the drive only. Sue is allowed to read one file for two hours.
+
+- A file added to a folder later: readable by the group, with no statement written.
+- Three hours on, Sue reads her file: denied. Everything else she holds: unchanged, and nothing was issued again.
+- Pat asks about the platform's billing page: not covered, never denied.
+- A folder is limited to people added directly: the application asks `limited-file:read` there, which `viewer` does not include, and only direct allows of it count.
+- A unit moves to another drive and its statements are rewritten: a deny placed at the old drive no longer applies under the new one.
+
+**A.5. A chat server.** Channels sit under the server. Gil is assigned `player` at the server.
+
+- A deny of `match:join` is placed on Gil until next Monday after three strikes: Thursday, join: denied. Next Tuesday: allowed, with nothing issued again.
+- An exclusion of `chat:send` on Gil at the server and an allow at the help room: lobby, denied. Help room, allowed.
+- A deny of `*:send` on Gil at one channel: muted there in every state of the channel, not elsewhere.
+
+**A.6. A workspace of pages.** The organisation keeps its archives under one place that holds nothing else. The managers group is assigned `manager` at the organisation, which includes writing reports. The writers group is assigned `writer` there and is excluded from `report:write` at the archives. Mona is in both groups, Wes is a writer only.
+
+- Mona writes in the archives: allowed, through `manager`. Wes: denied. Wes elsewhere: allowed.
+- An exclusion of `report:write` on Mona herself at the archives and an allow on her at the archive of 2024: 2019, denied. 2024, allowed. An archive created later, denied. An active report, allowed.
+- Zoe is allowed `report:*` and excluded from `report:write` at the organisation: read, allowed. Write, denied.
+- Hal, a writer only, joins the managers group and grants are issued again: writes in the archives.
+
+**A.7. A cluster.** Namespaces sit under the cluster. Groups come from outside, supplied with every question.
+
+- A group assigned a role in one namespace: nothing in another namespace. The same group assigned at the cluster: every namespace.
+- A subject the application reports no group for: nothing, however many bindings its groups have.
+- Alice is allowed `report:read` at `/org=acme`: nothing at `/org=acme-x`, a neighbour with a similar name.
 
 ## Appendix B. Pseudocode notation
 
-TBD.
+Procedures are written as indented blocks. `for each` iterates a set in no particular order unless the text says "in the order asked" or "from the root down". `return` ends the procedure with its answer and, where the text says so, the statement or value that decided. Sets are written with `union`, `minus` and `intersected with`. `a in S` tests membership. Names in `code` refer to procedures or sets defined in the surrounding text. Nothing in a procedure performs input or output: every statement it reads was handed to it.
 
 ## Appendix C. ABNF
 
@@ -423,14 +584,23 @@ Permissions and role entries ([Section 5](#5-catalog), [Section 7.1](#71-role-re
 
 ```
 permission  = token ":" token
-pattern     = "*" / ( token / "*" ) ":" ( token / "*" )
+pattern     = "*" / token ":" "*" / "*" ":" token / permission
 role-name   = token
 role-entry  = pattern / role-name / "-" ( pattern / role-name )
 ```
 
-A `permission` is a `pattern` without `*`. Every `permission` and `role-name` is canonical as written, since the grammar admits one spelling of each. A `pattern` is canonical when `*:*` is written `*`.
+A `permission` is a `pattern` without `*`. Every `permission`, `pattern` and `role-name` has exactly one spelling, so each is canonical as written. `*:*` is not a `pattern`.
 
-TBD: the canonical form of grants.
+Times are `1*DIGIT`, integers of seconds ([Section 2](#2-conventions-and-notation)). The text of grants is JSON [RFC8259] under the member order and sorting rules of [Section 8.4](#84-canonical-text), which admit exactly one text for a given set of items.
+
+[RFC2119]: Bradner, S., "Key words for use in RFCs to Indicate Requirement Levels", BCP 14, RFC 2119, March 1997.
+
+- [RFC8174]: Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words", BCP 14, RFC 8174, May 2017.
+- [RFC3629]: Yergeau, F., "UTF-8, a transformation format of ISO 10646", STD 63, RFC 3629, November 2003.
+- [RFC3986]: Berners-Lee, T., Fielding, R. and L. Masinter, "Uniform Resource Identifier (URI): Generic Syntax", STD 66, RFC 3986, January 2005.
+- [RFC5234]: Crocker, D. and P. Overell, "Augmented BNF for Syntax Specifications: ABNF", STD 68, RFC 5234, January 2008.
+- [RFC7519]: Jones, M., Bradley, J. and N. Sakimura, "JSON Web Token (JWT)", RFC 7519, May 2015.
+- [RFC8259]: Bray, T., "The JavaScript Object Notation (JSON) Data Interchange Format", STD 90, RFC 8259, December 2017.
 
 [RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
 [RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
