@@ -1,6 +1,7 @@
 /**
- * The error codes unauth defines: `ERR_AUTHN_*` for authentication (`unauth/n`), `ERR_SESSION_*`
- * for opaque sessions (`unauth/session`), `ERR_UNAUTH_*` for misconfiguration. {@link isUnauthError} takes this type, so a misspelled code does not compile.
+ * The error codes unauth defines: `ERR_AUTHN_*` for authentication (`unauth/n`), `ERR_AUTHZ_*` for
+ * authorization (`unauth/z`), `ERR_SESSION_*` for opaque sessions (`unauth/session`),
+ * `ERR_UNAUTH_*` for misconfiguration. {@link isUnauthError} takes this type, so a misspelled code does not compile.
  */
 export type KnownUnauthErrorCode =
   | "ERR_UNAUTH_CONFIG_INVALID" // a configuration that cannot work
@@ -24,7 +25,18 @@ export type KnownUnauthErrorCode =
   | "ERR_AUTHN_PROVIDER_ERROR" // a provider endpoint failed or answered unusably
   | "ERR_AUTHN_TOKEN_INVALID" // a one-time token is malformed, forged or expired
   | "ERR_AUTHN_TOKEN_PURPOSE" // a one-time token was issued for another purpose
-  | "ERR_AUTHN_TOKEN_USED"; // a one-time token was already used
+  | "ERR_AUTHN_TOKEN_USED" // a one-time token was already used
+  // authz (`unauth/z`)
+  | "ERR_AUTHZ_CATALOG_INVALID" // a catalog that breaks a rule of the model
+  | "ERR_AUTHZ_PERMISSION_UNKNOWN" // a permission the catalog does not declare
+  | "ERR_AUTHZ_PLACE_OUTSIDE" // a place the structure the catalog declares does not hold
+  | "ERR_AUTHZ_MALFORMED" // a place, a permission, a role entry, a time or grants not in their one form
+  | "ERR_AUTHZ_QUESTION_INVALID" // a question naming no permission, or a wildcard
+  | "ERR_AUTHZ_ROLE_INVALID" // a role that is unknown where it is read, or defined against the rules on roles
+  | "ERR_AUTHZ_CHANGE_REFUSED" // the author may not make this change
+  | "ERR_AUTHZ_GRANTS_FORMAT" // grants of another format revision
+  | "ERR_AUTHZ_GRANTS_CATALOG" // grants issued for another catalog
+  | "ERR_AUTHZ_GRANTS_EARLY"; // grants read at a time before their issue
 
 /** An {@link UnauthError} `code`: a {@link KnownUnauthErrorCode}, or any code of the application's own. */
 export type UnauthErrorCode = KnownUnauthErrorCode | (string & {});
@@ -96,6 +108,73 @@ export interface UnauthErrorCauseMap {
     reason: "unreachable" | "timeout" | "too-large" | "status" | "malformed" | "refused" | "failed";
     status?: number;
     cause?: unknown;
+  };
+  /**
+   * Which rule a catalog breaks, and where: `at` is the member, then the name inside it.
+   * `fingerprint` is a catalog object handed in with a fingerprint that is not its own.
+   */
+  ERR_AUTHZ_CATALOG_INVALID: {
+    reason:
+      | "shape"
+      | "token"
+      | "duplicate"
+      | "implication"
+      | "cycle"
+      | "manager"
+      | "assigner"
+      | "preset"
+      | "places"
+      | "fingerprint";
+    at: string;
+    value?: unknown;
+  };
+  /** What is not written in its one form, and the value found. */
+  ERR_AUTHZ_MALFORMED: {
+    what:
+      | "place"
+      | "level"
+      | "value"
+      | "permission"
+      | "pattern"
+      | "entry"
+      | "role"
+      | "time"
+      | "roles"
+      | "statement"
+      | "question"
+      | "grants";
+    value: unknown;
+  };
+  /**
+   * Why a role is refused: `unknown`, no preset and no stored role of that name where it is read;
+   * `reference`, the role or one it references names a role unknown at its home; `cycle`, the
+   * references loop; `ambiguous`, two stored roles of one name are visible at one place; `preset`,
+   * the name is a preset's; `taken`, a stored role of that name has its home along the same places.
+   */
+  ERR_AUTHZ_ROLE_INVALID: {
+    role: string;
+    reason: "unknown" | "reference" | "cycle" | "ambiguous" | "preset" | "taken";
+    reference?: string;
+  };
+  /** The permission a question, a statement or a role names that the catalog does not declare. */
+  ERR_AUTHZ_PERMISSION_UNKNOWN: { permission: string };
+  /** The place that does not fit the structure the catalog declares. */
+  ERR_AUTHZ_PLACE_OUTSIDE: { place: string };
+  /**
+   * What a question lacks: `empty`, it names no permission; `wildcard`, it names one, which only
+   * statements and roles may.
+   */
+  ERR_AUTHZ_QUESTION_INVALID: { reason: "empty" | "wildcard" };
+  /**
+   * Why the author may not make the change, every reason at once: `not-manager`, the author does
+   * not manage the place; `not-held`, the author does not hold what the statement gives or names,
+   * is denied it under the place, or holds it for less time than the statement would last;
+   * `about-self`, the statement is about the author; `last-manager`, the root would be left
+   * without a permanent manager; `not-first`, the root already holds a permanent manager;
+   * `ended`, the statement's end is not in the future.
+   */
+  ERR_AUTHZ_CHANGE_REFUSED: {
+    reasons: ("not-manager" | "not-held" | "about-self" | "last-manager" | "not-first" | "ended")[];
   };
 }
 

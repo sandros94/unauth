@@ -57,6 +57,14 @@
     "./argon2": {
       "types": "./dist/argon2.d.mts",
       "default": "./dist/argon2.mjs"
+    },
+    "./z": {
+      "types": "./dist/z/index.d.mts",
+      "default": "./dist/z/index.mjs"
+    },
+    "./z/validation": {
+      "types": "./dist/z/validation/index.d.mts",
+      "default": "./dist/z/validation/index.mjs"
     }
   },
   "scripts": {
