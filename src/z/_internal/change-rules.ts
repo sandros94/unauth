@@ -9,7 +9,7 @@ import {
 } from "./change-holding.ts";
 import type { ReadChange } from "./change-input.ts";
 import type { CompiledCatalog } from "./compiled.ts";
-import { isRootIdentity, leavesRootEmpty } from "./change-root.ts";
+import { endsManagement, isRootIdentity, leavesRootEmpty } from "./change-root.ts";
 import { expand } from "./permissions.ts";
 import { type ReadStatement, isPermanentManagement } from "./statements.ts";
 
@@ -75,6 +75,7 @@ function placing(
   const reasons = new Set<ChangeReason>();
   if (!manages(view, statement.place)) reasons.add("not-manager");
   if (!handsOutHeld(view, statement)) reasons.add("not-held");
+  if (endsManagement(statement, managers) && !isPermanent(view)) reasons.add("not-held");
   if (statement.subject === view.author.subject) reasons.add("about-self");
   if (leavesRootEmpty("place", statement, managers)) reasons.add("last-manager");
   if (statement.expiresAt !== undefined && statement.expiresAt <= view.time) reasons.add("ended");

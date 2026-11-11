@@ -49,6 +49,11 @@ export const authorityManagerScenarios: readonly Scenario[] = [
       place({ at: MONDAY + MINUTE, author: "ana" }, allow("deploy", "*")),
       place({ at: MONDAY + 2 * MINUTE, author: "ana" }, assign("vic", "owner")),
       remove({ at: MONDAY + 3 * MINUTE, author: "vic" }, allow("deploy", "*"), ["not-held"]),
+      place(
+        { at: MONDAY + 3 * MINUTE, author: "vic" },
+        allow("deploy", "*", { until: MONDAY + 7 * DAY }),
+        ["not-held"],
+      ),
       ask({ at: MONDAY + 4 * MINUTE, subject: "deploy", place: ACME }, "report:delete", "allowed"),
       remove({ at: MONDAY + 5 * MINUTE, author: "ana" }, allow("deploy", "*")),
       ask({ at: MONDAY + 6 * MINUTE, subject: "deploy", place: ACME }, "report:delete", "denied"),

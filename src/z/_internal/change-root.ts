@@ -58,6 +58,19 @@ export function isRootIdentity(statement: ReadStatement): boolean {
 }
 
 /**
+ * Whether placing `statement` puts an end on a permanent management of the same identity among
+ * `managers`: a removal of that management in all but name, so it asks what removing it asks.
+ */
+export function endsManagement(
+  statement: ReadStatement,
+  managers: readonly ReadStatement[] | undefined,
+): boolean {
+  if (!managers || !isRootIdentity(statement) || statement.expiresAt === undefined) return false;
+  const identity = identityOf(statement);
+  return managers.some((manager) => identityOf(manager) === identity);
+}
+
+/**
  * Whether the root could lose its last permanent management once `statement` is removed, or
  * placed with an end over one of the same identity. Always so without `managers`. A root that
  * holds none has none to lose. A statement of another identity, or a permanent management placed,
