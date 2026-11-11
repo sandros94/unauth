@@ -1,0 +1,125 @@
+import { describe, expect, expectTypeOf, it } from "vitest";
+import { defineCatalog } from "../../src/z/catalog.ts";
+import { assertGrants, can, issueGrants, readGrants } from "../../src/z/grants.ts";
+import type { Grants } from "../../src/z/types.ts";
+import { refused } from "./_expect.ts";
+
+const MONDAY = 1794214800;
+const ACME = "/org=acme";
+const now = (): number => MONDAY * 1000;
+
+const catalog = defineCatalog({
+  permissions: ["report:read", "report:write", "access:manage"],
+  implies: { "report:write": ["report:read"] },
+  places: { "/": ["org"] },
+  manager: "access:manage",
+});
+const other = defineCatalog({ permissions: ["report:read", "access:manage"] });
+
+const issued = issueGrants(catalog, "ann", {
+  statements: [{ kind: "allow", subject: "ann", value: "report:write", place: ACME }],
+  now,
+});
+
+function carried(grants: unknown = issued): unknown {
+  const payload: unknown = JSON.parse(JSON.stringify({ sub: "ann", grants }));
+  return typeof payload === "object" && payload !== null && "grants" in payload
+    ? payload.grants
+    : undefined;
+}
+
+describe("grants handed over as a carrier holds them", () => {
+  it("are read by `readGrants` and `can` typed `unknown`", () => {
+    const payload = carried();
+    expect(
+      readGrants(catalog, payload, { permission: "report:read", place: ACME }, { now }),
+    ).toEqual({
+      allowed: true,
+      covered: true,
+      by: { kind: "allow", value: "report:write", place: ACME },
+    });
+    expect(can(catalog, payload, "report:write", { place: ACME, now })).toBe(true);
+    expect(can(catalog, payload, "report:write", { now })).toBe(false);
+    const list: unknown = [payload, carried()];
+    expect(can(catalog, list, "report:read", { place: ACME, now })).toBe(true);
+  });
+
+  it("are still checked whole before any read", () => {
+    expect(
+      refused(() => can(catalog, carried({ ...issued, nt: [] }), "report:read", { now })).code,
+    ).toBe("ERR_AUTHZ_MALFORMED");
+    expect(refused(() => can(catalog, "grants", "report:read", { now })).code).toBe(
+      "ERR_AUTHZ_MALFORMED",
+    );
+  });
+});
+
+describe("assertGrants", () => {
+  it("types the value as grants, with no cast", () => {
+    const payload = carried();
+    assertGrants(catalog, payload, { now });
+    expectTypeOf(payload).toEqualTypeOf<Grants>();
+    const typed: Grants = payload;
+    expect(typed.pl).toEqual([ACME]);
+    expect(typed.ct).toBe(catalog.fingerprint);
+  });
+
+  it("throws `ERR_AUTHZ_MALFORMED` for what is not one set of grants", () => {
+    const values: unknown[] = [
+      null,
+      "grants",
+      7,
+      {},
+      [],
+      [issued],
+      { ...issued, nt: [] },
+      { ...issued, at: MONDAY * 1000 },
+      { ...issued, pl: ["/org=acme/"] },
+      { ...issued, nt: { "report:delete": { a: [[]] } } },
+    ];
+    for (const value of values) {
+      expect([value, refused(() => assertGrants(catalog, value, { now })).code]).toEqual([
+        value,
+        "ERR_AUTHZ_MALFORMED",
+      ]);
+    }
+  });
+
+  it("throws `ERR_AUTHZ_GRANTS_FORMAT` for another format revision", () => {
+    expect(refused(() => assertGrants(catalog, { ...issued, v: "2" }, { now })).code).toBe(
+      "ERR_AUTHZ_GRANTS_FORMAT",
+    );
+  });
+
+  it("throws `ERR_AUTHZ_GRANTS_CATALOG` for grants issued for another catalog", () => {
+    const stale = issueGrants(other, "ann", { statements: [], now });
+    expect(refused(() => assertGrants(catalog, carried(stale), { now })).code).toBe(
+      "ERR_AUTHZ_GRANTS_CATALOG",
+    );
+  });
+
+  it("throws `ERR_AUTHZ_GRANTS_EARLY` when the clock reads before their issue", () => {
+    expect(
+      refused(() => assertGrants(catalog, carried(), { now: () => (MONDAY - 1) * 1000 })).code,
+    ).toBe("ERR_AUTHZ_GRANTS_EARLY");
+    expect(() => assertGrants(catalog, carried(), { now })).not.toThrow();
+  });
+
+  it("refuses with the code a read refuses with, for every set a read refuses", () => {
+    const sets: unknown[] = [
+      { ...issued, v: 1 },
+      { ...issued, v: "2", nt: [] },
+      { ...issued, ct: "other", nt: [] },
+      { ...issued, ct: 7 },
+      { ...issued, nt: { "report:read": { a: [[0]], z: [] } } },
+      { ...issued, nt: { "report:read": { a: [[1]] } } },
+      { ...issued, nt: { "report:read": { a: [[null, null, 0]] } } },
+      { ...issued, nt: { "report:read": { d: [[null, null, 1]] } } },
+    ];
+    for (const set of sets) {
+      const read = refused(() => readGrants(catalog, set, { permission: "report:read" }, { now }));
+      const asserted = refused(() => assertGrants(catalog, set, { now }));
+      expect([set, asserted.code, asserted.cause]).toEqual([set, read.code, read.cause]);
+    }
+  });
+});
