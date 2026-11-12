@@ -1,5 +1,5 @@
 import { base64UrlStringify } from "unjwt/utils";
-import type { PlainCatalogData } from "./catalog-data.ts";
+import type { PlainCatalogData } from "./compiled.ts";
 import { compareBytes, sortedUnique } from "./grammar.ts";
 import { sha256 } from "./sha256.ts";
 
@@ -21,13 +21,6 @@ export function canonicalCatalog(data: PlainCatalogData): string {
   else if (data.places) {
     const places = writeLists(data.places, false);
     if (places) members.push(["places", places]);
-  }
-  if (data.manager !== undefined) members.push(["manager", JSON.stringify(data.manager)]);
-  if (data.assigner) {
-    const assigner = writeObject(
-      Object.entries(data.assigner).map(([name, value]) => [name, JSON.stringify(value)]),
-    );
-    if (assigner) members.push(["assigner", assigner]);
   }
   return writeObject(members) ?? "{}";
 }

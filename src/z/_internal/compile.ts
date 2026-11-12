@@ -1,6 +1,5 @@
 import { isRecord } from "../../_internal/shared.ts";
-import { type PlainCatalogData, readCatalogData } from "./catalog-data.ts";
-import type { CompiledCatalog } from "./compiled.ts";
+import type { CompiledCatalog, PlainCatalogData } from "./compiled.ts";
 import { catalogInvalid } from "./errors.ts";
 import { catalogFingerprint } from "./fingerprint.ts";
 import { isPermission } from "./grammar.ts";
@@ -42,9 +41,6 @@ export function compileCatalog(data: PlainCatalogData): CompiledCatalog {
   }
   const { implies, impliedBy } = closeImplications(direct);
 
-  if (data.manager !== undefined && !declared(data.manager)) {
-    throw invalid("manager", "manager", data.manager);
-  }
   const base: CompiledCatalog = {
     fingerprint: catalogFingerprint(data),
     permissions,
@@ -53,19 +49,9 @@ export function compileCatalog(data: PlainCatalogData): CompiledCatalog {
     implies,
     impliedBy,
     presets: new Map(),
-    manager: data.manager,
-    assigner: new Map(),
     structure: compileStructure(data.places),
   };
-  const presets = resolvePresets(base, data.presets);
-
-  const assigner = new Map<string, string>();
-  for (const [preset, permission] of Object.entries(data.assigner ?? {})) {
-    if (!presets.has(preset)) throw invalid("assigner", "assigner", preset);
-    if (!declared(permission)) throw invalid("assigner", `assigner.${preset}`, permission);
-    assigner.set(preset, permission);
-  }
-  return Object.freeze({ ...base, presets, assigner });
+  return Object.freeze({ ...base, presets: resolvePresets(base, data.presets) });
 }
 
 /**
@@ -102,9 +88,33 @@ const MESSAGES = {
   token: "The catalog names a permission that is not two tokens joined by a colon.",
   duplicate: "The catalog declares a permission twice.",
   implication: "An implication names a permission the catalog does not declare.",
-  manager: "The manager is not a permission the catalog declares.",
-  assigner: "An assigner names an unknown preset or an undeclared permission.",
 } as const;
+
+/**
+ * A frozen copy of `input` when it is catalog data in shape: a plain object holding only the four
+ * members the model defines, each list a list of strings and each map a plain object. Absent
+ * `permissions` reads as none. Anything else is `ERR_AUTHZ_CATALOG_INVALID` (`shape`), with `at`
+ * naming a member the model does not define. The values themselves are checked when the copy is
+ * compiled.
+ */
+export function readCatalogData(input: unknown): PlainCatalogData {
+  const data = plainObject(input, "catalog");
+  for (const member of Object.keys(data)) {
+    if (!MEMBERS.has(member)) throw shapeError(member);
+  }
+  const copy: {
+    permissions: readonly string[];
+    implies?: Readonly<Record<string, readonly string[]>>;
+    presets?: Readonly<Record<string, readonly string[]>>;
+    places?: false | Readonly<Record<string, readonly string[]>>;
+  } = { permissions: data.permissions === undefined ? [] : list(data.permissions, "permissions") };
+  if (data.implies !== undefined) copy.implies = listMap(data.implies, "implies");
+  if (data.presets !== undefined) copy.presets = listMap(data.presets, "presets");
+  if (data.places !== undefined) {
+    copy.places = data.places === false ? false : listMap(data.places, "places");
+  }
+  return Object.freeze(copy);
+}
 
 function invalid(reason: keyof typeof MESSAGES, at: string, value: unknown) {
   return catalogInvalid(MESSAGES[reason], { reason, at, value });
@@ -114,4 +124,47 @@ function addTo(map: Map<string, Set<string>>, key: string, value: string): void 
   const set = map.get(key);
   if (set) set.add(value);
   else map.set(key, new Set([value]));
+}
+
+const MEMBERS: ReadonlySet<string> = new Set(["permissions", "implies", "presets", "places"]);
+
+function plainObject(value: unknown, at: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw shapeError(at);
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) throw shapeError(at);
+  const record: Record<string, unknown> = {};
+  for (const [key, member] of Object.entries(value)) define(record, key, member);
+  return record;
+}
+
+function list(value: unknown, at: string): readonly string[] {
+  if (!Array.isArray(value)) throw shapeError(at);
+  const out: string[] = [];
+  for (let index = 0; index < value.length; index++) {
+    const item: unknown = value[index];
+    if (typeof item !== "string") throw shapeError(at);
+    out.push(item);
+  }
+  return Object.freeze(out);
+}
+
+function listMap(value: unknown, at: string): Readonly<Record<string, readonly string[]>> {
+  const source = plainObject(value, at);
+  const out: Record<string, readonly string[]> = {};
+  for (const [name, items] of Object.entries(source))
+    define(out, name, list(items, `${at}.${name}`));
+  return Object.freeze(out);
+}
+
+function define<T>(target: Record<string, T>, key: string, value: T): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
+function shapeError(at: string) {
+  return catalogInvalid("The catalog is not catalog data.", { reason: "shape", at });
 }

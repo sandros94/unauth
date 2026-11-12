@@ -1,3 +1,4 @@
+import type { UnauthError } from "../../error.ts";
 import { malformed } from "./errors.ts";
 import { isToken } from "./grammar.ts";
 
@@ -32,15 +33,13 @@ export function isCanonicalKey(key: unknown): key is string {
 
 /** `key` when it is canonical, else `ERR_AUTHZ_MALFORMED`. Never repaired. */
 export function assertKey(key: unknown): string {
-  if (!isCanonicalKey(key)) {
-    throw malformed("The key of the place is not canonical.", { what: "place", value: key });
-  }
+  if (!isCanonicalKey(key)) throw keyMalformed(key);
   return key;
 }
 
-/** The key of a statement's or a question's place: `"/"` when absent. */
-export function placeOf(place: string | undefined): string {
-  return place ?? "/";
+/** `ERR_AUTHZ_MALFORMED` (`place`) for a key that is not canonical. */
+export function keyMalformed(key: unknown): UnauthError<"ERR_AUTHZ_MALFORMED"> {
+  return malformed("The key of the place is not canonical.", { what: "place", value: key });
 }
 
 /** The levels of a canonical key, from the root down. */

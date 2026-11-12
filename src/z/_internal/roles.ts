@@ -1,19 +1,18 @@
 import { isRecord } from "../../_internal/shared.ts";
+import type { UnauthError } from "../../error.ts";
 import type { StoredRole } from "../types.ts";
 import type { CompiledCatalog, ResolvedRole } from "./compiled.ts";
-import { malformed } from "./errors.ts";
-import { type EntryParts, compareBytes, readEntry } from "./grammar.ts";
-import { assertKey, covers } from "./keys.ts";
+import { malformed, roleInvalid } from "./errors.ts";
+import { type EntryParts, readEntry } from "./grammar.ts";
 import { expand, implying, removed } from "./permissions.ts";
-import { fits } from "./structure.ts";
 
 /**
- * Why a role gives nothing: it, or a role it references, names a role unknown at its home
- * (`reference`), one of two stored roles of one name visible there (`ambiguous`), or references
- * loop (`cycle`). `role` is the role holding the entry, `reference` the name it holds.
+ * Why a role gives nothing: it, or a role it references, names a role that is neither a preset
+ * nor handed in (`reference`), or references loop back to a role being resolved (`cycle`). `role`
+ * is the role holding the entry, `reference` the name it holds.
  */
 export interface RoleBreak {
-  readonly reason: "reference" | "ambiguous" | "cycle";
+  readonly reason: "reference" | "cycle";
   readonly role: string;
   readonly reference: string;
 }
@@ -71,73 +70,48 @@ export function isBreak(value: ResolvedRole | RoleBreak): value is RoleBreak {
   return "reason" in value;
 }
 
-/** Reads role names against the presets and a set of stored roles, failing closed. */
+/** Reads role names against the presets and the stored roles handed in, failing closed. */
 export interface RoleReader {
-  /** Whether `name` is a preset, or a stored role whose home covers `at`, a canonical key. */
-  exists(name: string, at: string): boolean;
+  /** Whether `name` is a preset or a stored role handed in. */
+  exists(name: string): boolean;
   /**
-   * The stored role `name` reads as at `at`: `undefined` for a preset (which wins over a stored
-   * role of the same name), for no stored role visible there, and for two of them.
+   * What `name` gives: the preset of that name when there is one, else the stored role.
+   * {@link NO_ROLE} when it is neither, or its role breaks: fails closed, never throws for stale
+   * data.
    */
-  stored(name: string, at: string): StoredRole | undefined;
-  /**
-   * What `name` gives read at `at`. {@link NO_ROLE} when the name is unknown there, ambiguous, or
-   * its role breaks: fails closed, never throws for stale data.
-   */
-  resolve(name: string, at: string): ResolvedRole;
-  /** What a stored role resolves to, or why it gives nothing. Its references are read at its home. */
+  resolve(name: string): ResolvedRole;
+  /** What a stored role resolves to, or why it gives nothing. */
   resolveStored(role: StoredRole): ResolvedRole | RoleBreak;
 }
 
 /**
- * A {@link RoleReader} over `roles`. A stored role is visible at a place when its home, absent for
- * the root, covers that place and fits the catalog: a home that no longer fits makes the role
- * inert. Throws `ERR_AUTHZ_MALFORMED` for `roles` that is not a list of stored roles, and, once
- * a name is read, for a role of that name whose home is not canonical or whose entries do not
- * match their grammar. Results are memoized for the reader's life.
+ * A {@link RoleReader} over `roles`. A name that is both a preset and a stored role reads as the
+ * preset. A reference met again while it is being resolved breaks the role, as a role that no
+ * longer exists does, so every role on a cycle and every role referencing one gives nothing.
+ * Throws `ERR_AUTHZ_MALFORMED` for `roles` that is not a list of stored roles, and, once a name is
+ * read, for a role of that name whose entries do not match their grammar.
+ * `ERR_AUTHZ_ROLE_INVALID` (`duplicate`) for two stored roles of one name. Results are memoized
+ * for the reader's life.
  */
-export function roleReader(
-  catalog: CompiledCatalog,
-  roles: readonly StoredRole[] | undefined,
-): RoleReader {
+export function roleReader(catalog: CompiledCatalog, roles: unknown): RoleReader {
   const byName = indexRoles(roles);
   const memo = new Map<StoredRole, ResolvedRole | RoleBreak>();
   const visiting = new Set<StoredRole>();
-
-  const visible = (name: string, at: string): StoredRole[] =>
-    (byName.get(name) ?? []).filter((role) => {
-      const home = assertKey(role.home ?? "/");
-      return fits(catalog, home) && covers(home, at);
-    });
-
-  const pick = (name: string, at: string): ResolvedRole | StoredRole | "none" | "ambiguous" => {
-    const preset = catalog.presets.get(name);
-    if (preset) return preset;
-    const [first, ...others] = visible(name, at);
-    if (!first) return "none";
-    const signature = signatureOf(first);
-    return others.every((role) => signatureOf(role) === signature) ? first : "ambiguous";
-  };
 
   const resolveStored = (role: StoredRole): ResolvedRole | RoleBreak => {
     const known = memo.get(role);
     if (known) return known;
     const entries = role.entries.map((entry) => {
       const parts = readEntry(entry);
-      if (!parts)
-        throw malformed("The role entry is not written in its one form.", {
-          what: "entry",
-          value: entry,
-        });
+      if (!parts) throw entryMalformed(entry);
       return parts;
     });
-    const home = role.home ?? "/";
     visiting.add(role);
     const result = combineEntries(catalog, entries, (name) => {
-      const target = pick(name, home);
-      if (target === "none") return { reason: "reference", role: role.name, reference: name };
-      if (target === "ambiguous") return { reason: "ambiguous", role: role.name, reference: name };
-      if (!isStoredRole(target)) return target;
+      const preset = catalog.presets.get(name);
+      if (preset) return preset;
+      const target = byName.get(name);
+      if (!target) return { reason: "reference", role: role.name, reference: name };
       if (visiting.has(target)) return { reason: "cycle", role: role.name, reference: name };
       return resolveStored(target);
     });
@@ -147,15 +121,12 @@ export function roleReader(
   };
 
   return {
-    exists: (name, at) => catalog.presets.has(name) || visible(name, at).length > 0,
-    stored: (name, at) => {
-      const target = pick(name, at);
-      return typeof target === "object" && isStoredRole(target) ? target : undefined;
-    },
-    resolve: (name, at) => {
-      const target = pick(name, at);
-      if (typeof target === "string") return NO_ROLE;
-      if (!isStoredRole(target)) return target;
+    exists: (name) => catalog.presets.has(name) || byName.has(name),
+    resolve: (name) => {
+      const preset = catalog.presets.get(name);
+      if (preset) return preset;
+      const target = byName.get(name);
+      if (!target) return NO_ROLE;
       const result = resolveStored(target);
       return isBreak(result) ? NO_ROLE : result;
     },
@@ -163,36 +134,39 @@ export function roleReader(
   };
 }
 
-function indexRoles(roles: unknown): Map<string, StoredRole[]> {
-  const byName = new Map<string, StoredRole[]>();
+/** `ERR_AUTHZ_MALFORMED` (`entry`) for a role entry that does not match its grammar. */
+export function entryMalformed(entry: unknown): UnauthError<"ERR_AUTHZ_MALFORMED"> {
+  return malformed("The role entry is not written in its one form.", {
+    what: "entry",
+    value: entry,
+  });
+}
+
+function indexRoles(roles: unknown): Map<string, StoredRole> {
+  const byName = new Map<string, StoredRole>();
   if (roles === undefined) return byName;
   if (!Array.isArray(roles)) throw rolesError(roles);
   for (const role of roles) {
     if (!isStoredRoleShape(role)) throw rolesError(role);
-    const list = byName.get(role.name);
-    if (list) list.push(role);
-    else byName.set(role.name, [role]);
+    if (byName.has(role.name)) {
+      throw roleInvalid("Two stored roles have the same name.", {
+        role: role.name,
+        reason: "duplicate",
+      });
+    }
+    byName.set(role.name, role);
   }
   return byName;
 }
 
 function isStoredRoleShape(value: unknown): value is StoredRole {
   if (!isRecord(value)) return false;
-  const { name, home, entries } = value;
+  const { name, entries } = value;
   return (
     typeof name === "string" &&
-    (home === undefined || typeof home === "string") &&
     Array.isArray(entries) &&
     entries.every((entry) => typeof entry === "string")
   );
-}
-
-function isStoredRole(value: ResolvedRole | StoredRole): value is StoredRole {
-  return "entries" in value;
-}
-
-function signatureOf(role: StoredRole): string {
-  return JSON.stringify([role.home ?? "/", [...new Set(role.entries)].toSorted(compareBytes)]);
 }
 
 function rolesError(value: unknown) {

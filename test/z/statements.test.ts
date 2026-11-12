@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compiledOf } from "../../src/z/_internal/compile.ts";
-import {
-  identityOf,
-  isPermanentManagement,
-  isPermanentManager,
-  permanentManagementOf,
-  readStatement,
-  readStatements,
-} from "../../src/z/_internal/statements.ts";
+import { readStatement, readStatements } from "../../src/z/_internal/statements.ts";
 import { defineCatalog } from "../../src/z/catalog.ts";
 import type { Statement } from "../../src/z/types.ts";
 import { refused } from "./_expect.ts";
@@ -16,7 +9,6 @@ const catalog = defineCatalog({
   permissions: ["report:read", "report:write", "access:manage"],
   presets: { viewer: ["report:read"] },
   places: { "/": ["org"], "org": ["unit"] },
-  manager: "access:manage",
 });
 const compiled = compiledOf(catalog);
 const read = (statement: unknown) => readStatement(compiled, statement);
@@ -121,57 +113,5 @@ describe("readStatements", () => {
         readStatements(compiled, [{ kind: "allow", subject: "a", value: "report:read" }, null]),
       ),
     ).toMatchObject({ code: "ERR_AUTHZ_MALFORMED", cause: { what: "statement", value: null } });
-  });
-});
-
-describe("identityOf", () => {
-  it("is equal for an absent place and the root, whatever the end", () => {
-    const a = identityOf({ kind: "allow", subject: "a", value: "report:read" });
-    const b = identityOf({ kind: "allow", subject: "a", value: "report:read", place: "/" });
-    expect(a).toBe(b);
-    const [stored] = readStatements(compiled, [
-      { kind: "allow", subject: "a", value: "report:read", expiresAt: 10 },
-    ]);
-    expect(identityOf(stored!)).toBe(a);
-  });
-
-  it("differs when any of kind, subject, value or place differs", () => {
-    const base = { kind: "allow", subject: "a", value: "report:read", place: "/org=a" } as const;
-    const identities = new Set([
-      identityOf(base),
-      identityOf({ ...base, kind: "deny" }),
-      identityOf({ ...base, subject: "b" }),
-      identityOf({ ...base, value: "report:*" }),
-      identityOf({ ...base, place: "/org=b" }),
-      identityOf({ ...base, subject: "a,b" }),
-    ]);
-    expect(identities.size).toBe(6);
-  });
-});
-
-describe("permanent management", () => {
-  const rows: Statement[] = [
-    { kind: "allow", subject: "owner", value: "*" },
-    { kind: "allow", subject: "deploy", value: "*", place: "/" },
-    { kind: "allow", subject: "temp", value: "*", expiresAt: 1794528000 },
-    { kind: "allow", subject: "tom", value: "*", place: "/org=acme" },
-    { kind: "allow", subject: "ann", value: "report:*" },
-    { kind: "deny", subject: "eve", value: "*" },
-  ];
-  const statements = readStatements(compiled, rows);
-
-  it("is a permanent allow of `*` at the root, and nothing else", () => {
-    expect(statements.map(isPermanentManagement)).toEqual([true, true, false, false, false, false]);
-  });
-
-  it("makes a permanent manager of its subject, or of every member of its group", () => {
-    expect(isPermanentManager(statements, { subject: "owner", groups: [] })).toBe(true);
-    expect(isPermanentManager(statements, { subject: "bot", groups: ["deploy"] })).toBe(true);
-    expect(permanentManagementOf(statements, { subject: "bot", groups: ["deploy"] })?.source).toBe(
-      rows[1],
-    );
-    for (const subject of ["temp", "tom", "ann", "eve"]) {
-      expect(isPermanentManager(statements, { subject, groups: [] })).toBe(false);
-    }
   });
 });

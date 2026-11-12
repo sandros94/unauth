@@ -1,53 +1,71 @@
+import { isUnauthError } from "../error.ts";
 import { compiledOf } from "./_internal/compile.ts";
 import type { CompiledCatalog } from "./_internal/compiled.ts";
 import { malformed } from "./_internal/errors.ts";
-import { coversPlace, readSet } from "./_internal/grants-read.ts";
-import { issueSet } from "./_internal/grants-issue.ts";
-import { readGrantsSet } from "./_internal/grants-validate.ts";
+import { coversPlace, readSet } from "./_internal/grants/read.ts";
+import { issueSet } from "./_internal/grants/issue.ts";
+import { readGrantsSet } from "./_internal/grants/validate.ts";
 import { assertKey } from "./_internal/keys.ts";
-import { readAsked, readAsker } from "./_internal/question.ts";
+import { readAsked } from "./_internal/question.ts";
 import { roleReader } from "./_internal/roles.ts";
-import { readStatements } from "./_internal/statements.ts";
+import { readStatements, readSubjectStatements } from "./_internal/statements.ts";
 import { assertFits } from "./_internal/structure.ts";
 import { clockSeconds } from "./_internal/time.ts";
 import type { Catalog } from "./catalog.ts";
-import type { StatementsOptions } from "./decide.ts";
-import type { Decision, Grants, GrantsQuestion } from "./types.ts";
+import type {
+  Decision,
+  Grants,
+  Question,
+  QuestionOptions,
+  Statement,
+  SubjectStatements,
+} from "./types.ts";
 
 /** Options of {@link issueGrants}. */
-export interface IssueGrantsOptions extends StatementsOptions {
-  /** Every group the subject belongs to. */
-  groups?: readonly string[];
+export interface IssueGrantsOptions {
   /** The places the grants speak for: a question elsewhere is answered as not covered. @default ["/"] */
   bases?: readonly string[];
+  /** The clock, in ms. Read once per call. @default Date.now */
+  now?: () => number;
 }
 
 /**
- * Writes what the statements about a subject amount to, to be carried in a session or a token and
- * read with {@link readGrants} without the statements. Each value keeps its own end, so nothing
- * is issued again when a statement expires, only when one is written or removed.
+ * Writes what the statements that apply to a subject amount to, to be carried in a session or a
+ * token and read with {@link could} without the statements. Each value keeps its own end, so
+ * nothing is issued again when a statement expires, only when one is written or removed. Every
+ * statement handed in applies, as it does for `ask`: what a group gave, the group being any
+ * subject but `read.subject`, is bundled with that group's exclusions.
  *
- * Needs every statement about the subject and each of its groups. With `bases`, those at the
- * places covering a base and under it are enough (`placeChain`, `placeRange`).
+ * Needs every live statement about the subject and each of its groups, and the stored roles they
+ * assign. With `bases`, those at the places covering a base and under it are enough (`placeChain`,
+ * `placeRange`).
  *
- * @throws `ERR_AUTHZ_PLACE_OUTSIDE` or `ERR_AUTHZ_MALFORMED` for a base that is not a place of the catalog.
+ * @throws `ERR_AUTHZ_PLACE_OUTSIDE` or `ERR_AUTHZ_MALFORMED` (`place`) for a base that is not a
+ * place of the catalog.
+ * @throws `ERR_AUTHZ_MALFORMED` for a subject that is not a non-empty string (`subject`),
+ * statements not in their shape (`statement`), stored roles not in theirs (`roles`).
+ * @throws `ERR_AUTHZ_ROLE_INVALID` (`duplicate`) for two stored roles of one name.
+ *
+ * @example
+ * const grants = issueGrants(catalog, { subject: userId, statements, roles }, { bases: [place] });
  */
 export function issueGrants(
   catalog: Catalog,
-  subject: string,
-  options: IssueGrantsOptions,
+  read: SubjectStatements,
+  options?: IssueGrantsOptions,
 ): Grants {
   const compiled = compiledOf(catalog);
-  const asker = readAsker({ subject, groups: options?.groups });
+  const { subject, statements, roles } = readSubjectStatements(read);
   const bases = readBases(compiled, options?.bases);
   const time = clockSeconds(options);
-  const roles = roleReader(compiled, options?.roles);
-  const statements = readStatements(compiled, options?.statements);
-  return issueSet(compiled, roles, statements, { ...asker, bases, time });
+  const reader = roleReader(compiled, roles);
+  const readList = readStatements(compiled, statements);
+  return issueSet(compiled, reader, readList, { subject, bases, time });
 }
 
 /**
- * Answers a question from grants alone: no statements, no storage. `grants` is one set, or a list
+ * Answers a question from grants alone, as `ask` answers it from the statements they were issued
+ * from: no statements, no storage. `grants` is one set, or a list
  * of sets read together: an array is a list, anything else is one set. It takes whatever a carrier
  * handed over, a cookie payload or a parsed row, and checks every set whole before reading. Sets
  * read together cover a place when any of them covers it, and allow only when every set that
@@ -57,27 +75,30 @@ export function issueGrants(
  * set. A stored role is named by its row, `#` and its index, since grants keep what it gave and
  * not its name.
  *
+ * The question is checked first, so a question that cannot be asked is refused whatever the
+ * grants hold.
+ *
  * @throws `ERR_AUTHZ_MALFORMED` for grants that are not what {@link issueGrants} writes.
  * @throws `ERR_AUTHZ_GRANTS_FORMAT` or `ERR_AUTHZ_GRANTS_CATALOG` for grants of another format
  * revision or issued for another catalog: issue them again.
  * @throws `ERR_AUTHZ_GRANTS_EARLY` when the clock reads earlier than their issue.
- * @throws what {@link decide} throws for the question.
+ * @throws what `ask` throws for the question.
  *
  * @example
- * const { allowed, covered } = readGrants(catalog, session.data.grants, { permission: "report:read", place });
+ * const { allowed, covered } = could(catalog, session.data.grants, { permission: "report:read", place });
  */
-export function readGrants<TPermission extends string>(
+export function could<TPermission extends string>(
   catalog: Catalog<TPermission>,
   grants: unknown,
-  question: GrantsQuestion<NoInfer<TPermission>>,
-  options?: Pick<StatementsOptions, "now">,
-): Decision {
+  question: Question<NoInfer<TPermission>>,
+  options?: QuestionOptions,
+): Decision<Omit<Statement, "subject">> {
   const compiled = compiledOf(catalog);
   const time = clockSeconds(options);
+  const asked = readAsked(compiled, question);
   const list: readonly unknown[] = Array.isArray(grants) ? grants : [grants];
   const sets = list.map((set) => readGrantsSet(compiled, set, time));
-  const asked = readAsked(compiled, question);
-  let decisive: Omit<Decision, "covered"> | undefined;
+  let decisive: Omit<Decision<Omit<Statement, "subject">>, "covered"> | undefined;
   for (const set of sets) {
     if (!coversPlace(set, asked.place)) continue;
     const answer = readSet(compiled, set, { ...asked, time });
@@ -88,26 +109,29 @@ export function readGrants<TPermission extends string>(
 }
 
 /**
- * Whether grants allow the permission: {@link readGrants} as one boolean, for the check most
- * routes make, taking `grants` as it does. A place the grants do not cover is `false`.
+ * Whether grants allow the permission: {@link could} as one boolean, taking `grants` as it does,
+ * for what only shows or hides. A place the grants do not cover is `false`, and so are grants a
+ * read refuses: malformed, of another format revision, issued for another catalog or read before
+ * their issue. Where those must be told apart, to issue the grants again or to answer each case,
+ * use {@link could}. The question is checked first, as `could` checks it.
+ *
+ * @throws what `ask` throws for the question, whatever the grants hold.
  *
  * @example
- * if (!can(catalog, session.data.grants, "report:read", { place })) throw forbidden();
+ * const canPublish = can(catalog, session.data.grants, { permission: "post:publish", place });
  */
 export function can<TPermission extends string>(
   catalog: Catalog<TPermission>,
   grants: unknown,
-  permission: NoInfer<TPermission>,
-  options?: CanOptions,
+  question: Question<NoInfer<TPermission>>,
+  options?: QuestionOptions,
 ): boolean {
-  const question = { permission, place: options?.place };
-  return readGrants(catalog, grants, question, { now: options?.now }).allowed;
-}
-
-/** Options of {@link can}. */
-export interface CanOptions extends Pick<StatementsOptions, "now"> {
-  /** The key of the place asked about. Absent is the root. */
-  place?: string;
+  try {
+    return could(catalog, grants, question, options).allowed;
+  } catch (error) {
+    if (isRefusedGrants(error)) return false;
+    throw error;
+  }
 }
 
 /**
@@ -129,7 +153,7 @@ export interface CanOptions extends Pick<StatementsOptions, "now"> {
 export function assertGrants(
   catalog: Catalog,
   value: unknown,
-  options?: Pick<StatementsOptions, "now">,
+  options?: QuestionOptions,
 ): asserts value is Grants {
   const compiled = compiledOf(catalog);
   if (Array.isArray(value)) {
@@ -144,4 +168,13 @@ function readBases(catalog: CompiledCatalog, bases: unknown): string[] {
     throw malformed("The bases are not a list of places.", { what: "place", value: bases });
   }
   return bases.map((base: unknown) => assertFits(catalog, assertKey(base)));
+}
+
+function isRefusedGrants(error: unknown): boolean {
+  if (isUnauthError(error, "ERR_AUTHZ_MALFORMED")) return error.cause.what === "grants";
+  return (
+    isUnauthError(error, "ERR_AUTHZ_GRANTS_FORMAT") ||
+    isUnauthError(error, "ERR_AUTHZ_GRANTS_CATALOG") ||
+    isUnauthError(error, "ERR_AUTHZ_GRANTS_EARLY")
+  );
 }

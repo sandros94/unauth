@@ -32,11 +32,11 @@ export type KnownUnauthErrorCode =
   | "ERR_AUTHZ_PLACE_OUTSIDE" // a place the structure the catalog declares does not hold
   | "ERR_AUTHZ_MALFORMED" // a place, a permission, a role entry, a time or grants not in their one form
   | "ERR_AUTHZ_QUESTION_INVALID" // a question naming no permission, or a wildcard
-  | "ERR_AUTHZ_ROLE_INVALID" // a role that is unknown where it is read, or defined against the rules on roles
-  | "ERR_AUTHZ_CHANGE_REFUSED" // the author may not make this change
+  | "ERR_AUTHZ_ROLE_INVALID" // a role that is not a preset nor handed in, a stored role that references one or loops, or two stored roles of one name
   | "ERR_AUTHZ_GRANTS_FORMAT" // grants of another format revision
   | "ERR_AUTHZ_GRANTS_CATALOG" // grants issued for another catalog
-  | "ERR_AUTHZ_GRANTS_EARLY"; // grants read at a time before their issue
+  | "ERR_AUTHZ_GRANTS_EARLY" // grants read at a time before their issue
+  | "ERR_AUTHZ_STATEMENT_ENDED"; // a statement being validated whose end is not later than the time of the call
 
 /** An {@link UnauthError} `code`: a {@link KnownUnauthErrorCode}, or any code of the application's own. */
 export type UnauthErrorCode = KnownUnauthErrorCode | (string & {});
@@ -120,8 +120,6 @@ export interface UnauthErrorCauseMap {
       | "duplicate"
       | "implication"
       | "cycle"
-      | "manager"
-      | "assigner"
       | "preset"
       | "places"
       | "fingerprint";
@@ -141,19 +139,20 @@ export interface UnauthErrorCauseMap {
       | "time"
       | "roles"
       | "statement"
+      | "subject"
       | "question"
       | "grants";
     value: unknown;
   };
   /**
-   * Why a role is refused: `unknown`, no preset and no stored role of that name where it is read;
-   * `reference`, the role or one it references names a role unknown at its home; `cycle`, the
-   * references loop; `ambiguous`, two stored roles of one name are visible at one place; `preset`,
-   * the name is a preset's; `taken`, a stored role of that name has its home along the same places.
+   * Why a role is refused: `unknown`, the name is neither a preset nor a stored role handed in;
+   * `reference`, a stored role being validated, or one it references, names such a role, which
+   * `reference` holds; `cycle`, its references loop back; `duplicate`, two stored roles handed in
+   * share the name.
    */
   ERR_AUTHZ_ROLE_INVALID: {
     role: string;
-    reason: "unknown" | "reference" | "cycle" | "ambiguous" | "preset" | "taken";
+    reason: "unknown" | "reference" | "cycle" | "duplicate";
     reference?: string;
   };
   /** The permission a question, a statement or a role names that the catalog does not declare. */
@@ -165,17 +164,8 @@ export interface UnauthErrorCauseMap {
    * statements and roles may.
    */
   ERR_AUTHZ_QUESTION_INVALID: { reason: "empty" | "wildcard" };
-  /**
-   * Why the author may not make the change, every reason at once: `not-manager`, the author does
-   * not manage the place; `not-held`, the author does not hold what the statement gives or names,
-   * is denied it under the place, or holds it for less time than the statement would last;
-   * `about-self`, the statement is about the author; `last-manager`, the root would be left
-   * without a permanent manager; `not-first`, the root already holds a permanent manager;
-   * `ended`, the statement's end is not in the future.
-   */
-  ERR_AUTHZ_CHANGE_REFUSED: {
-    reasons: ("not-manager" | "not-held" | "about-self" | "last-manager" | "not-first" | "ended")[];
-  };
+  /** The end, in seconds, of a statement being validated that has ended by the time of the call. */
+  ERR_AUTHZ_STATEMENT_ENDED: { expiresAt: number };
 }
 
 /** An OAuth 2.0 error response (RFC 6749 §4.1.2.1, §5.2). */

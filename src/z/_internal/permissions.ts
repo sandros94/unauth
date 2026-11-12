@@ -2,11 +2,6 @@ import type { CompiledCatalog } from "./compiled.ts";
 import { malformed, permissionUnknown, questionInvalid } from "./errors.ts";
 import { isPattern } from "./grammar.ts";
 
-/** Whether `permission` is a concrete permission the catalog declares. */
-export function isDeclared(catalog: CompiledCatalog, permission: string): boolean {
-  return catalog.permissions.has(permission);
-}
-
 /**
  * The declared permissions a pattern stands for: itself when declared, every declared one of the
  * resource for `resource:*`, of the action for `*:action`, all for `*`. Empty for an unknown
