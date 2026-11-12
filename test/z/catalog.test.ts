@@ -18,38 +18,61 @@ import { type CatalogData, defineCatalog } from "../../src/z/catalog.ts";
 import { resolveRole } from "../../src/z/roles.ts";
 import { refused } from "./_expect.ts";
 
-async function webFingerprint(canonical: string): Promise<string> {
+async function webSegment(canonical: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+  return btoa(String.fromCharCode(...new Uint8Array(digest).subarray(0, 8)))
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replace(/=+$/, "");
 }
 
+async function webFingerprint(declares: string, presets = "{}"): Promise<string> {
+  return `${await webSegment(declares)}.${await webSegment(presets)}`;
+}
+
 const sorted = (set: ReadonlySet<string>) => [...set].toSorted();
 
 describe("defineCatalog fingerprint", () => {
-  it("hashes the canonical text of a catalog with only permissions", async () => {
+  it("is two segments of 11 characters, pinned for a catalog with only permissions", async () => {
     const catalog = defineCatalog({ permissions: ["report:write", "report:read"] });
-    expect(catalog.fingerprint).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(catalog.fingerprint).toMatch(/^[A-Za-z0-9_-]{11}\.[A-Za-z0-9_-]{11}$/);
+    expect(catalog.fingerprint).toBe("tqH3DB6_4qw.RBNvo1WzZ4o");
     expect(catalog.fingerprint).toBe(
       await webFingerprint('{"permissions":["report:read","report:write"]}'),
     );
   });
 
-  it("hashes a catalog with every member present", async () => {
+  it("hashes permissions, implications and places apart from presets, pinned with every member", async () => {
     const catalog = defineCatalog({
       permissions: ["report:read", "report:write", "access:manage", "user:invite"],
       implies: { "report:write": ["report:read"] },
       presets: { viewer: ["report:read"], owner: ["*"], admin: ["owner", "-user:invite"] },
       places: { "/": ["org"], "org": ["unit", "project"], "*": ["folder"] },
     });
-    const canonical =
+    const declares =
       '{"implies":{"report:write":["report:read"]},' +
       '"permissions":["access:manage","report:read","report:write","user:invite"],' +
-      '"places":{"*":["folder"],"/":["org"],"org":["project","unit"]},' +
-      '"presets":{"admin":["-user:invite","owner"],"owner":["*"],"viewer":["report:read"]}}';
-    expect(catalog.fingerprint).toBe(await webFingerprint(canonical));
+      '"places":{"*":["folder"],"/":["org"],"org":["project","unit"]}}';
+    const presets =
+      '{"presets":{"admin":["-user:invite","owner"],"owner":["*"],"viewer":["report:read"]}}';
+    expect(catalog.fingerprint).toBe("85IyG_KLKEo.uG7QYL9EEG8");
+    expect(catalog.fingerprint).toBe(await webFingerprint(declares, presets));
+  });
+
+  it("changes only the first segment for a permission, an implication or a place, only the second for a preset", () => {
+    const base = { permissions: ["a:x", "a:y"], presets: { r: ["a:x"] } } as const;
+    const [first, second] = defineCatalog(base).fingerprint.split(".");
+    const segments = (data: CatalogData) => defineCatalog(data).fingerprint.split(".");
+    expect(segments({ ...base, permissions: ["a:x", "a:y", "a:z"] })).toStrictEqual([
+      expect.not.stringMatching(first!),
+      second,
+    ]);
+    expect(segments({ ...base, implies: { "a:y": ["a:x"] } })[1]).toBe(second);
+    expect(segments({ ...base, places: false })[1]).toBe(second);
+    expect(segments({ ...base, presets: { r: ["a:y"] } })).toStrictEqual([
+      first,
+      expect.not.stringMatching(second!),
+    ]);
   });
 
   it("ignores order and duplicates, and drops members that declare nothing", async () => {
@@ -69,7 +92,8 @@ describe("defineCatalog fingerprint", () => {
     expect(a.fingerprint).toBe(
       await webFingerprint(
         '{"implies":{"a:y":["a:x","b:x"]},"permissions":["a:x","a:y","b:x"],' +
-          '"places":{"/":["org"],"org":["unit"]},"presets":{"q":["-a:y","r"],"r":["a:x","b:x"]}}',
+          '"places":{"/":["org"],"org":["unit"]}}',
+        '{"presets":{"q":["-a:y","r"],"r":["a:x","b:x"]}}',
       ),
     );
   });
@@ -80,9 +104,14 @@ describe("defineCatalog fingerprint", () => {
     expect(none.fingerprint).not.toBe(defineCatalog({ permissions: ["a:x"] }).fingerprint);
     const guest = defineCatalog({ permissions: ["a:x"], presets: { guest: [] } });
     expect(guest.fingerprint).toBe(
-      await webFingerprint('{"permissions":["a:x"],"presets":{"guest":[]}}'),
+      await webFingerprint('{"permissions":["a:x"]}', '{"presets":{"guest":[]}}'),
     );
+    expect(guest.fingerprint.split(".")[1]).not.toBe("RBNvo1WzZ4o");
     expect(resolveRole(guest, "guest")).toEqual([]);
+  });
+
+  it("gives the empty object's segment to a catalog that declares nothing in a segment", () => {
+    expect(defineCatalog({ permissions: [] }).fingerprint).toBe("RBNvo1WzZ4o.RBNvo1WzZ4o");
   });
 
   it("differs when the catalog declares something else", () => {
@@ -131,7 +160,7 @@ describe("defineCatalog result", () => {
     const real = defineCatalog({ permissions: ["a:x"], presets: { r: ["a:x"] } });
     expect(resolveRole({ data: real.data, fingerprint: real.fingerprint }, "r")).toEqual(["a:x"]);
     expect(
-      refused(() => resolveRole({ data: real.data, fingerprint: "x".repeat(43) }, "r")),
+      refused(() => resolveRole({ data: real.data, fingerprint: "x".repeat(23) }, "r")),
     ).toMatchObject({
       code: "ERR_AUTHZ_CATALOG_INVALID",
       status: 500,

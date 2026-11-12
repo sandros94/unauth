@@ -2,7 +2,7 @@ import type { CompiledCatalog, ResolvedRole } from "./compiled.ts";
 import { catalogInvalid } from "./errors.ts";
 import { type EntryParts, isToken, readEntry } from "./grammar.ts";
 import { expand } from "./permissions.ts";
-import { combineEntries, isBreak } from "./roles.ts";
+import { type RoleWalk, isBreak, walkRoles } from "./roles.ts";
 
 /**
  * Resolves the presets of catalog data, against `catalog`, whose permissions, implications and
@@ -39,11 +39,12 @@ export function resolvePresets(
 
   const resolved = new Map<string, ResolvedRole>();
   const visiting = new Set<string>();
-  const visit = (name: string): ResolvedRole => {
-    const known = resolved.get(name);
-    if (known) return known;
-    visiting.add(name);
-    const result = combineEntries(catalog, parsed.get(name) ?? [], (reference) => {
+  const walk: RoleWalk<string> = {
+    open: (name) => {
+      visiting.add(name);
+      return parsed.get(name) ?? [];
+    },
+    refer: (reference, name) => {
       if (!parsed.has(reference)) {
         throw invalid(
           "A preset references a role that is not a preset.",
@@ -60,15 +61,17 @@ export function resolvePresets(
           name,
         );
       }
-      return visit(reference);
-    });
-    visiting.delete(name);
-    if (isBreak(result))
-      throw invalid("A preset does not resolve.", "preset", result.reference, name);
-    resolved.set(name, result);
-    return result;
+      return resolved.get(reference) ?? { descend: reference };
+    },
+    close: (name, result) => {
+      visiting.delete(name);
+      if (isBreak(result)) {
+        throw invalid("A preset does not resolve.", "preset", result.reference, name);
+      }
+      resolved.set(name, result);
+    },
   };
-  for (const name of parsed.keys()) visit(name);
+  for (const name of parsed.keys()) if (!resolved.has(name)) walkRoles(catalog, name, walk);
   return resolved;
 }
 

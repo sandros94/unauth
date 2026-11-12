@@ -1,12 +1,149 @@
+import type { CatalogData } from "../../catalog.ts";
+import { DEPTH, IMPLIED, implicationChain, presetChain } from "../_internal/deep.ts";
 import type { CatalogCase } from "../types.ts";
 
+const reports: CatalogData = {
+  permissions: ["report:read", "report:write"],
+  implies: { "report:write": ["report:read"] },
+  presets: { viewer: ["report:read"], editor: ["viewer", "report:write"] },
+  places: { "/": ["org"], "org": ["unit"] },
+};
+
+/** The fingerprint of `reports`: its first segment, a `.`, and its second. */
+const REPORTS = "NFb8S-LrGCw.sESKyO9Fmp0";
+
+/** The second segment of every catalog that declares no preset: the hash of `{}`. */
+const NO_PRESETS = "RBNvo1WzZ4o";
+
+/** Reading and writing reports in organisations, nothing else. */
+const plain: CatalogData = {
+  permissions: ["report:read", "report:write"],
+  places: { "/": ["org"] },
+};
+
+/** The fingerprint of `plain`. */
+const PLAIN = "21K-UUdxg-s.RBNvo1WzZ4o";
+
 export const catalogCases: readonly CatalogCase[] = [
+  {
+    id: "catalog/empty-implies-is-absent",
+    title: "`implies` written with nothing in it: the same catalog as without it",
+    catalog: { ...plain, implies: {} },
+    expect: "accepted",
+    fingerprint: PLAIN,
+  },
+  {
+    id: "catalog/implies-empty-list-is-absent",
+    title: "A permission mapped to an empty list in `implies`: the same catalog as without it",
+    catalog: { ...plain, implies: { "report:write": [] } },
+    expect: "accepted",
+    fingerprint: PLAIN,
+  },
+  {
+    id: "catalog/empty-presets-is-absent",
+    title: "`presets` written with nothing in it: the same catalog as without it",
+    catalog: { ...plain, presets: {} },
+    expect: "accepted",
+    fingerprint: PLAIN,
+  },
+  {
+    id: "catalog/preset-with-no-entries",
+    title:
+      "A preset declared with no entries is a role all the same: kept, and the second segment moves",
+    catalog: { ...plain, presets: { viewer: [] } },
+    expect: "accepted",
+    fingerprint: "21K-UUdxg-s.BBGmha0i7xg",
+  },
+  {
+    id: "catalog/deep-preset-chain",
+    title: `${DEPTH} presets, each built on the next, the last reading reports`,
+    catalog: { ...plain, presets: presetChain(DEPTH, "report:read") },
+    expect: "accepted",
+  },
+  {
+    id: "catalog/deep-implication-chain",
+    title: `${IMPLIED} permissions, each implying the next`,
+    catalog: implicationChain(IMPLIED),
+    expect: "accepted",
+  },
+  {
+    id: "catalog/fingerprint-two-segments",
+    title:
+      "An application with reports, two presets and organisations of units: 11 characters for what it may do, 11 for its presets",
+    catalog: reports,
+    expect: "accepted",
+    fingerprint: REPORTS,
+  },
+  {
+    id: "catalog/fingerprint-preset-edited",
+    title: "The viewer preset is widened to every report permission: only the second segment moves",
+    catalog: { ...reports, presets: { viewer: ["report:*"], editor: ["viewer", "report:write"] } },
+    expect: "accepted",
+    fingerprint: "NFb8S-LrGCw.Z2CHBOBckpg",
+  },
+  {
+    id: "catalog/fingerprint-permission-added",
+    title: "Exporting reports is added to the catalog: only the first segment moves",
+    catalog: { ...reports, permissions: ["report:read", "report:write", "report:export"] },
+    expect: "accepted",
+    fingerprint: "bktMjN2lXD4.sESKyO9Fmp0",
+  },
+  {
+    id: "catalog/fingerprint-implication-removed",
+    title: "Writing a report no longer implies reading it: only the first segment moves",
+    catalog: {
+      permissions: reports.permissions,
+      presets: reports.presets,
+      places: reports.places,
+    },
+    expect: "accepted",
+    fingerprint: "WlqKv5y-4c8.sESKyO9Fmp0",
+  },
+  {
+    id: "catalog/fingerprint-level-added",
+    title: "Projects may now sit under an organisation: only the first segment moves",
+    catalog: { ...reports, places: { "/": ["org"], "org": ["unit", "project"] } },
+    expect: "accepted",
+    fingerprint: "jLZVwmSTh0k.sESKyO9Fmp0",
+  },
+  {
+    id: "catalog/fingerprint-order-and-repeats",
+    title:
+      "The same catalog written in another order, with lists repeating values: neither segment moves",
+    catalog: {
+      places: { "org": ["unit", "unit"], "/": ["org"] },
+      presets: { editor: ["report:write", "viewer", "viewer"], viewer: ["report:read"] },
+      implies: { "report:write": ["report:read", "report:read"] },
+      permissions: ["report:write", "report:read"],
+    },
+    expect: "accepted",
+    fingerprint: REPORTS,
+  },
+  {
+    id: "catalog/fingerprint-no-presets-small",
+    title: "A catalog of one permission and no preset: its second segment is the hash of `{}`",
+    catalog: { permissions: ["doc:read"] },
+    expect: "accepted",
+    fingerprint: `jhaybtzHZyM.${NO_PRESETS}`,
+  },
+  {
+    id: "catalog/fingerprint-no-presets-other",
+    title:
+      "Another catalog with no preset, with an implication and no places: another first segment, the same second",
+    catalog: {
+      permissions: ["doc:read", "doc:write"],
+      implies: { "doc:write": ["doc:read"] },
+      places: false,
+    },
+    expect: "accepted",
+    fingerprint: `GgjlhVnRegE.${NO_PRESETS}`,
+  },
   {
     id: "catalog/only-permissions",
     title: "A catalog that declares permissions and nothing else",
     catalog: { permissions: ["report:write", "report:read"] },
     expect: "accepted",
-    fingerprint: "tqH3DB6_4qwlAYM-ISbwYLuody-MS18UdumX3CnKB8o",
+    fingerprint: "tqH3DB6_4qw.RBNvo1WzZ4o",
   },
   {
     id: "catalog/every-member",
@@ -22,7 +159,7 @@ export const catalogCases: readonly CatalogCase[] = [
       places: { "/": ["org"], "org": ["unit"], "*": ["folder"] },
     },
     expect: "accepted",
-    fingerprint: "pMZ0NvCLujkchQEJshKOTYxs8_v3YNUNNIxQcJai6AE",
+    fingerprint: "0yi4_ChkHao.2gobI249O8w",
   },
   {
     id: "catalog/order-and-repeats-a",
@@ -37,7 +174,7 @@ export const catalogCases: readonly CatalogCase[] = [
       places: { "org": ["unit", "project", "unit"], "/": ["org"] },
     },
     expect: "accepted",
-    fingerprint: "Kn1K9vX3wcdEUAPotArQ7VuwjOgNurfMjsfjPqbc_U0",
+    fingerprint: "kHwvGnidEsg.sESKyO9Fmp0",
   },
   {
     id: "catalog/order-and-repeats-b",
@@ -49,21 +186,21 @@ export const catalogCases: readonly CatalogCase[] = [
       permissions: ["access:manage", "report:read", "report:write", "vm:start"],
     },
     expect: "accepted",
-    fingerprint: "Kn1K9vX3wcdEUAPotArQ7VuwjOgNurfMjsfjPqbc_U0",
+    fingerprint: "kHwvGnidEsg.sESKyO9Fmp0",
   },
   {
     id: "catalog/places-false",
     title: "An application that declares it has no places",
     catalog: { permissions: ["report:read"], places: false },
     expect: "accepted",
-    fingerprint: "J0DYiWQfEhQdzIq7uV0lgEt84zX-cbOW1gg4h1uiW2o",
+    fingerprint: "J0DYiWQfEhQ.RBNvo1WzZ4o",
   },
   {
     id: "catalog/places-absent",
     title: "The same catalog saying nothing about places: another fingerprint",
     catalog: { permissions: ["report:read"] },
     expect: "accepted",
-    fingerprint: "d-NW76kxxiewg8kjHGWI3vCkln04zq_q0EuAGcBusbY",
+    fingerprint: "d-NW76kxxic.RBNvo1WzZ4o",
   },
   {
     id: "catalog/structure-star-parent",
@@ -73,14 +210,14 @@ export const catalogCases: readonly CatalogCase[] = [
       places: { "*": ["folder"], "/": ["drive"] },
     },
     expect: "accepted",
-    fingerprint: "GnBymVwZlNMN2C7vjf8-kiIqQRzAgSJjKb5M8teG7Nc",
+    fingerprint: "GnBymVwZlNM.RBNvo1WzZ4o",
   },
   {
     id: "catalog/token-edges",
     title: "A resource of thirty-two characters, and tokens with digits, `_` and `-`",
     catalog: { permissions: ["abcdefghijklmnopqrstuvwxyz012345:read", "report_v2:read-all"] },
     expect: "accepted",
-    fingerprint: "lxRqItyKgcBABqLmdNKLocgfWxf3A9KCHv7ixpIPosw",
+    fingerprint: "lxRqItyKgcA.RBNvo1WzZ4o",
   },
   {
     id: "catalog/implication-chain",
@@ -90,7 +227,7 @@ export const catalogCases: readonly CatalogCase[] = [
       implies: { "report:write": ["report:read"], "report:read": ["report:list"] },
     },
     expect: "accepted",
-    fingerprint: "IcfXcJ8QvOEPwo8mex79mh-hxET-FEG8cP-W7wLDHBU",
+    fingerprint: "IcfXcJ8QvOE.RBNvo1WzZ4o",
   },
   {
     id: "catalog/structure-chain",
@@ -100,7 +237,7 @@ export const catalogCases: readonly CatalogCase[] = [
       places: { "/": ["org"], "org": ["unit"], "unit": ["team"] },
     },
     expect: "accepted",
-    fingerprint: "9imCQZ5H1Da6SIptN-9p3RvdOHSrE9dbpDY7C2W9ZRg",
+    fingerprint: "9imCQZ5H1DY.RBNvo1WzZ4o",
   },
   {
     id: "catalog/preset-references",
@@ -114,7 +251,7 @@ export const catalogCases: readonly CatalogCase[] = [
       },
     },
     expect: "accepted",
-    fingerprint: "drnvA9Cs52ca15pKOJCZowX6tUjIPODiVNqUmx3fZnU",
+    fingerprint: "n1wR6djy98g.1fHOdRL1NbY",
   },
   {
     id: "catalog/permission-declared-twice",

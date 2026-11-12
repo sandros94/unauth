@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { ask } from "../../src/z/ask.ts";
 import { defineAuthz } from "../../src/z/authz.ts";
-import { assertGrants, can, could, issueGrants } from "../../src/z/grants.ts";
+import { assertGrants, could, diverged, issueGrants } from "../../src/z/grants.ts";
 import type { Grants, Statement } from "../../src/z/types.ts";
 import { validateRole, validateStatement } from "../../src/z/validate.ts";
 import { refused } from "./_expect.ts";
@@ -46,38 +46,57 @@ describe("the engine bound to its catalog", () => {
   it("issues grants the functions read, and reads grants the functions issue", () => {
     const bound = authz.issueGrants(ana, { now });
     expect(bound).toEqual(issueGrants(authz.catalog, ana, { now }));
+    expect(bound.ps).toStrictEqual({ viewer: [0] });
     const question = { permission: "report:read", place: ACME } as const;
-    expect(can(authz.catalog, bound, question, { now })).toBe(true);
-    expect(authz.can(bound, question, { now })).toBe(true);
-    expect(authz.can(bound, { ...question, permission: "report:write" }, { now })).toBe(false);
     expect(authz.could(bound, question, { now })).toEqual(
       could(authz.catalog, bound, question, { now }),
     );
-  });
-
-  it("gives the whole answer with `could` where `can` gives a boolean", () => {
-    const whole = authz.issueGrants(ana, { now });
-    expect(authz.could(whole, { permission: "report:read", place: ACME }, { now })).toMatchObject({
+    expect(authz.could(bound, question, { now })).toMatchObject({
       allowed: true,
       covered: true,
       by: { kind: "assign", value: "viewer", place: ACME },
     });
-    expect(authz.could(whole, { permission: "report:write", place: ACME }, { now })).toEqual({
+    expect(authz.could(bound, { ...question, permission: "report:write" }, { now })).toEqual({
       allowed: false,
       covered: true,
     });
     const scoped = authz.issueGrants(ana, { bases: [ACME], now });
     const elsewhere = { permission: "report:read", place: "/org=globex" } as const;
     expect(authz.could(scoped, elsewhere, { now })).toEqual({ allowed: false, covered: false });
-    expect(authz.can(scoped, elsewhere, { now })).toBe(false);
   });
 
-  it("answers `can` false and refuses in `could` for grants issued under another catalog", () => {
-    const older = defineAuthz({ permissions: ["report:read", "access:manage"] });
-    const stale = older.issueGrants({ subject: "ana", statements: [] }, { now });
-    expect(authz.can(stale, { permission: "report:read" }, { now })).toBe(false);
-    expect(refused(() => authz.could(stale, { permission: "report:read" }, { now })).code).toBe(
-      "ERR_AUTHZ_GRANTS_CATALOG",
+  it("issues presets by name by default when defined so, and lets a call replace the default", () => {
+    const named = defineAuthz(authz.catalog.data, { omit: ["presets"] });
+    const byDefault = named.issueGrants(ana, { now });
+    expect(byDefault).not.toHaveProperty("ps");
+    expect(byDefault).toEqual(issueGrants(named.catalog, ana, { omit: ["presets"], now }));
+    expect(named.issueGrants(ana, { omit: [], now }).ps).toStrictEqual({ viewer: [0] });
+    expect(named.issueGrants(ana, { omit: undefined, now })).not.toHaveProperty("ps");
+    expect(authz.issueGrants(ana, { omit: ["presets"], now })).not.toHaveProperty("ps");
+  });
+
+  it("tells what has diverged as the function does, and refuses in `could` grants by name under other presets", () => {
+    const older = defineAuthz({
+      ...authz.catalog.data,
+      presets: { viewer: ["report:write"], owner: ["*"] },
+    });
+    const copied = older.issueGrants(ana, { now });
+    const told = { segments: ["presets"], permissions: [], presets: ["viewer"] };
+    expect(authz.diverged(copied, { now })).toStrictEqual(told);
+    expect(diverged(authz.catalog, copied, { now })).toStrictEqual(told);
+    expect(authz.diverged(authz.issueGrants(ana, { now }), { now })).toBeUndefined();
+    expect(authz.could(copied, { permission: "report:write", place: ACME }, { now })).toMatchObject(
+      {
+        allowed: true,
+        diverged: told,
+      },
+    );
+    const stale = older.issueGrants(ana, { omit: ["presets"], now });
+    expect(refused(() => authz.could(stale, { permission: "report:read" }, { now }))).toMatchObject(
+      {
+        code: "ERR_AUTHZ_GRANTS_CATALOG",
+        cause: { segment: "presets" },
+      },
     );
   });
 
@@ -119,9 +138,9 @@ describe("the engine bound to its catalog", () => {
   it("binds the questions and validation, and no function of the past", () => {
     expect(Object.keys(authz).toSorted()).toStrictEqual([
       "ask",
-      "can",
       "catalog",
       "could",
+      "diverged",
       "issueGrants",
       "placeFits",
       "relatedValues",
@@ -134,7 +153,7 @@ describe("the engine bound to its catalog", () => {
   it("keeps the permissions of its catalog as types", () => {
     const grants = authz.issueGrants(ana, { now });
     // @ts-expect-error "report:raed" is not a permission of this catalog
-    expect(refused(() => authz.can(grants, { permission: "report:raed" })).code).toBe(
+    expect(refused(() => authz.could(grants, { permission: "report:raed" })).code).toBe(
       "ERR_AUTHZ_PERMISSION_UNKNOWN",
     );
   });

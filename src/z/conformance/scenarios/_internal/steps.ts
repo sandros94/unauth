@@ -1,7 +1,10 @@
+import type { CatalogData } from "../../../catalog.ts";
 import type { Statement, StatementKind } from "../../../types.ts";
-import type { Question } from "../../engine.ts";
+import type { Diverged, Question } from "../../engine.ts";
 import type {
   AskStep,
+  DeployStep,
+  ExpectedDiverged,
   FromGrants,
   HandStep,
   IssueStep,
@@ -79,7 +82,7 @@ export function issue(
   at: number,
   as: string,
   subject: string,
-  options?: Pick<IssueStep, "groups" | "bases" | "expect">,
+  options?: Pick<IssueStep, "groups" | "bases" | "expect" | "presets">,
 ): IssueStep {
   return { step: "issue", at, as, subject, ...options };
 }
@@ -89,8 +92,28 @@ export function read(
   grants: ReadStep["grants"],
   question: Question,
   expect: ReadStep["expect"],
+  told?: ExpectedDiverged,
 ): ReadStep {
-  return { step: "read", at, grants, question, expect };
+  return {
+    step: "read",
+    at,
+    grants,
+    question,
+    expect,
+    ...(told !== undefined && { diverged: told }),
+  };
+}
+
+export function deploy(catalog: CatalogData): DeployStep {
+  return { step: "deploy", catalog };
+}
+
+/** What a read tells has diverged: the segments that differ, then the lists, each sorted by bytes. */
+export function diverged(
+  segments: Diverged["segments"],
+  lists: { permissions?: string[]; presets?: string[] } = {},
+): Diverged {
+  return { segments, permissions: lists.permissions ?? [], presets: lists.presets ?? [] };
 }
 
 export function write(rewrite: Omit<WriteStep, "step">): WriteStep {

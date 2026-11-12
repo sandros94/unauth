@@ -17,9 +17,12 @@ export function relatesTo(
 ): ((statement: Statement) => boolean) | undefined {
   const declared = data.permissions;
   if (!declared.includes(permission)) return undefined;
-  const implies = data.implies ?? {};
-  const up = (from: string) =>
-    reach(from, (p) => declared.filter((q) => (implies[q] ?? []).includes(p)));
+  const implies: Readonly<Record<string, readonly string[] | undefined>> = data.implies ?? {};
+  const implying = new Map<string, string[]>();
+  for (const [from, implied] of Object.entries(implies)) {
+    for (const to of implied ?? []) implying.set(to, [...(implying.get(to) ?? []), from]);
+  }
+  const up = (from: string) => reach(from, (p) => implying.get(p) ?? []);
   const wanted = up(permission);
   const blocking = reach(permission, (p) => implies[p] ?? []);
   return (statement) => {
@@ -27,7 +30,7 @@ export function relatesTo(
     if (kind === "assign") {
       const presets = data.presets ?? {};
       if (!Object.hasOwn(presets, value)) return true;
-      return meets(wanted, presetNames(data, value, new Set()));
+      return meets(wanted, presetNames(data, value));
     }
     const expanded = expand(declared, value);
     if (expanded === undefined) return true;
@@ -56,15 +59,19 @@ function expand(declared: readonly string[], value: unknown): readonly string[] 
   return declared.includes(value) ? [value] : [];
 }
 
-function presetNames(data: CatalogData, name: string, seen: Set<string>): string[] {
-  seen.add(name);
+function presetNames(data: CatalogData, name: string): string[] {
   const presets: Readonly<Record<string, readonly string[]>> = data.presets ?? {};
-  return (presets[name] ?? []).flatMap((entry) => {
-    if (entry.startsWith("-")) return [];
-    const permissions = expand(data.permissions, entry);
-    if (permissions !== undefined) return [...permissions];
-    return Object.hasOwn(presets, entry) && !seen.has(entry) ? presetNames(data, entry, seen) : [];
-  });
+  const seen = new Set([name]);
+  const names: string[] = [];
+  for (const role of seen) {
+    for (const entry of presets[role] ?? []) {
+      if (entry.startsWith("-")) continue;
+      const permissions = expand(data.permissions, entry);
+      if (permissions !== undefined) names.push(...permissions);
+      else if (Object.hasOwn(presets, entry)) seen.add(entry);
+    }
+  }
+  return names;
 }
 
 function reach(from: string, next: (permission: string) => readonly string[]): Set<string> {

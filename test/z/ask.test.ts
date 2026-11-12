@@ -528,7 +528,12 @@ describe("every statement handed in applies (Section 7)", () => {
   });
 
   it("names a direct allow before an assignment, the subject's own before a group's", () => {
-    const role: Statement = { kind: "assign", subject: "alice", value: "analyst", place: "/org=acme" };
+    const role: Statement = {
+      kind: "assign",
+      subject: "alice",
+      value: "analyst",
+      place: "/org=acme",
+    };
     const direct: Statement = {
       kind: "allow",
       subject: "alice",
@@ -537,7 +542,11 @@ describe("every statement handed in applies (Section 7)", () => {
     };
     const reading: Statement = { kind: "allow", subject: "alice", value: "report:read" };
     const team: Statement = { kind: "allow", subject: "team", value: "report:write" };
-    const at = { permission: "report:write", place: "/org=acme/unit=u7", groups: ["team"] } as const;
+    const at = {
+      permission: "report:write",
+      place: "/org=acme/unit=u7",
+      groups: ["team"],
+    } as const;
     expect(answer([role, direct], at).by).toBe(direct);
     expect(answer([direct, role], at).by).toBe(direct);
     expect(answer([role, reading], { ...at, permission: "report:read" }).by).toBe(reading);

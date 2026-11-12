@@ -37,10 +37,7 @@ export function readStatement(
   statement: unknown,
 ): ReadStatement | undefined {
   const read = readWellFormed(statement);
-  if (!fits(catalog, read.place)) return undefined;
-  const { kind, value } = read;
-  if (kind !== "assign" && value !== "*" && expand(catalog, value).size === 0) return undefined;
-  return read;
+  return isInert(catalog, read) ? undefined : read;
 }
 
 /**
@@ -72,12 +69,19 @@ export function readSubjectStatements(read: unknown): {
  */
 export function readStatements(catalog: CompiledCatalog, statements: unknown): ReadStatement[] {
   if (!Array.isArray(statements)) throw statementMalformed(statements);
-  const out: ReadStatement[] = [];
-  for (const statement of statements) {
-    const read = readStatement(catalog, statement);
-    if (read) out.push(read);
-  }
-  return out;
+  return statements.flatMap((statement: unknown) => readStatement(catalog, statement) ?? []);
+}
+
+/**
+ * Reads every statement handed in, in order, for its form alone: inert ones are kept as written,
+ * for grants that a later catalog may read otherwise.
+ *
+ * @throws `ERR_AUTHZ_MALFORMED` (`statement`) for `statements` that is not a list, and what
+ * {@link readWellFormed} throws for any of its items.
+ */
+export function readWrittenStatements(statements: unknown): ReadStatement[] {
+  if (!Array.isArray(statements)) throw statementMalformed(statements);
+  return statements.map(readWellFormed);
 }
 
 /** Whether `value` is one of the four kinds of statement. */
@@ -93,6 +97,12 @@ export function isFilled(value: unknown): value is string {
 /** `ERR_AUTHZ_MALFORMED` (`statement`) for a statement, or a list of them, not in its shape. */
 export function statementMalformed(value: unknown): UnauthError<"ERR_AUTHZ_MALFORMED"> {
   return malformed("The statement is not in its shape.", { what: "statement", value });
+}
+
+function isInert(catalog: CompiledCatalog, read: ReadStatement): boolean {
+  if (!fits(catalog, read.place)) return true;
+  const { kind, value } = read;
+  return kind !== "assign" && value !== "*" && expand(catalog, value).size === 0;
 }
 
 const KINDS: ReadonlySet<string> = new Set<StatementKind>(["allow", "assign", "deny", "exclude"]);

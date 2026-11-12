@@ -71,6 +71,15 @@ export const statementCases: readonly StatementCase[] = [
     { kind: "assign", subject: "ann", value: "viewer" },
     [{ name: "viewer", entries: ["billing:read"] }],
   ),
+  {
+    id: "statement/assign-preset-with-no-entries",
+    title:
+      "An assignment of a preset declared with no entries, a role that exists and gives nothing",
+    catalog: { ...statementCatalog, presets: { viewer: [] } },
+    at: VALIDATED_AT,
+    statement: { kind: "assign", subject: "ann", value: "viewer", place: "/org=acme" },
+    expect: [],
+  },
   valid("end-a-second-later", "An end one second after the validation", {
     kind: "allow",
     subject: "ann",

@@ -385,4 +385,19 @@ export const roleScenarios: readonly Scenario[] = [
       }),
     ],
   },
+  {
+    id: "roles/preset-with-no-entries",
+    title:
+      "A preset declared with no entries is assigned: it exists, gives nothing, and grants carry it both ways",
+    proves: ["G1", "G8"],
+    catalog: { permissions: ["report:read"], presets: { viewer: [] }, places: { "/": ["org"] } },
+    statements: [assign("ann", "viewer", ACME)],
+    steps: [
+      ask(MONDAY, { subject: "ann", permission: "report:read", place: ACME }, "denied", {
+        issuedAt: MONDAY,
+      }),
+      issue(MONDAY, "ann", "ann"),
+      read(TUESDAY, "ann", { permission: "report:read", place: ACME }, "denied"),
+    ],
+  },
 ];

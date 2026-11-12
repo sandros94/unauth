@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defineCatalog } from "../../../src/z/catalog.ts";
-import { can, could, issueGrants } from "../../../src/z/grants.ts";
+import { could, issueGrants } from "../../../src/z/grants.ts";
 import type { Grants, Question, Statement } from "../../../src/z/types.ts";
 import { refused } from "../_expect.ts";
 
@@ -47,6 +47,10 @@ function issue(statements: Statement[], options: { subject: string; bases?: stri
   const { subject, bases } = options;
   return issueGrants(catalog, { subject, statements }, { bases, now: () => MONDAY * 1000 });
 }
+
+const [, presetsSegment] = ct.split(".");
+const otherPresets = `${ct.split(".")[0]}.AAAAAAAAAAA`;
+const otherDeclares = `AAAAAAAAAAA.${presetsSegment}`;
 
 const sue = {
   v: "1",
@@ -232,7 +236,12 @@ describe("bases", () => {
   it("refuses the whole read when one set refuses, even one that does not cover the place", () => {
     const people = [{ kind: "assign", subject: "mel", value: "viewer" }] satisfies Statement[];
     const platform = issue(people, { subject: "mel", bases: ["/server=s1"] });
-    const stale = { ...issue(people, { subject: "mel", bases: [ACME] }), ct: "another" };
+    const named = issueGrants(
+      catalog,
+      { subject: "mel", statements: people },
+      { bases: [ACME], omit: ["presets"], now: () => MONDAY * 1000 },
+    );
+    const stale = { ...named, ct: otherPresets };
     expect(
       refused(() =>
         read([platform, stale], { permission: "report:read", place: "/server=s1" }, MONDAY),
@@ -241,7 +250,7 @@ describe("bases", () => {
   });
 });
 
-describe("the question and `can`", () => {
+describe("the question", () => {
   const grants = issue(
     [
       { kind: "assign", subject: "gil", value: "player" },
@@ -249,69 +258,24 @@ describe("the question and `can`", () => {
     ],
     { subject: "gil" },
   );
-  const place = "/server=s1";
 
-  it("answers `can` as one boolean, false where not covered", () => {
-    const at = () => MONDAY * 1000;
-    expect(can(catalog, grants, { permission: "match:join", place }, { now: at })).toBe(true);
-    expect(can(catalog, grants, { permission: "chat:send", place }, { now: at })).toBe(false);
-    expect(can(catalog, grants, { permission: "chat:read", place }, { now: at })).toBe(true);
-    const narrow = issue([{ kind: "allow", subject: "gil", value: "*" }], {
-      subject: "gil",
-      bases: [ACME],
-    });
-    expect(can(catalog, narrow, { permission: "match:join", place }, { now: at })).toBe(false);
-  });
-
-  it("answers `can` false for grants a read refuses, which `could` names", () => {
-    const at = () => MONDAY * 1000;
-    const refusedSets: [string, unknown, () => number][] = [
-      ["ERR_AUTHZ_MALFORMED", undefined, at],
-      ["ERR_AUTHZ_MALFORMED", { ...grants, nt: [] }, at],
-      ["ERR_AUTHZ_GRANTS_FORMAT", { ...grants, v: "2" }, at],
-      ["ERR_AUTHZ_GRANTS_CATALOG", { ...grants, ct: "x" }, at],
-      ["ERR_AUTHZ_GRANTS_EARLY", grants, () => (MONDAY - 1) * 1000],
-      ["ERR_AUTHZ_MALFORMED", [grants, null], at],
-    ];
-    for (const [code, set, now] of refusedSets) {
-      const question = { permission: "chat:read", place } as const;
-      expect(refused(() => could(catalog, set, question, { now })).code).toBe(code);
-      expect(can(catalog, set, { permission: "chat:read", place }, { now })).toBe(false);
-    }
-  });
-
-  it("still refuses the question in `can`, whatever the grants", () => {
+  it("is refused as `ask` refuses it, whatever the grants hold", () => {
     for (const set of [grants, null, { ...grants, ct: "x" }]) {
+      expect(refused(() => read(set, { permission: "chat:*" as P }, MONDAY))).toMatchObject({
+        code: "ERR_AUTHZ_QUESTION_INVALID",
+        cause: { reason: "wildcard" },
+      });
+      expect(refused(() => read(set, { permission: "invoice:read" as P }, MONDAY))).toMatchObject({
+        code: "ERR_AUTHZ_PERMISSION_UNKNOWN",
+      });
       expect(
-        refused(() => can(catalog, set, { permission: "invoice:read" as P, place })).code,
-      ).toBe("ERR_AUTHZ_PERMISSION_UNKNOWN");
-      expect(refused(() => can(catalog, set, { permission: "chat:*" as P, place })).code).toBe(
-        "ERR_AUTHZ_QUESTION_INVALID",
-      );
-      expect(
-        refused(() => can(catalog, set, { permission: "chat:read", place: "/unit=u1" })).code,
-      ).toBe("ERR_AUTHZ_PLACE_OUTSIDE");
-      expect(
-        refused(() => can(catalog, set, { permission: "chat:read", place: "org=acme" })).code,
-      ).toBe("ERR_AUTHZ_MALFORMED");
+        refused(() => read(set, { permission: "chat:read", place: "/unit=u1" }, MONDAY)),
+      ).toMatchObject({ code: "ERR_AUTHZ_PLACE_OUTSIDE" });
+      expect(refused(() => read(set, { permission: "" as P }, MONDAY))).toMatchObject({
+        code: "ERR_AUTHZ_QUESTION_INVALID",
+        cause: { reason: "empty" },
+      });
     }
-  });
-
-  it("refuses a question as `ask` does", () => {
-    expect(refused(() => read(grants, { permission: "chat:*" as P }, MONDAY))).toMatchObject({
-      code: "ERR_AUTHZ_QUESTION_INVALID",
-      cause: { reason: "wildcard" },
-    });
-    expect(refused(() => read(grants, { permission: "invoice:read" as P }, MONDAY))).toMatchObject({
-      code: "ERR_AUTHZ_PERMISSION_UNKNOWN",
-    });
-    expect(
-      refused(() => read(grants, { permission: "chat:read", place: "/unit=u1" }, MONDAY)),
-    ).toMatchObject({ code: "ERR_AUTHZ_PLACE_OUTSIDE" });
-    expect(refused(() => read(grants, { permission: "" as P }, MONDAY))).toMatchObject({
-      code: "ERR_AUTHZ_QUESTION_INVALID",
-      cause: { reason: "empty" },
-    });
   });
 });
 
@@ -389,20 +353,163 @@ describe("grants written by hand", () => {
     );
   });
 
-  it("read a row of stored permissions named by its index, and name it so", () => {
+  it("read a stored role by its name in `sr`, and name it so", () => {
     const grants = {
       v: "1",
       ct,
       at: MONDAY,
-      rl: [["chat:read"], ["report:list"]],
-      nt: { "#1": { a: [[]] } },
+      pm: ["chat:read", "report:list"],
+      sr: { desk: [0], lister: [1] },
+      nt: { lister: { a: [[]] } },
     };
     expect(read(grants, { permission: "report:list" }, MONDAY).by).toStrictEqual({
       kind: "assign",
-      value: "#1",
+      value: "lister",
       place: "/",
     });
     expect(read(grants, { permission: "chat:read" }, MONDAY).allowed).toBe(false);
+  });
+
+  it("read definitions through the permission table whatever its order", () => {
+    const roles = [
+      { name: "lead", entries: ["report:write", "chat:read", "access:manage", "-chat:send"] },
+      { name: "desk", entries: ["chat:send", "lead"] },
+    ];
+    const issued = issueGrants(
+      catalog,
+      {
+        subject: "sue",
+        statements: [
+          { kind: "assign", subject: "sue", value: "lead", place: ACME },
+          { kind: "assign", subject: "sue", value: "desk", place: ARCHIVES, expiresAt: FRIDAY },
+          { kind: "allow", subject: "sue", value: "report:list", place: "/server=s1" },
+          { kind: "allow", subject: "sue", value: "match:*", place: ACME },
+          { kind: "deny", subject: "sue", value: "chat:send", place: ARCHIVES, expiresAt: FRIDAY },
+          { kind: "exclude", subject: "sue", value: "chat:read", place: ARCHIVES },
+        ],
+        roles,
+      },
+      { now: () => MONDAY * 1000 },
+    );
+    expect(issued.pm).toStrictEqual([
+      "access:manage",
+      "chat:read",
+      "chat:send",
+      "report:list",
+      "report:write",
+    ]);
+    expect(Object.keys(issued.nt).toSorted()).toStrictEqual([
+      "1",
+      "2",
+      "3",
+      "desk",
+      "lead",
+      "match:*",
+    ]);
+    const reversed = [...issued.pm!].toReversed();
+    const moved = (position: number) => reversed.indexOf(issued.pm![position]!);
+    const movedEntry = (entry: string | number) =>
+      typeof entry === "number"
+        ? moved(entry)
+        : /^-[0-9]+$/.test(entry)
+          ? `-${moved(Number(entry.slice(1)))}`
+          : entry;
+    const rewritten = {
+      ...issued,
+      pm: reversed,
+      sr: Object.fromEntries(
+        Object.entries(issued.sr!).map(([name, entries]) => [name, entries.map(movedEntry)]),
+      ),
+      nt: Object.fromEntries(
+        Object.entries(issued.nt).map(([name, entry]) => [
+          /^[0-9]+$/.test(name) ? String(moved(Number(name))) : name,
+          entry,
+        ]),
+      ),
+    };
+    for (const permission of catalog.data.permissions) {
+      for (const place of ["/", ACME, ARCHIVES, `${ARCHIVES}/archive=x`, "/server=s1"]) {
+        for (const at of [MONDAY, THURSDAY, FRIDAY, SATURDAY]) {
+          expect(read(rewritten, { permission, place }, at)).toStrictEqual(
+            read(issued, { permission, place }, at),
+          );
+        }
+      }
+    }
+    expect(read(rewritten, { permission: "report:write", place: ARCHIVES }, SATURDAY).allowed).toBe(
+      true,
+    );
+    expect(read(rewritten, { permission: "chat:send", place: ACME }, THURSDAY).allowed).toBe(false);
+    expect(
+      read(rewritten, { permission: "chat:send", place: ARCHIVES }, THURSDAY).by,
+    ).toStrictEqual({ kind: "deny", value: "chat:send", place: ARCHIVES, expiresAt: FRIDAY });
+  });
+
+  it("read a permission named by its position, and name it by its name", () => {
+    const grants = {
+      v: "1",
+      ct,
+      at: MONDAY,
+      pl: [ACME],
+      pm: ["chat:read", "report:list", "report:write"],
+      sr: { desk: [0] },
+      nt: { "desk": { a: [[]] }, "0": { x: [[0]] }, "1": { d: [[0]] }, "2": { a: [[]] } },
+    };
+    expect(read(grants, { permission: "report:write" }, MONDAY).by).toStrictEqual({
+      kind: "allow",
+      value: "report:write",
+      place: "/",
+    });
+    expect(read(grants, { permission: "report:write", place: ACME }, MONDAY).by).toStrictEqual({
+      kind: "deny",
+      value: "report:list",
+      place: ACME,
+    });
+    expect(read(grants, { permission: "chat:read", place: ACME }, MONDAY)).toStrictEqual({
+      allowed: false,
+      covered: true,
+    });
+    expect(read(grants, { permission: "chat:read" }, MONDAY).by).toStrictEqual({
+      kind: "assign",
+      value: "desk",
+      place: "/",
+    });
+  });
+
+  it("read a definition that repeats an entry as if written once", () => {
+    const grants = { v: "1", ct, at: MONDAY, pm: ["chat:read"], sr: { desk: [0, 0] } };
+    expect(
+      read({ ...grants, nt: { desk: { a: [[]] } } }, { permission: "chat:read" }, MONDAY),
+    ).toMatchObject({ allowed: true });
+  });
+
+  it("read a permission table nothing points at, beside an empty definition", () => {
+    const tableOnly = {
+      v: "1",
+      ct,
+      at: MONDAY,
+      pm: ["chat:read", "report:write"],
+      sr: { none: [] },
+      nt: {},
+    };
+    expect(read(tableOnly, { permission: "chat:read" }, MONDAY).allowed).toBe(false);
+    const subset = { ...tableOnly, nt: { "1": { a: [[]] }, "none": { a: [[]] } } };
+    expect(read(subset, { permission: "report:write" }, MONDAY).by).toStrictEqual({
+      kind: "allow",
+      value: "report:write",
+      place: "/",
+    });
+  });
+
+  it("ignore `rl`, a member this revision does not define", () => {
+    const withRl = {
+      v: "1",
+      ct,
+      at: MONDAY,
+      rl: [["chat:read"]],
+      nt: { "chat:read": { a: [[]] } },
+    };
+    expect(read(withRl, { permission: "chat:read" }, MONDAY).allowed).toBe(true);
   });
 
   it("are refused with an own `__proto__` entry instead of reading through it", () => {
@@ -416,8 +523,189 @@ describe("grants written by hand", () => {
   });
 });
 
+describe("roles, resolved at read from the definitions the grants hold", () => {
+  const at = { v: "1", at: MONDAY } as const;
+
+  it("read a copy of a preset whatever the catalog's preset of that name gives", () => {
+    const grants = {
+      ...at,
+      ct,
+      pm: ["match:join"],
+      ps: { viewer: [0] },
+      nt: { viewer: { a: [[]] } },
+    };
+    expect(read(grants, { permission: "match:join" }, MONDAY)).toStrictEqual({
+      allowed: true,
+      covered: true,
+      by: { kind: "assign", value: "viewer", place: "/" },
+    });
+    expect(read(grants, { permission: "report:read" }, MONDAY).allowed).toBe(false);
+  });
+
+  it("read a name in no table as the catalog's preset where the grants hold no copies", () => {
+    const named = {
+      ...at,
+      ct,
+      pm: ["report:list"],
+      sr: { desk: ["viewer", "-0"] },
+      nt: { desk: { a: [[]] }, viewer: { a: [[0]] } },
+      pl: [ACME],
+    };
+    expect(read(named, { permission: "report:read" }, MONDAY).allowed).toBe(false);
+    expect(read(named, { permission: "report:read", place: ACME }, MONDAY).by).toStrictEqual({
+      kind: "assign",
+      value: "viewer",
+      place: ACME,
+    });
+  });
+
+  it("read a name in no table as a role that does not exist where the grants hold copies", () => {
+    const copies = {
+      ...at,
+      ct,
+      ps: { player: ["chat:*"] },
+      sr: { desk: ["viewer"], mixed: ["player", "-viewer"] },
+      nt: { desk: { a: [[]] }, viewer: { a: [[]] }, mixed: { a: [[]] }, player: { a: [[]] } },
+    };
+    expect(read(copies, { permission: "report:read" }, MONDAY).allowed).toBe(false);
+    expect(read(copies, { permission: "chat:send" }, MONDAY).by).toStrictEqual({
+      kind: "assign",
+      value: "player",
+      place: "/",
+    });
+    const alone = { ...copies, nt: { mixed: { a: [[]] } } };
+    expect(read(alone, { permission: "chat:send" }, MONDAY).allowed).toBe(false);
+  });
+
+  it("read a name in `sr` as that stored role, even where the catalog declares a preset of it", () => {
+    const grants = {
+      ...at,
+      ct,
+      pm: ["access:manage"],
+      sr: { viewer: [0] },
+      nt: { viewer: { a: [[]] } },
+    };
+    expect(read(grants, { permission: "access:manage" }, MONDAY).allowed).toBe(true);
+    expect(read(grants, { permission: "report:read" }, MONDAY).allowed).toBe(false);
+  });
+
+  it("give nothing for a role on a cycle, nor for a role that names it with or without `-`", () => {
+    const grants = {
+      ...at,
+      ct,
+      pm: ["chat:read", "chat:send"],
+      sr: {
+        looped: [0, "other"],
+        other: ["looped"],
+        wide: [1, "-looped"],
+        narrow: [1, "looped"],
+        fine: [1],
+      },
+      nt: { looped: { a: [[]] }, wide: { a: [[]] }, narrow: { a: [[]] } },
+    };
+    expect(read(grants, { permission: "chat:read" }, MONDAY).allowed).toBe(false);
+    expect(read(grants, { permission: "chat:send" }, MONDAY).allowed).toBe(false);
+    const fine = { ...grants, nt: { ...grants.nt, fine: { a: [[]] } } };
+    expect(read(fine, { permission: "chat:send" }, MONDAY).by).toMatchObject({ value: "fine" });
+  });
+
+  it("read an unknown permission in a definition as inert and the rest as written", () => {
+    const grants = {
+      ...at,
+      ct,
+      pm: ["chat:send", "invoice:read"],
+      sr: { desk: [0, 1, "-1", "invoice:*", "-invoice:*"] },
+      nt: { desk: { a: [[]] } },
+    };
+    expect(read(grants, { permission: "chat:send" }, MONDAY).by).toMatchObject({ value: "desk" });
+  });
+
+  it("read a stored role that excludes a preset copied beside it", () => {
+    const grants = issueGrants(
+      catalog,
+      {
+        subject: "kim",
+        statements: [{ kind: "assign", subject: "kim", value: "desk", place: ACME }],
+        roles: [{ name: "desk", entries: ["player", "report:write", "-viewer"] }],
+      },
+      { now: () => MONDAY * 1000 },
+    );
+    expect(grants.ps).toStrictEqual({ player: ["chat:*", 0], viewer: [1] });
+    expect(read(grants, { permission: "report:write", place: ACME }, MONDAY).allowed).toBe(false);
+    expect(read(grants, { permission: "match:join", place: ACME }, MONDAY).by).toStrictEqual({
+      kind: "assign",
+      value: "desk",
+      place: ACME,
+    });
+  });
+});
+
+describe("grants issued under another catalog", () => {
+  const named = issueGrants(
+    catalog,
+    { subject: "gil", statements: [{ kind: "assign", subject: "gil", value: "player" }] },
+    { omit: ["presets"], now: () => MONDAY * 1000 },
+  );
+
+  it("are refused, naming the presets segment, when they name a preset they hold no copy of", () => {
+    expect(
+      refused(() => read({ ...named, ct: otherPresets }, { permission: "chat:read" }, MONDAY)),
+    ).toMatchObject({
+      code: "ERR_AUTHZ_GRANTS_CATALOG",
+      cause: { segment: "presets" },
+    });
+  });
+
+  it("are refused for a preset named only inside a stored role's definition, with or without `-`", () => {
+    for (const entry of ["player", "-player"]) {
+      const grants = {
+        v: "1",
+        ct: otherPresets,
+        at: MONDAY,
+        pm: ["chat:read"],
+        sr: { desk: [0, entry] },
+        nt: { "0": { a: [[]] } },
+      };
+      expect(refused(() => read(grants, { permission: "chat:read" }, MONDAY))).toMatchObject({
+        code: "ERR_AUTHZ_GRANTS_CATALOG",
+        cause: { segment: "presets" },
+      });
+    }
+  });
+
+  it("are read when only the first segment differs, or when they name no preset by name", () => {
+    expect(read({ ...named, ct: otherDeclares }, { permission: "chat:read" }, MONDAY).allowed).toBe(
+      true,
+    );
+    const plain = { v: "1", ct: otherPresets, at: MONDAY, nt: { "chat:read": { a: [[]] } } };
+    expect(read(plain, { permission: "chat:read" }, MONDAY).allowed).toBe(true);
+    const copies = issue([{ kind: "assign", subject: "gil", value: "player" }], { subject: "gil" });
+    expect(read({ ...copies, ct: otherPresets }, { permission: "chat:read" }, MONDAY).allowed).toBe(
+      true,
+    );
+  });
+
+  it("refuse another format and malformed grants before another catalog, and another catalog before the time of issue", () => {
+    expect(
+      refused(() =>
+        read({ ...named, v: "2", ct: otherPresets }, { permission: "chat:read" }, MONDAY),
+      ).code,
+    ).toBe("ERR_AUTHZ_GRANTS_FORMAT");
+    expect(
+      refused(() =>
+        read({ ...named, ct: otherPresets, nt: [] }, { permission: "chat:read" }, MONDAY),
+      ).code,
+    ).toBe("ERR_AUTHZ_MALFORMED");
+    expect(
+      refused(() => read({ ...named, ct: otherPresets }, { permission: "chat:read" }, MONDAY - 1))
+        .code,
+    ).toBe("ERR_AUTHZ_GRANTS_CATALOG");
+  });
+});
+
 describe("refusals", () => {
-  const valid = { v: "1", ct, at: MONDAY, pl: [ACME], rl: [["chat:read"]], nt: {} };
+  const plain = { v: "1", ct, at: MONDAY, pl: [ACME], nt: {} };
+  const valid = { ...plain, pm: ["chat:read"], sr: { desk: [0] } };
   const ask = { permission: "chat:read" } as const;
   const malformed: [string, unknown][] = [
     ["a string", "grants"],
@@ -427,6 +715,11 @@ describe("refusals", () => {
     ["a numeric `v`", { ...valid, v: 1 }],
     ["no `ct`", { ...valid, ct: undefined }],
     ["a numeric `ct`", { ...valid, ct: 9 }],
+    ["a `ct` of one segment", { ...valid, ct: ct.split(".")[0] }],
+    ["a `ct` of three segments", { ...valid, ct: `${ct}.${presetsSegment}` }],
+    ["a `ct` of the former 43 characters", { ...valid, ct: "x".repeat(43) }],
+    ["a `ct` with a segment of 12 characters", { ...valid, ct: `${ct}A` }],
+    ["a `ct` outside the URL-safe alphabet", { ...valid, ct: `${ct.slice(0, 22)}+` }],
     ["no `at`", { ...valid, at: undefined }],
     ["`at` in milliseconds", { ...valid, at: MONDAY * 1000 }],
     ["a fractional `at`", { ...valid, at: MONDAY + 0.5 }],
@@ -435,41 +728,69 @@ describe("refusals", () => {
     ["`nt` as a list", { ...valid, nt: [] }],
     ["`bs` that is not a list", { ...valid, bs: ACME }],
     ["a base that is not canonical", { ...valid, bs: ["/org=acme/"] }],
-    ["a base outside the structure", { ...valid, bs: ["/unit=u1"] }],
     ["`pl` holding the root", { ...valid, pl: ["/"] }],
     ["`pl` holding a key in lowercase hex", { ...valid, pl: ["/org=caf%c3%a9"] }],
-    ["`pl` holding a place outside the structure", { ...valid, pl: ["/server=s1/area=a"] }],
-    ["`rl` that is not a list", { ...valid, rl: {} }],
-    ["a row that is not a list", { ...valid, rl: ["chat:read"] }],
-    ["a row with an unknown permission", { ...valid, rl: [["invoice:read"]] }],
-    ["a row with a pattern", { ...valid, rl: [["chat:*"]] }],
-    ["an unknown permission", { ...valid, nt: { "invoice:read": { a: [[]] } } }],
-    ["a pattern matching nothing", { ...valid, nt: { "invoice:*": { a: [[]] } } }],
+    ["`pm` that is not a list", { ...valid, pm: {} }],
+    ["a permission twice in `pm`", { ...valid, pm: ["chat:read", "chat:read"] }],
+    ["a pattern in `pm`", { ...valid, pm: ["chat:*"] }],
+    ["a permission not in its form in `pm`", { ...valid, pm: ["Chat:Read"] }],
+    ["a position in `pm`", { ...valid, pm: [0] }],
+    ["`sr` that is a list", { ...valid, sr: [[0]] }],
+    ["`ps` that is a list", { ...valid, ps: [[0]] }],
+    ["a definition that is not a list", { ...valid, sr: { desk: 0 } }],
+    ["a role name that is not a token", { ...valid, sr: { Desk: [0] } }],
+    [
+      "an own `__proto__` definition",
+      JSON.parse(`{"v":"1","ct":"${ct}","at":${MONDAY},"ps":{"__proto__":[]},"nt":{}}`),
+    ],
+    ["a name in both `ps` and `sr`", { ...valid, ps: { desk: [] } }],
+    ["a permission by name in a definition", { ...valid, sr: { desk: ["chat:read"] } }],
+    ["an excluded permission by name in a definition", { ...valid, sr: { desk: ["-chat:read"] } }],
+    ["a position past the table", { ...valid, sr: { desk: [1] } }],
+    ["an excluded position past the table", { ...valid, sr: { desk: ["-1"] } }],
+    ["a negative position", { ...valid, sr: { desk: [-1] } }],
+    ["a fractional position", { ...valid, sr: { desk: [0.5] } }],
+    ["a position as text", { ...valid, sr: { desk: ["0"] } }],
+    ["an excluded position with a leading zero", { ...valid, sr: { desk: ["-00"] } }],
+    ["an entry excluded twice", { ...valid, sr: { desk: ["--0"] } }],
+    ["`*:*` in a definition", { ...valid, sr: { desk: ["*:*"] } }],
+    ["a position in a definition without `pm`", { ...valid, pm: undefined }],
     ["`*:*`", { ...valid, nt: { "*:*": { a: [[]] } } }],
-    ["an unknown role", { ...valid, nt: { ghost: { a: [[]] } } }],
-    ["a row that does not exist", { ...valid, nt: { "#1": { a: [[]] } } }],
-    ["a row index with a leading zero", { ...valid, nt: { "#00": { a: [[]] } } }],
-    ["a row without `rl`", { ...valid, rl: undefined, nt: { "#0": { a: [[]] } } }],
-    ["an entry that is not an object", { ...valid, nt: { "chat:read": [[]] } }],
-    ["an entry with another member", { ...valid, nt: { "chat:read": { a: [], y: [] } } }],
-    ["a deny under a preset", { ...valid, nt: { viewer: { d: [[]] } } }],
-    ["an exclusion under a row", { ...valid, nt: { "#0": { x: [[]] } } }],
-    ["items that are not a list", { ...valid, nt: { "chat:read": { a: {} } } }],
-    ["an item that is not a list", { ...valid, nt: { "chat:read": { a: [0] } } }],
-    ["an item of four elements", { ...valid, nt: { "chat:read": { a: [[0, null, 1, 2]] } } }],
-    ["a place index past the table", { ...valid, nt: { "chat:read": { a: [[1]] } } }],
-    ["a negative place index", { ...valid, nt: { "chat:read": { a: [[-1]] } } }],
-    ["a fractional place index", { ...valid, nt: { "chat:read": { a: [[0.5]] } } }],
-    ["a place written as a key", { ...valid, nt: { "chat:read": { a: [[ACME]] } } }],
-    ["an end in milliseconds", { ...valid, nt: { "chat:read": { a: [[null, FRIDAY * 1000]] } } }],
-    ["a negative end", { ...valid, nt: { "chat:read": { a: [[null, -1]] } } }],
-    ["bundle zero", { ...valid, nt: { "chat:read": { a: [[null, null, 0]] } } }],
-    ["a fractional bundle", { ...valid, nt: { "chat:read": { x: [[null, null, 1.5]] } } }],
+    ["a name of the former `#` rows", { ...valid, nt: { "#0": { a: [[]] } } }],
+    ["a name out of its form", { ...plain, nt: { "Chat:Read": { a: [[]] } } }],
+    ["an entry that is not an object", { ...plain, nt: { "chat:read": [[]] } }],
+    ["an entry with another member", { ...plain, nt: { "chat:read": { a: [], y: [] } } }],
+    ["a deny under a role", { ...valid, nt: { viewer: { d: [[]] } } }],
+    ["an exclusion under a stored role", { ...valid, nt: { desk: { x: [[]] } } }],
+    ["items that are not a list", { ...plain, nt: { "chat:read": { a: {} } } }],
+    ["an item that is not a list", { ...plain, nt: { "chat:read": { a: [0] } } }],
+    ["an item of four elements", { ...plain, nt: { "chat:read": { a: [[0, null, 1, 2]] } } }],
+    ["a place index past the table", { ...plain, nt: { "chat:read": { a: [[1]] } } }],
+    ["a negative place index", { ...plain, nt: { "chat:read": { a: [[-1]] } } }],
+    ["a fractional place index", { ...plain, nt: { "chat:read": { a: [[0.5]] } } }],
+    ["a place written as a key", { ...plain, nt: { "chat:read": { a: [[ACME]] } } }],
+    ["an end in milliseconds", { ...plain, nt: { "chat:read": { a: [[null, FRIDAY * 1000]] } } }],
+    ["a negative end", { ...plain, nt: { "chat:read": { a: [[null, -1]] } } }],
+    ["bundle zero", { ...plain, nt: { "chat:read": { a: [[null, null, 0]] } } }],
+    ["a fractional bundle", { ...plain, nt: { "chat:read": { x: [[null, null, 1.5]] } } }],
     [
       "a bundle past the largest time",
-      { ...valid, nt: { "chat:read": { a: [[null, null, 253402300800]] } } },
+      { ...plain, nt: { "chat:read": { a: [[null, null, 253402300800]] } } },
     ],
-    ["a deny with a bundle", { ...valid, nt: { "chat:read": { d: [[null, null, 1]] } } }],
+    ["a deny with a bundle", { ...plain, nt: { "chat:read": { d: [[null, null, 1]] } } }],
+    ["a permission by name beside `pm`", { ...valid, nt: { "chat:read": { a: [[]] } } }],
+    [
+      "an unknown permission by name beside `pm`",
+      { ...valid, nt: { "invoice:read": { a: [[]] } } },
+    ],
+    ["a position without `pm`", { ...plain, nt: { "0": { a: [[]] } } }],
+    ["a position past `pm`", { ...valid, nt: { "1": { a: [[]] } } }],
+    ["a position in an empty `pm`", { ...valid, pm: [], sr: {}, nt: { "0": { a: [[]] } } }],
+    ["a position with a leading zero", { ...valid, nt: { "00": { a: [[]] } } }],
+    ["a negative position as a name", { ...valid, nt: { "-1": { a: [[]] } } }],
+    ["a fractional position as a name", { ...valid, nt: { "0.5": { a: [[]] } } }],
+    ["a place index past the table under a position", { ...valid, nt: { "0": { a: [[1]] } } }],
+    ["a deny with a bundle under a position", { ...valid, nt: { "0": { d: [[null, null, 1]] } } }],
   ];
 
   it.each(malformed)("refuses %s as malformed", (_, grants) => {
@@ -480,19 +801,41 @@ describe("refusals", () => {
   });
 
   it("accepts the largest bundle and the largest end", () => {
-    const grants = { ...valid, nt: { "chat:read": { a: [[null, 253402300799, 253402300799]] } } };
+    const grants = { ...plain, nt: { "chat:read": { a: [[null, 253402300799, 253402300799]] } } };
     expect(read(grants, ask, MONDAY).allowed).toBe(true);
+  });
+
+  it("reads as inert what only the catalog does not know, never as malformed", () => {
+    const inert = {
+      ...plain,
+      bs: ["/", "/unit=u1"],
+      pl: [ACME, "/unit=u1", "/server=s1/area=a"],
+      pm: ["chat:read", "invoice:read"],
+      sr: { desk: [1, "invoice:*", "ghost", "-ghost"] },
+      nt: {
+        "0": { a: [[1], [2]] },
+        "1": { a: [[]], d: [[]] },
+        "invoice:*": { d: [[]] },
+        "*:approve": { d: [[]] },
+        "ghost": { a: [[]] },
+        "desk": { a: [[]] },
+      },
+    };
+    expect(read(inert, ask, MONDAY)).toStrictEqual({ allowed: false, covered: true });
+    expect(
+      read({ ...inert, nt: { ...inert.nt, "0": { a: [[0]] } } }, { ...ask, place: ACME }, MONDAY)
+        .allowed,
+    ).toBe(true);
+  });
+
+  it("covers nothing with a base that does not fit the structure", () => {
+    const grants = { ...plain, bs: ["/unit=u1"], nt: { "*": { a: [[]] } } };
+    expect(read(grants, ask, MONDAY)).toStrictEqual({ allowed: false, covered: false });
   });
 
   it("refuses another format revision before anything else it holds", () => {
     expect(refused(() => read({ v: "2" }, ask, MONDAY))).toMatchObject({
       code: "ERR_AUTHZ_GRANTS_FORMAT",
-    });
-  });
-
-  it("refuses another catalog before checking the members", () => {
-    expect(refused(() => read({ ...valid, ct: "x", nt: [] }, ask, MONDAY))).toMatchObject({
-      code: "ERR_AUTHZ_GRANTS_CATALOG",
     });
   });
 

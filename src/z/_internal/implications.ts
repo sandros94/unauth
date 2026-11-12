@@ -7,36 +7,55 @@ export interface ImplicationClosure {
 }
 
 /**
- * Closes the direct implications, declared and checked already, both ways. A cycle, a permission
- * implying itself included, is `ERR_AUTHZ_CATALOG_INVALID`: two permissions that imply each other
- * are one permission.
+ * Closes the direct implications, declared and checked already, both ways, depth first on an
+ * explicit stack, so no length of a chain exhausts the call stack. A cycle, a permission implying
+ * itself included, is `ERR_AUTHZ_CATALOG_INVALID`: two permissions that imply each other are one
+ * permission. The closure itself grows with the square of a chain's length.
  */
 export function closeImplications(
   direct: ReadonlyMap<string, ReadonlySet<string>>,
 ): ImplicationClosure {
   const implies = new Map<string, Set<string>>();
   const visiting = new Set<string>();
-  const visit = (permission: string): Set<string> => {
-    const known = implies.get(permission);
-    if (known) return known;
-    if (visiting.has(permission)) {
-      throw catalogInvalid("The catalog's implications form a cycle.", {
-        reason: "cycle",
-        at: "implies",
-        value: permission,
-      });
-    }
+  const frames: ClosureFrame[] = [];
+  const open = (permission: string) => {
     visiting.add(permission);
-    const closure = new Set<string>();
-    for (const next of direct.get(permission) ?? []) {
-      closure.add(next);
-      for (const further of visit(next)) closure.add(further);
-    }
-    visiting.delete(permission);
-    implies.set(permission, closure);
-    return closure;
+    frames.push({
+      permission,
+      closure: new Set(),
+      next: [...(direct.get(permission) ?? [])],
+      index: 0,
+    });
   };
-  for (const permission of direct.keys()) visit(permission);
+  for (const start of direct.keys()) {
+    if (!implies.has(start)) open(start);
+    for (let frame = frames.at(-1); frame; frame = frames.at(-1)) {
+      const next = frame.next[frame.index];
+      if (next === undefined) {
+        frames.pop();
+        visiting.delete(frame.permission);
+        implies.set(frame.permission, frame.closure);
+        const parent = frames.at(-1);
+        if (parent) for (const further of frame.closure) parent.closure.add(further);
+        continue;
+      }
+      frame.index++;
+      frame.closure.add(next);
+      const known = implies.get(next);
+      if (known) {
+        for (const further of known) frame.closure.add(further);
+        continue;
+      }
+      if (visiting.has(next)) {
+        throw catalogInvalid("The catalog's implications form a cycle.", {
+          reason: "cycle",
+          at: "implies",
+          value: next,
+        });
+      }
+      open(next);
+    }
+  }
 
   const impliedBy = new Map<string, Set<string>>();
   for (const [above, below] of implies) {
@@ -48,4 +67,11 @@ export function closeImplications(
     }
   }
   return { implies, impliedBy };
+}
+
+interface ClosureFrame {
+  readonly permission: string;
+  readonly closure: Set<string>;
+  readonly next: readonly string[];
+  index: number;
 }

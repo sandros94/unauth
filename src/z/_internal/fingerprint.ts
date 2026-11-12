@@ -4,33 +4,38 @@ import { compareBytes, sortedUnique } from "./grammar.ts";
 import { sha256 } from "./sha256.ts";
 
 /**
- * The text the fingerprint hashes: the catalog data with every member that declares nothing left
- * out at every depth, every list sorted by bytes with each value once, every object's members
- * sorted by name, written as JSON with no whitespace. `places: false` declares that there are no
- * places and a preset with no entries declares a role, so both are kept.
+ * The two texts the fingerprint hashes, one per segment: the catalog data restricted to
+ * `permissions`, `implies` and `places`, then to `presets`. Every member that declares nothing is
+ * left out at every depth, every list sorted by bytes with each value once, every object's members
+ * sorted by name, written as JSON with no whitespace, `{}` when nothing is left. `places: false`
+ * declares that there are no places and a preset with no entries declares a role, so both are kept.
  */
-export function canonicalCatalog(data: PlainCatalogData): string {
-  const members: [string, string][] = [];
+export function canonicalSegments(data: PlainCatalogData): [declares: string, presets: string] {
+  const declares: [string, string][] = [];
   const permissions = writeList(data.permissions);
-  if (permissions) members.push(["permissions", permissions]);
+  if (permissions) declares.push(["permissions", permissions]);
   const implies = data.implies && writeLists(data.implies, false);
-  if (implies) members.push(["implies", implies]);
-  const presets = data.presets && writeLists(data.presets, true);
-  if (presets) members.push(["presets", presets]);
-  if (data.places === false) members.push(["places", "false"]);
+  if (implies) declares.push(["implies", implies]);
+  if (data.places === false) declares.push(["places", "false"]);
   else if (data.places) {
     const places = writeLists(data.places, false);
-    if (places) members.push(["places", places]);
+    if (places) declares.push(["places", places]);
   }
-  return writeObject(members) ?? "{}";
+  const presets = data.presets && writeLists(data.presets, true);
+  return [writeObject(declares) ?? "{}", presets ? `{"presets":${presets}}` : "{}"];
 }
 
 /**
- * The fingerprint of catalog data: SHA-256 of the UTF-8 octets of {@link canonicalCatalog},
- * base64url without padding, 43 characters.
+ * The fingerprint of catalog data, `<declares>.<presets>`, 23 characters: per text of
+ * {@link canonicalSegments}, the first 8 octets of SHA-256 over its UTF-8 octets, base64url
+ * without padding.
  */
 export function catalogFingerprint(data: PlainCatalogData): string {
-  return base64UrlStringify(sha256(new TextEncoder().encode(canonicalCatalog(data))));
+  return canonicalSegments(data).map(segmentOf).join(".");
+}
+
+function segmentOf(text: string): string {
+  return base64UrlStringify(sha256(new TextEncoder().encode(text)).subarray(0, 8));
 }
 
 function writeList(values: readonly string[]): string | undefined {

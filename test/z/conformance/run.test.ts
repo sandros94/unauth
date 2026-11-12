@@ -4,7 +4,7 @@ import { type KnownUnauthErrorCode, UnauthError } from "../../../src/error.ts";
 import type { Catalog, CatalogData } from "../../../src/z/catalog.ts";
 import type { Statement, StoredRole } from "../../../src/z/types.ts";
 import { cases } from "../../../src/z/conformance/cases.ts";
-import type { Engine, Issue, Question } from "../../../src/z/conformance/engine.ts";
+import type { Diverged, Engine, Issue, Question } from "../../../src/z/conformance/engine.ts";
 import {
   runCatalogCase,
   runConformance,
@@ -165,6 +165,15 @@ const fake: Engine = {
     }
     if (answers.length === 0) return { allowed: false, covered: false };
     return { allowed: answers.every(Boolean), covered: true };
+  },
+  diverged: (catalog, grants, options) => {
+    const at = seconds(options?.now);
+    for (const set of Array.isArray(grants) ? (grants as unknown[]) : [grants]) {
+      if (!isRecord(set)) refuse("ERR_AUTHZ_MALFORMED");
+      if (set.ct !== catalog.fingerprint) refuse("ERR_AUTHZ_GRANTS_CATALOG");
+      if (typeof set.at !== "number" || at < set.at) refuse("ERR_AUTHZ_GRANTS_EARLY");
+    }
+    return undefined;
   },
   validateStatement: (catalog, value, options) => {
     refuseTwoOfOneName(options?.roles);
@@ -422,12 +431,10 @@ describe("what the runner hands over", () => {
     expect(() => runScenario(engine, selecting)).not.toThrow();
     const stored = selecting.statements ?? [];
     const applying = stored.filter((statement) => statement.subject !== "bob");
-    expect(subjects).toEqual(["ann", "ann", "ann", "ann"]);
+    expect(subjects).toEqual(["ann", "ann", "ann", "ann", "ann", "ann"]);
     expect(asked).toEqual([applying, [stored[0], stored[6], stored[7], stored[9]]]);
-    expect(issuing).toEqual([
-      applying,
-      [stored[0], stored[3], stored[4], stored[6], stored[7], stored[8], stored[9]],
-    ]);
+    const needed = [stored[0], stored[3], stored[4], stored[6], stored[7], stored[8], stored[9]];
+    expect(issuing).toEqual([applying, applying, needed, needed]);
   });
 
   it("hands a `hand` step exactly the statements it lists, to ask and to issue", () => {
@@ -464,7 +471,7 @@ describe("what the runner hands over", () => {
       });
     expect(() => run("allowed")).not.toThrow();
     const read = { subject: "ann", statements: listed, roles: selecting.roles };
-    expect(handed).toEqual([read, read]);
+    expect(handed).toEqual([read, read, read]);
     expect(failureOf(() => run("denied"))).toMatchObject({
       id: "fake/selection",
       step: 0,
@@ -512,8 +519,147 @@ describe("stored roles", () => {
       },
     };
     expect(() => runScenario(engine, importing)).not.toThrow();
-    expect(handed).toEqual([twice, twice, twice, twice, [analyst], [analyst]]);
+    expect(handed).toEqual([
+      ...Array.from({ length: 6 }, () => twice),
+      ...Array.from({ length: 4 }, () => [analyst]),
+    ]);
     expect(importing.roles).toEqual(twice);
+  });
+});
+
+describe("how presets travel, other catalogs, and what has diverged", () => {
+  const told: Diverged = { segments: ["presets"], permissions: [], presets: ["viewer"] };
+  const later: CatalogData = { permissions: ["doc:read", "doc:write"] };
+  const deploying: Scenario = {
+    id: "fake/deploy",
+    title: "Grants issued both ways and one way, then a catalog deployed",
+    proves: [],
+    catalog: catalogData,
+    statements: [{ kind: "allow", subject: "ann", value: "doc:read" }],
+    steps: [
+      { step: "issue", at: MONDAY, as: "both", subject: "ann" },
+      { step: "issue", at: MONDAY, as: "names", subject: "ann", presets: "names" },
+      {
+        step: "read",
+        at: MONDAY,
+        grants: ["both", "names"],
+        question: { permission: "doc:read" },
+        expect: "allowed",
+        diverged: null,
+      },
+      { step: "deploy", catalog: later },
+      {
+        step: "read",
+        at: MONDAY,
+        grants: "both",
+        question: { permission: "doc:read" },
+        expect: "ERR_AUTHZ_GRANTS_CATALOG",
+      },
+    ],
+  };
+
+  it("issues both ways unless a step names one, and reads each way", () => {
+    const omitted: unknown[] = [];
+    const read: unknown[] = [];
+    const engine: Engine = {
+      ...fake,
+      issueGrants: (catalog, issuing, options) => {
+        omitted.push(options?.omit);
+        return fake.issueGrants(catalog, issuing, options);
+      },
+      could: (catalog, grants, question, options) => {
+        read.push(catalog.fingerprint);
+        return fake.could(catalog, grants, question, options);
+      },
+    };
+    expect(() => runScenario(engine, deploying)).not.toThrow();
+    expect(omitted).toEqual([
+      undefined,
+      undefined,
+      ["presets"],
+      ["presets"],
+      ["presets"],
+      ["presets"],
+    ]);
+    expect(read).toEqual([
+      ...Array.from({ length: 4 }, () => "fp:doc:read,doc:write,access:manage"),
+      ...Array.from({ length: 4 }, () => "fp:doc:read,doc:write"),
+    ]);
+  });
+
+  it("names the way presets travelled in a failure", () => {
+    const engine: Engine = {
+      ...fake,
+      issueGrants: (catalog, issuing, options) => {
+        const grants = fake.issueGrants(catalog, issuing, options);
+        return options?.omit === undefined ? grants : { ...(grants as object), fid: "none" };
+      },
+    };
+    const steps = [
+      deploying.steps[0],
+      deploying.steps[1],
+      { ...deploying.steps[2], grants: "names" },
+    ] as Scenario["steps"];
+    expect(failureOf(() => runScenario(engine, { ...deploying, steps }))).toMatchObject({
+      step: 2,
+      presets: "names",
+      received: "ERR_AUTHZ_MALFORMED",
+    });
+  });
+
+  it("checks what is told on the answer and from diverged alone", () => {
+    const telling: Engine = {
+      ...fake,
+      could: (catalog, grants, question, options) => ({
+        ...fake.could(catalog, grants, question, options),
+        diverged: structuredClone(told),
+      }),
+      diverged: (catalog, grants, options) => {
+        fake.diverged(catalog, grants, options);
+        return structuredClone(told);
+      },
+    };
+    expect(() => runGrantsCase(telling, { ...grantsCase, diverged: told })).not.toThrow();
+    expect(
+      failureOf(() => runGrantsCase(telling, { ...grantsCase, diverged: null })),
+    ).toMatchObject({ expected: { diverged: null }, received: { diverged: told } });
+    expect(failureOf(() => runGrantsCase(fake, { ...grantsCase, diverged: told }))).toMatchObject({
+      expected: { diverged: told },
+      received: { diverged: null },
+    });
+    const silent: Engine = { ...telling, diverged: () => undefined };
+    expect(failureOf(() => runGrantsCase(silent, grantsCase))).toMatchObject({
+      expected: { "diverged()": told },
+      received: { "diverged()": null },
+    });
+  });
+
+  it("expects diverged alone to refuse what a read refuses", () => {
+    const lenient: Engine = { ...fake, diverged: () => undefined };
+    const other = { ...grantsCase, grants: { ...(grantsCase.grants as object), ct: "other" } };
+    expect(
+      failureOf(() => runGrantsCase(lenient, { ...other, expect: "ERR_AUTHZ_GRANTS_CATALOG" })),
+    ).toMatchObject({
+      expected: { "diverged()": "ERR_AUTHZ_GRANTS_CATALOG" },
+      received: { "diverged()": null },
+    });
+  });
+
+  it("reads hand-written grants with the fingerprint of the catalog they were issued under", () => {
+    expect(() =>
+      runGrantsCase(fake, {
+        ...grantsCase,
+        issuedUnder: later,
+        expect: "ERR_AUTHZ_GRANTS_CATALOG",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      runGrantsCase(fake, {
+        ...grantsCase,
+        grants: [grantsCase.grants, grantsCase.grants],
+        diverged: null,
+      }),
+    ).not.toThrow();
   });
 });
 
@@ -893,7 +1039,7 @@ describe("the cases themselves", () => {
     for (const item of cases.scenarios) {
       let last = 0;
       for (const [index, step] of item.steps.entries()) {
-        if (step.step === "write") continue;
+        if (step.step === "write" || step.step === "deploy") continue;
         if (step.step === "read" && step.expect === "ERR_AUTHZ_GRANTS_EARLY") continue;
         if (step.at < last) backwards.push(`${item.id} step ${index}`);
         if ((step.step === "ask" || step.step === "hand") && (step.issuedAt ?? step.at) > step.at) {

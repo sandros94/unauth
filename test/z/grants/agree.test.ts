@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { type Catalog, defineCatalog } from "../../../src/z/catalog.ts";
 import { ask } from "../../../src/z/ask.ts";
 import { could, issueGrants } from "../../../src/z/grants.ts";
-import type { Decision, Statement, StoredRole } from "../../../src/z/types.ts";
+import type { Decision, GrantsPart, Statement, StoredRole } from "../../../src/z/types.ts";
 
 const HOUR = 3600;
 const DAY = 86400;
@@ -71,12 +71,15 @@ interface Asker {
   readonly issuedAt?: number;
 }
 
+const MODES: (readonly GrantsPart[] | undefined)[] = [undefined, ["presets"]];
+
 /**
  * Reads the statements about `asker` and its groups, as the application does, issues grants from
- * them at its time of issue, then asks every permission at every place and every later time of the
- * world, of the statements and of the grants, and expects the same outcome and the same kind of
- * reason. A place outside every base must read as not covered. Returns every
- * disagreement, and whether both outcomes were met, so a world shows it exercised them.
+ * them at its time of issue, presets as copies and by name, then asks every permission at every
+ * place and every later time of the world, of the statements and of both grants, and expects the
+ * same outcome and the same kind of reason. A place outside every base must read as not covered.
+ * Returns every disagreement, and whether both outcomes were met, so a world shows it exercised
+ * them.
  */
 function agree(world: World, asker: Asker) {
   const issuedAt = asker.issuedAt ?? MONDAY;
@@ -87,12 +90,37 @@ function agree(world: World, asker: Asker) {
     statements: world.statements.filter((statement) => identifiers.has(statement.subject)),
     roles: world.roles,
   };
-  const grants = issueGrants(world.catalog, read, {
-    bases: asker.bases,
-    now: () => issuedAt * 1000,
-  });
   const bases = asker.bases ?? ["/"];
   const tally = { allowed: 0, denied: 0 };
+  const disagreements: string[] = [];
+  for (const omit of MODES) {
+    const grants = issueGrants(world.catalog, read, {
+      bases: asker.bases,
+      omit,
+      now: () => issuedAt * 1000,
+    });
+    disagreements.push(...disagree(world, { read, grants, omit, bases, issuedAt, tally }));
+  }
+  return {
+    disagreements: disagreements.slice(0, 5),
+    allowed: tally.allowed > 0,
+    denied: tally.denied > 0,
+  };
+}
+
+function disagree(
+  world: World,
+  run: {
+    read: { subject: string; statements: Statement[]; roles?: readonly StoredRole[] };
+    grants: unknown;
+    omit: readonly GrantsPart[] | undefined;
+    bases: readonly string[];
+    issuedAt: number;
+    tally: { allowed: number; denied: number };
+  },
+): string[] {
+  const { read, grants, omit, bases, issuedAt, tally } = run;
+  const { subject } = read;
   const disagreements: string[] = [];
   const questions = world.catalog.data.permissions.map((permission) => ({ permission }));
   for (const at of world.times.filter((time) => time >= issuedAt)) {
@@ -103,7 +131,7 @@ function agree(world: World, asker: Asker) {
       for (const question of questions) {
         const now = () => at * 1000;
         const carried = could(world.catalog, grants, { ...question, place }, { now });
-        const context = { subject, at, place, question };
+        const context = { subject, omit, at, place, question };
         if (!inside) {
           if (carried.covered || carried.allowed || carried.by !== undefined) {
             disagreements.push(`covered outside: ${JSON.stringify(context)}`);
@@ -117,11 +145,7 @@ function agree(world: World, asker: Asker) {
       }
     }
   }
-  return {
-    disagreements: disagreements.slice(0, 5),
-    allowed: tally.allowed > 0,
-    denied: tally.denied > 0,
-  };
+  return disagreements;
 }
 
 const AGREE_BOTH = { disagreements: [], allowed: true, denied: true };
@@ -314,6 +338,38 @@ describe("a shared drive: stored roles, statements above and under a base, a sha
     ],
   ])("agrees for %s", (_, asker) => {
     expect(agree(world, asker)).toStrictEqual(AGREE_BOTH);
+  });
+
+  it("carries pat's stored roles by name, with every role they reach and one permission table, broken ones left out", () => {
+    const statements = world.statements.filter(({ subject }) => subject !== "sue");
+    const grants = issueGrants(
+      catalog,
+      { subject: "pat", statements, roles: world.roles },
+      { now: () => MONDAY * 1000 },
+    );
+    expect(grants.pm).toStrictEqual([
+      "file:read",
+      "file:write",
+      "limited-file:read",
+      "report:list",
+      "report:read",
+    ]);
+    expect(grants.ps).toStrictEqual({ viewer: [0, 4] });
+    expect(grants.sr).toStrictEqual({
+      "drive-editor": ["-4", 1, "viewer"],
+      "reviewer": ["drive-editor", 4],
+    });
+    expect(Object.keys(grants.nt).toSorted()).toStrictEqual([
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "drive-editor",
+      "reviewer",
+      "viewer",
+    ]);
+    expect(agree(world, { subject: "pat", groups: ["marketing"] })).toStrictEqual(AGREE_BOTH);
   });
 });
 

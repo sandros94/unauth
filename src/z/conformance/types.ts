@@ -1,7 +1,7 @@
 import type { KnownUnauthErrorCode } from "../../error.ts";
 import type { CatalogData } from "../catalog.ts";
 import type { Statement, StatementIdentity, StoredRole } from "../types.ts";
-import type { Question } from "./engine.ts";
+import type { Diverged, Question } from "./engine.ts";
 
 /** The guarantees of the model, by the identifier its Section 4 gives them. */
 export type RuleId = "G1" | "G2" | "G3" | "G4" | "G5" | "G6" | "G7" | "G8" | "G9";
@@ -28,7 +28,19 @@ export interface Scenario {
 }
 
 /** One step. `at` is the time it happens, in seconds since the epoch. */
-export type ScenarioStep = AskStep | HandStep | IssueStep | ReadStep | WriteStep;
+export type ScenarioStep = AskStep | DeployStep | HandStep | IssueStep | ReadStep | WriteStep;
+
+/**
+ * How presets travel in grants a step issues: `"copies"` with a copy of each definition, `"names"`
+ * by name alone.
+ */
+export type PresetsWay = "copies" | "names";
+
+/**
+ * What a read must tell has diverged, on its answer and from `diverged` alone: `null` when nothing
+ * has, a refusal code when `diverged` must refuse as the read does.
+ */
+export type ExpectedDiverged = Diverged | null | ScenarioRefusal;
 
 /** A question as the application meets it: who asks, and which groups they are in at that moment. */
 export interface ScenarioQuestion extends Question {
@@ -72,7 +84,10 @@ export interface HandStep extends FromGrants {
   expect: "allowed" | "denied" | ScenarioRefusal;
 }
 
-/** Issues grants from the statements as they stand and keeps them under a name for later `read` steps. */
+/**
+ * Issues grants from the statements as they stand and keeps them under a name for later `read`
+ * steps. Without `presets` it issues them both ways, and every read of them reads both.
+ */
 export interface IssueStep {
   step: "issue";
   at: number;
@@ -81,6 +96,8 @@ export interface IssueStep {
   subject: string;
   groups?: readonly string[];
   bases?: readonly string[];
+  /** How presets travel in them. @default both ways, each read alike */
+  presets?: PresetsWay;
   /** When issuing itself must be refused. */
   expect?: ScenarioRefusal;
 }
@@ -93,6 +110,17 @@ export interface ReadStep {
   grants: string | readonly string[];
   question: Question;
   expect: "allowed" | "denied" | "not-covered" | ScenarioRefusal;
+  /** What the read must tell has diverged. Unchecked when absent. */
+  diverged?: ExpectedDiverged;
+}
+
+/**
+ * The application deploys another catalog: every later step runs under it, grants issued before
+ * included. The stored statements and roles stay as they are.
+ */
+export interface DeployStep {
+  step: "deploy";
+  catalog: CatalogData;
 }
 
 /** What the application writes to its own storage: a grant, a revocation, a move, an edited role. */
@@ -134,12 +162,20 @@ export interface PlaceCase {
 export interface GrantsCase {
   id: string;
   title: string;
+  /** The catalog they are read under. */
   catalog: CatalogData;
-  /** Possibly not grants at all. The string `"$ct"` as its `ct` stands for the fingerprint of `catalog`. */
+  /** The catalog they were issued under, when another. @default `catalog` */
+  issuedUnder?: CatalogData;
+  /**
+   * Possibly not grants at all, one set or several. The string `"$ct"` as the `ct` of a set stands
+   * for the fingerprint of `issuedUnder`, or of `catalog` without it.
+   */
   grants: unknown;
   at: number;
   question: Question;
   expect: "allowed" | "denied" | "not-covered" | ScenarioRefusal;
+  /** What the read must tell has diverged. Unchecked when absent. */
+  diverged?: ExpectedDiverged;
 }
 
 /** The code validation reports a problem of the value with. */
@@ -224,6 +260,8 @@ export interface ConformanceFailure {
    * only those the call needs. Absent for a `hand` step, which hands what it lists.
    */
   given?: "everything" | "needed";
+  /** How presets travelled in the grants read when it failed, for grants a scenario issued. */
+  presets?: PresetsWay;
   expected: unknown;
   received: unknown;
 }

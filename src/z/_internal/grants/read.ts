@@ -8,7 +8,10 @@ import { isLive } from "../time.ts";
 /** The item of grants that decided a permission, in the shape of a statement without its subject. */
 type GrantsBy = Omit<Statement, "subject">;
 
-/** Whether some base of the set covers `place`, a canonical key. */
+/**
+ * Whether some base of the set covers `place`, a canonical key that fits the catalog. A base that
+ * does not fit covers no such key, so it covers nothing.
+ */
 export function coversPlace(set: GrantsSetRead, place: string): boolean {
   return set.bases.some((base) => covers(base, place));
 }
@@ -19,7 +22,8 @@ export function coversPlace(set: GrantsSetRead, place: string): boolean {
  * a place covering the target, denies; else a live given value at a place covering the target
  * allows when one of the permissions it gives satisfies the question and no live exclusion between
  * its place and the target, of no bundle or of its own, takes that permission out. Only the values
- * that can bear on the permission are looked up.
+ * that can bear on the permission are looked up. A value at a place that does not fit the catalog
+ * never covers the target, which fits, so it is inert.
  */
 export function readSet(
   catalog: CompiledCatalog,
@@ -60,7 +64,8 @@ export function readSet(
 
 /**
  * The values of grants that can give something in `satisfying`, with what each gives: the
- * spellings of those permissions, the presets that resolve to one, the rows that hold one.
+ * spellings of those permissions, and the roles the grants name whose resolution, from the
+ * definitions they hold and the catalog in force, meets one.
  */
 function givenValues(
   catalog: CompiledCatalog,
@@ -70,12 +75,10 @@ function givenValues(
   const meets = (gives: ReadonlySet<string>) => [...satisfying].some((p) => gives.has(p));
   const out: [string, "allow" | "assign", ReadonlySet<string>][] = [];
   for (const value of spelled(satisfying)) out.push([value, "allow", expand(catalog, value)]);
-  for (const [name, role] of catalog.presets) {
-    if (meets(role.gives)) out.push([name, "assign", role.gives]);
+  for (const name of set.roles) {
+    const { gives } = set.reader.resolve(name);
+    if (meets(gives)) out.push([name, "assign", gives]);
   }
-  set.rows.forEach((row, index) => {
-    if (meets(row)) out.push([`#${index}`, "assign", row]);
-  });
   return out;
 }
 

@@ -49,6 +49,7 @@ export function compileCatalog(data: PlainCatalogData): CompiledCatalog {
     implies,
     impliedBy,
     presets: new Map(),
+    presetEntries: new Map(Object.entries(data.presets ?? {})),
     structure: compileStructure(data.places),
   };
   return Object.freeze({ ...base, presets: resolvePresets(base, data.presets) });

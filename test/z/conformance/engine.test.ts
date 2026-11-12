@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defineCatalog } from "../../../src/z/catalog.ts";
 import { ask } from "../../../src/z/ask.ts";
-import { could, issueGrants } from "../../../src/z/grants.ts";
+import { could, diverged, issueGrants } from "../../../src/z/grants.ts";
 import { placeChain, placeRange } from "../../../src/z/place.ts";
 import { validateRole, validateStatement } from "../../../src/z/validate.ts";
 import { cases } from "../../../src/z/conformance/cases.ts";
@@ -20,6 +20,7 @@ const engine: Engine = {
   defineCatalog,
   ask,
   could,
+  diverged,
   issueGrants,
   placeChain,
   placeRange,
