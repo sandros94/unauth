@@ -61,7 +61,7 @@ An engine offers the operations below. Each takes everything it needs as input, 
 - **Say what a question needs**: the keys on the chain of its target and the values that relate to its permission, so that an application reads nothing else ([Section 7](#7-decision-making), [Section 9](#9-what-an-engine-is-handed)).
 - **Answer a question** from statements ([Section 7](#7-decision-making)).
 - **Issue grants** from statements ([Section 8.2](#82-issuing)).
-- **Read grants**, one set or several together ([Section 8.3](#83-reading)).
+- **Read grants**, one set or several together, and say what of them has diverged from the catalog ([Section 8.3](#83-reading)).
 - **Validate a statement** against the catalog, before the application writes it ([Section 10](#10-changing-statements)).
 - **Validate a stored role** against the catalog and the roles it names, before the application writes it ([Section 10](#10-changing-statements)).
 
@@ -84,7 +84,7 @@ What an engine guarantees ([Section 7](#7-decision-making), [Section 5.1](#51-im
 | G5 | Statements at places not covering the target, and statements that do not relate to the permission asked, never influence the answer. |
 | G6 | The same statements, the same question and the same time give the same answer. A question has one time, fixed when it is asked. |
 | G7 | The depth of a place never ranks an allow against an allow, nor anything against a deny: allows add up along the chain and a deny blocks from any covering place. Depth matters to an exclusion alone: it takes out what its own place and wider places give, and what a narrower place gives stands. |
-| G8 | Grants issued at a time answer, for every target they cover and at every later time, exactly as the statements live at issue would answer at that time. A target outside every base is reported as not covered, never as denied. |
+| G8 | Grants issued at a time answer, for every target they cover and at every later time, exactly as the statements live at issue would answer at that time, with the roles as they were defined at issue. Under the catalog of issue that is the answer of the statements. Under another catalog it is the answer those statements and those roles give with the permissions, the implications and the structure then in force, or a refusal ([Section 8.3](#83-reading)). A target outside every base is reported as not covered, never as denied. |
 | G9 | A role that cannot be resolved gives nothing, and so does every role that names it, with or without `-`: a role that no longer exists, and a role on a cycle of references. An entry that names such a role is never skipped, since skipping an exclusion would widen the role. |
 
 ## 5. Catalog
@@ -93,7 +93,7 @@ The catalog is the vocabulary an engine holds without a store. It declares the p
 
 A resource, an action, a role name and a level of the structure ([Section 6](#6-place)) are each one **token**: a lowercase ASCII letter followed by at most thirty-one lowercase letters, digits, `-` or `_`, as [Appendix C](#appendix-c-abnf) gives it. A permission is a resource and an action joined by `:`. This spelling is the canonical form of [Section 4](#4-invariants), compared byte by byte, and there is no other: `Report:read` is not a permission in another form, it is refused. An application whose vocabulary is spelled otherwise maps it onto tokens where it defines the catalog.
 
-A permission not in the catalog is **unknown**. An engine MUST refuse an unknown permission in the catalog itself, in a question, and in a statement or a stored role it is asked to validate ([Section 10](#10-changing-statements)). A statement or a stored role read from a store that names an unknown permission, because the catalog changed after it was written or because it was written without validation, is **inert**: an allow or an exclusion of it gives or removes nothing, a deny of it blocks nothing, and the rest of the statement or role applies as written. Grants issued before the change are reissued once their catalog fingerprint no longer matches ([Section 8](#8-grants)). Whether such a statement is rewritten or removed is the application's.
+A permission not in the catalog is **unknown**. An engine MUST refuse an unknown permission in the catalog itself, in a question, and in a statement or a stored role it is asked to validate ([Section 10](#10-changing-statements)). A statement or a stored role read from a store that names an unknown permission, because the catalog changed after it was written or because it was written without validation, is **inert**: an allow or an exclusion of it gives or removes nothing, a deny of it blocks nothing, and the rest of the statement or role applies as written. Grants are read the same way: what they name that the catalog in force does not declare is inert too ([Section 8.3](#83-reading)). Whether such a statement is rewritten or removed is the application's.
 
 This document reserves no name. No permission, no role and no subject means anything the application did not say, and none stands above a deny or an exclusion ([Section 12](#12-limitations)).
 
@@ -101,7 +101,7 @@ The wildcard `*` MAY stand for the resource (`*:read`), for the action (`event:*
 
 An engine MUST refuse a catalog that declares the same permission twice, a name that is not a token, an implication whose permissions are not both concrete and declared, a cycle of implications, since two permissions that imply each other are one permission, a structure that declares no level, which `false` says, or in which a level sits under a level that itself sits nowhere, or a preset that references a stored role or breaks a rule of [Section 7.1](#71-role-resolution). A refused catalog defines nothing: an engine has a catalog or has none.
 
-An engine derives from the catalog a **fingerprint** that grants carry, so that an engine refuses grants written for another catalog ([Section 5.2](#52-catalog-data-and-fingerprint)).
+An engine derives from the catalog a **fingerprint** that grants carry, so that a read knows whether they were issued under another catalog, and which part of it differs ([Section 5.2](#52-catalog-data-and-fingerprint)).
 
 ### 5.1. Implications
 
@@ -126,14 +126,18 @@ A catalog is plain data, so that an engine in any language loads the same one. I
 - `presets`: an object that maps the name of a preset to the list of its entries.
 - `places`: the structure ([Section 6](#6-place)), or `false` for an application that has no places. The structure is an object that maps a parent to the list of levels that may sit directly under it. The parent is a level, `/` for the root, or `*` for the root and every level.
 
-A member with nothing to declare is absent, at every depth: a permission that implies nothing has no member in `implies`. `places` is the one member whose absence has a meaning of its own: the catalog then says nothing about places, and keys are checked against the grammar alone ([Section 6](#6-place)). How an application writes its catalog in code is its own affair, as long as it converts to this object.
+A member with nothing to declare is absent, at every depth: a permission that implies nothing has no member in `implies`. A preset with no entries declares a role all the same ([Section 7.1](#71-role-resolution)), so it is kept, with an empty list. An engine handed `permissions`, `implies` or `presets` with nothing in it, a declared permission mapped to an empty list in `implies`, or a parent mapped to an empty list in a structure that declares levels elsewhere, reads it as absent: the catalog is the same one, with the same fingerprint. A structure that declares no level is refused ([Section 5](#5-catalog)). A catalog that declares no permission is valid, and every question asked under it is refused as naming an unknown permission. `places` is the one member whose absence has a meaning of its own: the catalog then says nothing about places, and keys are checked against the grammar alone ([Section 6](#6-place)). How an application writes its catalog in code is its own affair, as long as it converts to this object.
 
-The **fingerprint** is a value that is equal for two catalogs that declare the same things and, short of a collision of the hash, different otherwise. It is computed the way the thumbprint of a key is [RFC7638]:
+The **fingerprint** tells whether two catalogs declare the same things. It has two **segments**, because grants lean on the two parts of a catalog differently ([Section 8.3](#83-reading)). The first segment is computed over `permissions`, `implies` and `places`. The second is computed over `presets`. A segment is equal for two catalogs that declare the same things in its members and, short of a collision of the hash, different otherwise. Each is computed the way the thumbprint of a key is [RFC7638]:
 
-1. Take the object above. Sort every list and keep each value once. Sort the members of every object by name. Both sorts compare strings by the value of their bytes, never by the collation of a language.
+1. Take the object above with the members of the segment and no others. Sort every list and keep each value once. Sort the members of every object by name. Both sorts compare strings by the value of their bytes, never by the collation of a language. A catalog that declares nothing in those members gives the empty object.
 2. Write it as JSON with no whitespace. No string needs an escape, since every name and every value is made of the characters [Appendix C](#appendix-c-abnf) allows in a token, a pattern or a role entry, and of `/`.
 3. Hash the octets of that text with SHA-256 [RFC6234].
-4. Write the hash in the URL-safe base64 alphabet without padding [RFC4648], which gives 43 characters.
+4. Keep the first 8 octets of the hash and write them in the URL-safe base64 alphabet without padding [RFC4648], which gives 11 characters.
+
+The fingerprint is the first segment, a `.`, and the second segment: 23 characters. The alphabet of a segment holds no `.`, so the two are told apart without a rule of length.
+
+Eight octets are enough because a segment is a check and not a secret. It protects nothing against whoever writes the catalog, who needs no collision to change what subjects hold ([Section 13](#13-security-considerations)). What remains is chance: two different catalogs share a segment once in 2^64.
 
 A later revision of this document that changes this computation raises the format revision of grants ([Section 8.4](#84-the-grants-object)).
 
@@ -145,7 +149,7 @@ The catalog MAY declare the **structure**: the level names, and which level may 
 
 A catalog says one of three things about places. It declares a structure, and a key **fits** when the level of each of its segments is declared and may sit under the level before it, the root for the first. It declares that the application has no places, and only the root fits. Or it says nothing, and every canonical key fits: an engine then checks keys against the grammar alone, and the application validates places where it builds them. There is no middle way: a structure declares every level, or no level is checked.
 
-An engine MUST refuse a key that does not fit, wherever it is given one: in a question, in a base, in a statement it is asked to validate ([Section 10](#10-changing-statements)). A statement read from a store at a key that does not fit, because the structure changed after it was written or because it was written without validation, is inert ([Section 5](#5-catalog)): it applies nowhere and is left out of grants. An engine knows nothing about which resources or permissions belong at a level. Whether a given place exists, whether `acme` is a real organisation, is the application's knowledge: it answers that before it asks the engine. Places under the same parent have no order among themselves. One thing has one place at a time: a level that sits under several parents holds different things under each, never one thing with two keys, since a deny at one key would be bypassed at the other.
+An engine MUST refuse a key that does not fit, wherever it is given one: in a question, in a base, in a statement it is asked to validate ([Section 10](#10-changing-statements)). A statement read from a store at a key that does not fit, because the structure changed after it was written or because it was written without validation, is inert ([Section 5](#5-catalog)): it applies nowhere, in the statements and in grants alike ([Section 8.3](#83-reading)). An engine knows nothing about which resources or permissions belong at a level. Whether a given place exists, whether `acme` is a real organisation, is the application's knowledge: it answers that before it asks the engine. Places under the same parent have no order among themselves. One thing has one place at a time: a level that sits under several parents holds different things under each, never one thing with two keys, since a deny at one key would be bypassed at the other.
 
 The **key** is the text of a place, and the only form an engine reads or writes. The root is `/`. Every other key writes its segments from the root down, each as `/`, the level, `=`, the value: `/org=acme/unit=u7`. A `/` starts every segment and appears nowhere else, so a key has as many segments as it has `/` characters. A level never contains `=`, so a segment splits at its first `=`, and a value MAY contain `=`, `:` or any other character that identifiers in the wild use: `/account=did:plc:abc`. [Appendix C](#appendix-c-abnf) gives the grammar.
 
@@ -254,7 +258,7 @@ resolve(R):
 
 A role with no references has `P_in` and `E_in` empty, so `P` is its includes minus its excludes. Every other part of the model that reads a role reads `P` only: the check and the issuing of grants. `E` is consumed by resolution alone. An engine MUST refuse a reference to an unknown role, and a cycle of references, in a stored role it is asked to validate ([Section 10](#10-changing-statements)), a role named after `-` included. A cycle met when a role is read is read as a role that no longer exists, so `resolve` always terminates.
 
-A role that no longer exists when it is read, because the application deleted a stored role or a preset left the catalog, fails closed (G9). An assignment that names it gives nothing. A role with an entry that names it, with or without `-`, gives nothing at all, and neither does a role that references that one: ignoring the one entry would silently widen a role that was built to exclude it. A name that is both a preset and a stored role reads as the preset, so that grants, which carry a preset by its name ([Section 8.1](#81-what-grants-hold)), and the statements read alike. An application SHOULD NOT give a stored role the name of a preset. Stored roles have distinct names. An engine MUST refuse two stored roles of one name, wherever it is handed them: reading either would be a guess.
+A role that no longer exists when it is read, because the application deleted a stored role or a preset left the catalog, fails closed (G9). An assignment that names it gives nothing. A role with an entry that names it, with or without `-`, gives nothing at all, and neither does a role that references that one: ignoring the one entry would silently widen a role that was built to exclude it. A name that is both a preset and a stored role reads as the preset, when a question is asked of the statements and when grants are issued from them ([Section 8.2](#82-issuing)). An application SHOULD NOT give a stored role the name of a preset. Stored roles have distinct names. An engine MUST refuse two stored roles of one name, wherever it is handed them: reading either would be a guess.
 
 ## 8. Grants
 
@@ -265,10 +269,10 @@ Grants are carried where the application chooses, in a signed token, in a server
 Grants are issued for one subject, at one time, from the statements live at that time about the subject's identifiers, its own and those of its groups, as the application's source of memberships knows them. They hold:
 
 1. **The bases**, the places the grants speak for. The root when none is named. A target under no base is not covered.
-2. **A copy of every statement that can relate to a question** about the subject: its kind, its value as written, its place, and its end when it has one. A permission is kept as written, wildcards included. A preset is kept by name. A stored role is kept as the permissions it resolved to at issue, written once and referenced from every place where it is assigned.
+2. **A copy of every statement that can relate to a question** about the subject: its kind, its value as written, its place, and its end when it has one. A permission is kept as written, wildcards included. An assignment is kept as the name of its role, and the **definition** of the role is kept once, as it was written: its entries, with their wildcards, references and exclusions, and the definition of every role it references. Nothing of a role is resolved at issue, so that a read resolves it with the catalog then in force. A stored role always travels with its definition, since a read has no store. A preset travels in one of two ways, the same for every preset of the grants: with a **copy** of its definition, or by its name alone. Copies make grants readable whatever presets a later catalog declares. Names alone make them smaller, and readable only under the presets they were issued under ([Section 8.3](#83-reading)). The concrete permissions the grants name are written once, in a table that definitions and entries point into.
 3. **Bundles.** What a group gave the subject is kept together as a **bundle** when that group also has an exclusion in the grants. Every value of the bundle, and the group's exclusion itself, carries the bundle's number, so that the exclusion closes its own bundle and nothing else. Values outside every bundle are the subject's own or came from groups without exclusions, and an exclusion without a number is the subject's own and reaches everything. Denies carry no number. A bundle number never says which group it was, and the numbers are assigned anew at each issue.
 4. **The time they were issued**, so that a read at an earlier time is refused.
-5. **The revision of this format and the fingerprint of the catalog** they were written for, so that an engine refuses what it cannot read and says which of the two differs.
+5. **The revision of this format and the fingerprint of the catalog** they were issued under, so that an engine refuses a format it cannot read, and knows which part of the catalog has changed since.
 
 Grants hold nothing else about the subject: not the names of its groups, not who placed a statement, not statements that had ended at issue, not statements about other subjects. An application MAY add members of its own to the object that carries the grants, and an engine ignores them ([Section 8.4](#84-the-grants-object)).
 
@@ -276,9 +280,13 @@ Grants freeze what the statements held at issue. A statement that ends later end
 
 Membership is frozen too. Grants reflect the groups the subject was in when they were issued. Joining or leaving a group afterwards changes nothing until new grants are issued.
 
+Roles are frozen too. Grants hold each role as it was defined at issue. A stored role edited afterwards, or a preset changed by a later catalog while the grants hold its copy, changes nothing until new grants are issued.
+
 ### 8.2. Issuing
 
-Issuing takes the subject, the statements that apply to it ([Section 7](#7-decision-making)), the bases and the time of issue, reads those that are live at that time, with the definitions of the stored roles they assign, and writes the grants. A statement is kept when its place lies on the chain of a base or under a base. Nothing is folded: a statement above a base stays at its own place. A statement that gives, blocks and takes out nothing is left out too: an inert one ([Section 5](#5-catalog)), or an assignment whose role resolves to no permission.
+Issuing takes the subject, the statements that apply to it ([Section 7](#7-decision-making)), the bases and the time of issue, reads those that are live at that time, with the definitions of the stored roles they assign, and writes the grants. A statement is kept when its place lies on the chain of a base or under a base. Nothing is folded: a statement above a base stays at its own place. Nothing is left out for what it gives either: a statement that is inert under the catalog of issue ([Section 5](#5-catalog), [Section 6](#6-place)), a role entry that is, and an assignment whose role resolves to no permission are kept as written, since a read under another catalog may find them otherwise ([Section 8.3](#83-reading)). One thing is left out: an assignment of a role that cannot be resolved at issue (G9), that is a role that is neither a preset nor among the stored roles handed in, a role that references such a role, directly or through others, and a role on a cycle of references. Roles are frozen at issue, so no later read would resolve it either.
+
+The definitions written are those of every role a kept assignment names, and of every role these reference, directly or through others. A stored role whose name is also a preset's is not written, since that name reads as the preset ([Section 7.1](#71-role-resolution)). Whether presets travel as copies or by name is the application's choice at issue.
 
 Each group that has at least one exclusion kept in the grants gets a bundle number of its own, any positive integer. Every value that group gave and every exclusion about it carries that number. No other group has a bundle, and which number a group gets carries no meaning.
 
@@ -286,13 +294,17 @@ Two engines issuing from the same statements for the same subject, bases and tim
 
 ### 8.3. Reading
 
-A read takes grants, one permission, one target and one time, and gives one of three answers: **allowed**, **denied**, or **not covered**. It refuses instead of answering when the grants are malformed, when their format revision or catalog fingerprint is not the engine's own, or when the time of the question is earlier than the time of issue ([Section 11](#11-errors)). A refusal is not an answer, and the model does not say what the application does next.
+A read takes grants, one permission, one target and one time, and gives one of three answers: **allowed**, **denied**, or **not covered**. It refuses instead of answering when the grants are malformed, when their format revision is not the engine's own, when they name a preset they hold no copy of and the presets of the catalog are not those they were issued under, or when the time of the question is earlier than the time of issue ([Section 11](#11-errors)). A refusal is not an answer, and the model does not say what the application does next.
 
-The read needs no store and no walk. From the catalog alone it knows, for the permission `p`, `blocking(p)`, `wanted(p)` and `down(p)`: the permissions a deny must name, the permissions that satisfy `p`, and the permissions an exclusion must name to take one of those out, that is `wanted(p)` with everything one of them implies. The values it looks up are the spellings that can carry one of those permissions, four for each: for `report:write` they are `report:write`, `report:*`, `*:write` and `*`. It also looks up the presets whose resolution meets `wanted(p)` and the stored roles whose row meets it, and touches no other value.
+The read needs no store and no walk. From the catalog alone it knows, for the permission `p`, `blocking(p)`, `wanted(p)` and `down(p)`: the permissions a deny must name, the permissions that satisfy `p`, and the permissions an exclusion must name to take one of those out, that is `wanted(p)` with everything one of them implies. The values it looks up are the spellings that can carry one of those permissions, four for each: for `report:write` they are `report:write`, `report:*`, `*:write` and `*`. In grants that hold `pm`, the first of the four is the permission's position there. It also looks up the roles whose resolution meets `wanted(p)`, and touches no other value.
+
+A role is resolved by the procedure of [Section 7.1](#71-role-resolution) from the definitions the grants hold: a name in `ps` is that copy, a name in `sr` is that stored role, whatever presets the catalog in force declares, and the entries of both are read with the catalog in force. In grants that hold no `ps`, a role name that is not in `sr` names a preset of the catalog. In grants that hold one, such a name is a role that does not exist, and gives nothing (G9).
 
 ```
 read(grants, p, target, t):
-  refuse when grants are malformed, or name another format revision or catalog fingerprint
+  refuse when grants are malformed or of another format revision
+  refuse when grants name a preset they hold no copy of
+    and their second segment is not the catalog's
   refuse when t < issue time of grants
   if no base covers target: return not covered
   for each deny (value v, place P, end e) with v a spelling of blocking(p):
@@ -310,41 +322,61 @@ read(grants, p, target, t):
 live(e, t): e is absent, or e > t
 ```
 
-This read gives the answer of the walk of [Section 7](#7-decision-making): a given value counts when it is live, its place covers the target, and no live exclusion that applies to it sits at its place or under it on the chain. A deny on a group blocks every member, so denies belong to no bundle. For every covered target the grants and the statements live at issue agree at every time (G8), and the two readings never diverge before someone writes.
+This read gives the answer of the walk of [Section 7](#7-decision-making): a given value counts when it is live, its place covers the target, and no live exclusion that applies to it sits at its place or under it on the chain. A deny on a group blocks every member, so denies belong to no bundle. For every covered target the grants and the statements live at issue agree at every time under the catalog of issue (G8), and the two readings never diverge before someone writes.
 
-Several sets of one subject MAY be read together, for example a small set for the platform in a cookie and a deep set for a drive kept server side. A target is covered when any set covers it, and it is allowed only when every set covering it allows. Each set alone is exact for the targets it covers, so two sets disagree only when one was issued before a change: requiring every one to allow lets the older set's deny stand, which is the safe side. A set that refuses makes the read refuse. Bases of sets read together SHOULD NOT cover each other, so that no statement is carried twice and reissued twice.
+**Under another catalog.** A read compares the two segments of the fingerprint the grants carry with those of the catalog in force ([Section 5.2](#52-catalog-data-and-fingerprint)). The two segments do not weigh the same, because a preset is written in permissions and never the reverse.
+
+The first segment covers the permissions, the implications and the structure. Grants carry permissions, patterns and places as they were written and nothing of what they mean, so a read takes their meaning from the catalog in force, as a question asked of the statements does: a pattern matches the permissions declared now, an implication holds as declared now, and a permission the catalog does not declare, a pattern that matches none and a place that does not fit the structure are inert ([Section 5](#5-catalog), [Section 6](#6-place)). A first segment that differs never makes a read refuse.
+
+The second segment covers the presets. A preset the grants hold a copy of is read from the copy, whatever the catalog declares. A preset they name without a copy is read from the catalog, and only when the second segment is the catalog's own: otherwise the read MUST refuse, since nothing says what the name meant at issue. The refusal is of the grants, whatever the question.
+
+Grants issued under one catalog and read under another therefore answer as the statements live at issue would under the second, with the roles as the grants hold them (G8).
+
+A role the grants hold has **diverged** when the same name no longer means the same under the catalog in force. A copy has diverged when the catalog declares no preset of its name, or one whose entries, each taken once and in any order, are not the same. A stored role has diverged when the catalog declares a preset of its name with other entries, compared the same way: asked of the statements, that name now reads as the preset ([Section 7.1](#71-role-resolution)). A diverged role is read as the grants hold it: the subject keeps what it gave at issue until grants are issued again, and when that happens is the application's decision ([Section 8.5](#85-when-grants-are-issued-again), [Section 13](#13-security-considerations)). So that the application can decide, a read of grants of which a segment differs tells with its answer what has diverged: the segments that differ, the roles that have diverged, and the concrete permissions the grants name that the catalog does not declare. When both segments are the catalog's own, nothing has diverged and a read tells nothing. An engine tells the same of grants without a question, and refuses then what a read refuses.
+
+Several sets of one subject MAY be read together, for example a small set for the platform in a cookie and a deep set for a drive kept server side. A target is covered when any set covers it, and it is allowed only when every set covering it allows. Each set alone is exact for the targets it covers, so two sets disagree only when one was issued before a change: requiring every one to allow lets the older set's deny stand, which is the safe side. A set that refuses makes the read refuse, and what has diverged is told of all the sets read. Bases of sets read together SHOULD NOT cover each other, so that no statement is carried twice and reissued twice.
 
 ### 8.4. The grants object
 
 Grants are written as one JSON object [RFC8259]. An engine reads the members below and ignores any other member of the object, so an application MAY add members of its own beside them, as a token carries claims of several kinds [RFC7519]. Inside the members below nothing else is allowed. The order of members, of lists and of items carries no meaning, and neither does whitespace. Every number is an integer.
 
 - `v`: the revision of this format, the string `"1"` for this document. A later revision of this document raises it only when a read of grants written under the earlier one would differ.
-- `ct`: the fingerprint of the catalog, a string ([Section 5](#5-catalog)).
+- `ct`: the fingerprint of the catalog the grants were issued under, its two segments joined by `.` ([Section 5.2](#52-catalog-data-and-fingerprint)).
 - `at`: the time of issue.
 - `bs`: the bases, a list of canonical keys. Absent when the only base is the root.
 - `pl`: the **place table**, a list of canonical keys, the root never among them. Absent when no item names a place.
-- `rl`: the **role table**, a list of rows, each row the list of concrete permissions a stored role resolved to. Absent when no stored role is assigned.
-- `nt`: the **entries**, an object whose member names are the values carried: a permission or a pattern as written, a preset name, or `#` followed by the index of a row of `rl`.
+- `pm`: the **permission table**, a list of the concrete permissions these grants name, each once: those that name an entry, and those the definitions of `ps` and `sr` hold. It is not the catalog's list of permissions. It holds only what these grants name, and a position is a position in `pm`, never in the catalog. The two share their order: an engine that issues writes `pm` in the byte order of [Section 5.2](#52-catalog-data-and-fingerprint). A read does not depend on that order. An engine that issues writes `pm` when the grants hold `ps` or `sr` and name at least one concrete permission, and not otherwise.
+- `ps`: the **preset table**, an object whose member names are presets and whose values are their definitions. Present when presets travel as copies and the grants name at least one: it then holds every preset they name, in an entry or in a definition. Absent when presets travel by name.
+- `sr`: the **stored role table**, an object whose member names are stored roles and whose values are their definitions. It holds every stored role the grants name, in an entry or in a definition. Absent when they name none.
+- `nt`: the **entries**, an object whose member names are the values carried: a pattern as written, a role name, or a permission. A permission is written as its name in grants that hold no `pm`, and as its position in `pm` in grants that hold one.
 
-An entry is an object with up to three members: `a` for what is given, `d` for what is denied, `x` for what is taken out. `d` and `x` appear only in entries whose name is a permission or a pattern. Each member is a list of **items**, and an item is a list of up to three elements: the index of the place in `pl`, or `null` for the root, then the end, or `null` when permanent, then the bundle number. Trailing elements that are `null` MAY be omitted, so `[]` is the root with no end and no bundle, `[3]` is the fourth place of `pl`, `[3,1794819600]` adds an end, and `[null,null,2]` is the root in bundle 2. Each item is read on its own, so the same item written twice changes nothing.
+A **definition** is the list of the entries of a role ([Section 7.1](#71-role-resolution)), in any order. A role entry that names a concrete permission is written as the position of that permission in `pm`, an integer. One that excludes a concrete permission is written as `-` followed by that position, a string. Every other role entry is written as it is in the role, a string: a pattern, a role name, or `-` followed by either. A concrete permission is never written by its name in a definition.
+
+A position is counted from 0. Where it is written in a string or as a member name, it is written in decimal digits, with no sign and no leading zero. No name can be taken for a position, since every token starts with a letter ([Appendix C](#appendix-c-abnf)).
+
+An entry is an object with up to three members: `a` for what is given, `d` for what is denied, `x` for what is taken out. `d` and `x` appear only in entries whose name is a permission or a pattern. Each member is a list of **items**, and an item is a list of up to three elements: the index of the place in `pl`, or `null` for the root, then the end, or `null` when permanent, then the bundle number. Trailing elements that are `null` MAY be omitted, so `[]` is the root with no end and no bundle, `[3]` is the fourth place of `pl`, `[3,1794819600]` adds an end, and `[null,null,2]` is the root in bundle 2. Each item is read on its own, so the same item written twice changes nothing. An entry with no member, and a member with no item, say nothing and are not refused.
 
 An engine validates the grants it is handed before it answers from them, and MUST refuse them as malformed ([Section 11](#11-errors)) unless all of the following hold:
 
 - The object holds `v`, `ct`, `at` and `nt`, and every member above that is present has the type stated.
-- Every key in `bs` and `pl` is canonical and fits the structure, and `pl` does not hold the root.
-- Every row of `rl` holds permissions of the catalog and nothing else.
-- Every name in `nt` is a permission of the catalog, a pattern that matches one, a preset, or `#` followed by the index of a row that exists.
+- `ct` is two segments of 11 characters of the URL-safe base64 alphabet, joined by `.`.
+- Every key in `bs` and `pl` is canonical, and `pl` does not hold the root.
+- `pm` holds permissions in their canonical form and nothing else, each once.
+- `ps` and `sr` share no name. Every name in them is a role name, and every definition holds role entries in the form above and nothing else, with positions that exist in `pm`.
+- Every name in `nt` is a pattern, a role name, or a permission: its name where the grants hold no `pm`, a position that exists in `pm` where they hold one.
 - Every entry holds `a`, `d` or `x` and nothing else, with `d` and `x` only under a permission or a pattern.
 - Every item holds at most three elements: a place index that exists in `pl` or `null`, an end that is a time or `null`, and a bundle number or `null`. A bundle number is an integer from 1 to the largest value a time may take, and an item of `d` holds none.
 
-Grants that hold only some of the entries are grants too. An application MAY hand an engine the entries a question relates to and nothing else, with the tables they index, and the engine validates what it is handed ([Section 9](#9-what-an-engine-is-handed)).
+These checks are about form alone. Whether the catalog in force knows a permission, a pattern, a place or a role that the grants name is not one of them: what it does not know is inert or gives nothing ([Section 8.3](#83-reading)).
+
+Grants that hold only some of the entries are grants too. An application MAY hand an engine the entries a question relates to and nothing else, with the tables they point into, and the engine validates what it is handed ([Section 9](#9-what-an-engine-is-handed)).
 
 Zoe is allowed `report:*` and excluded from `report:write` at the organisation:
 
 ```json
 {
   "v": "1",
-  "ct": "9f2c…",
+  "ct": "9f2cQ0aXw3k.Lt5hB1mKd9E",
   "at": 1794214800,
   "pl": ["/org=acme"],
   "nt": { "report:*": { "a": [[0]] }, "report:write": { "x": [[0]] } }
@@ -361,12 +393,12 @@ report:write   taken out  at /org=acme/area=archives   bundle 1    the team's ex
 
 The grants are issued on Monday 2026-11-09 at 09:00 UTC, `1794214800`. Her allow ends on Friday 2026-11-13 at 00:00 UTC, `1794528000`, so it is live on Thursday and ended on Saturday. A read in the archives closes bundle 1 only: `writer` no longer gives `report:write` there. Sue's own allow is in no bundle, so the exclusion does not touch it, and on Thursday she writes. On Saturday her allow has ended: denied. Had the exclusion been placed on Sue herself, it would carry no number and would take the permission out of everything, her own allow included. A group with no exclusion anywhere in the grants has no bundle, and its values look exactly like the subject's own.
 
-The same grants as an object:
+The same grants as an object, with presets by name:
 
 ```json
 {
   "v": "1",
-  "ct": "9f2c…",
+  "ct": "9f2cQ0aXw3k.Lt5hB1mKd9E",
   "at": 1794214800,
   "pl": ["/org=acme", "/org=acme/area=archives"],
   "nt": {
@@ -378,22 +410,54 @@ The same grants as an object:
 
 Elsewhere in the organisation `writer` still gives `report:write` to Sue on Saturday, since the exclusion covers the archives only.
 
-A flat application with no places writes no `pl` and items of `[]`. Ed, assigned `viewer` permanently and `editor` until next Monday:
+A flat application with no places writes no `pl` and items of `[]`. Ed, assigned `viewer` permanently and `editor` until next Monday, with presets by name:
 
 ```json
 {
   "v": "1",
-  "ct": "9f2c…",
+  "ct": "9f2cQ0aXw3k.Lt5hB1mKd9E",
   "at": 1794214800,
   "nt": { "editor": { "a": [[null, 1794819600]] }, "viewer": { "a": [[]] } }
 }
 ```
 
+The same grants with copies, where the catalog declares `viewer = ["*:read"]` and `editor = ["viewer", "post:write"]`. The one concrete permission the two definitions name is written in `pm`, and `editor` points at it:
+
+```json
+{
+  "v": "1",
+  "ct": "9f2cQ0aXw3k.Lt5hB1mKd9E",
+  "at": 1794214800,
+  "pm": ["post:write"],
+  "ps": { "editor": [0, "viewer"], "viewer": ["*:read"] },
+  "nt": { "editor": { "a": [[null, 1794819600]] }, "viewer": { "a": [[]] } }
+}
+```
+
+A stored role, in one case. The catalog declares `billing:read`, `post:read`, `report:read` and `report:write`, and the preset `viewer = ["*:read"]`. The application keeps the stored role `reviewer = ["viewer", "report:write", "-billing:read"]`, which reads everything but billing and writes reports. Ada is assigned `reviewer` at the organisation and is allowed `billing:read` at one unit, so she reads billing there and nowhere else. `pm` holds the two concrete permissions these grants name and is not a copy of the catalog. In the definition of `reviewer`, `report:write` is the position `1` and the exclusion of `billing:read` is `-0`. `viewer` is assigned nowhere and travels all the same, since `reviewer` references it. Since the grants hold a `pm`, the allow of `billing:read` is named by its position, `0`:
+
+```json
+{
+  "v": "1",
+  "ct": "9f2cQ0aXw3k.Lt5hB1mKd9E",
+  "at": 1794214800,
+  "pl": ["/org=acme", "/org=acme/unit=u7"],
+  "pm": ["billing:read", "report:write"],
+  "ps": { "viewer": ["*:read"] },
+  "sr": { "reviewer": ["-0", 1, "viewer"] },
+  "nt": { "0": { "a": [[1]] }, "reviewer": { "a": [[0]] } }
+}
+```
+
+With presets by name the same grants hold no `ps`, and `viewer` in the definition of `reviewer` is the catalog's. Suppose a later catalog declares `viewer = ["post:read"]`. Read under it, the grants above answer with `viewer` as it was at issue, so Ada still reads reports, and the read says that `viewer` has diverged. The grants without `ps` are refused.
+
 An application MAY carry grants in any other form, abbreviated, compressed or split into rows, as long as it converts to this object and back without changing any answer a read gives ([Section 4](#4-invariants)). An engine reads and writes this object only. A later revision of this document MAY define further members, and an application that wants its own names safe from that keeps the grants object under one member of its carrier and its own members beside it.
 
 ### 8.5. When grants are issued again
 
-Grants need no reissue for an expiry: every end travels with its value. They are issued again when the statements about the subject or its groups change by a write, when the subject's groups change, when a stored role they carry is edited, when the catalog changes, or when the application moved or removed places they cover ([Section 10](#10-changing-statements)). A read refused for another catalog is the signal for the catalog case. For the others the application decides, from the delay it accepts and the lifetime it gives its session, and it MAY record when statements last changed, to compare with `at` where a read happens anyway.
+Grants need no reissue for an expiry: every end travels with its value. They are issued again when the statements about the subject or its groups change by a write, when the subject's groups change, when a stored role they hold is edited, when the catalog changes what they rest on, or when the application moved or removed places they cover ([Section 10](#10-changing-statements)). For the catalog an engine gives the signal ([Section 8.3](#83-reading)): a read refused for another catalog cannot go on without new grants, and a read that tells of diverged roles can, for as long as the application accepts what those roles give. For the others the application decides, from the delay it accepts and the lifetime it gives its session, and it MAY record when statements last changed, to compare with `at` where a read happens anyway.
+
+Grants have no end of their own. They answer for as long as their carrier lives, and the lifetime of the carrier is the longest any of these delays can be.
 
 ## 9. What an engine is handed
 
@@ -401,7 +465,7 @@ An engine reads no store. Every operation takes the statements and the stored ro
 
 **A question asked of the statements** needs every live statement about one of the subject's identifiers at a place on the chain of the target ([Section 6.1](#61-coverage)), and the definition of every stored role those statements assign, with the roles it references. Of those statements only the ones that relate to the permission asked can change the answer ([Section 7](#7-decision-making)), so an application MAY read only those: an engine says which values relate to a permission. Every assignment of a stored role is read with them, since only its definition tells whether it relates.
 
-**Issuing grants** needs every live statement about one of the subject's identifiers at a place on the chain of a base or under a base, and the definitions of the stored roles those statements assign ([Section 8.2](#82-issuing)). Nothing narrower will do, since grants answer later any question about a target they cover, without the statements.
+**Issuing grants** needs every live statement about one of the subject's identifiers at a place on the chain of a base or under a base, and the definitions of the stored roles those statements assign, with the roles they reference ([Section 8.2](#82-issuing)). Nothing narrower will do, since grants answer later any question about a target they cover, without the statements.
 
 **A question asked of grants** needs the grants and nothing else: no statement is read ([Section 8.3](#83-reading)).
 
@@ -427,7 +491,7 @@ Validation is not a gate on reading. What an application writes without it is re
 
 A statement is identified by its kind, its subject, its value and its place ([Section 3](#3-terminology)). Placing a statement whose identity exists replaces its end, and a removal names those four.
 
-An edit of a stored role reaches everyone who holds the role, at every place where it or a role that references it is assigned. Renaming or deleting a stored role that is assigned or referenced changes what those statements mean, and the application decides whether to refuse, to cascade or to rewrite. It reissues the grants that carried the role, since a stored role is carried as the permissions it resolved to when the grants were issued ([Section 8](#8-grants)).
+An edit of a stored role reaches everyone who holds the role, at every place where it or a role that references it is assigned. Renaming or deleting a stored role that is assigned or referenced changes what those statements mean, and the application decides whether to refuse, to cascade or to rewrite. It reissues the grants that hold the role, since grants hold a stored role as it was defined when they were issued ([Section 8](#8-grants)).
 
 An engine cannot know that a thing moved. A move is the application's: it rewrites the keys of the statements at and under the old place, and issues again the grants that covered the old place or the new one ([Section 8.5](#85-when-grants-are-issued-again)). Until it does, those grants answer as they did before the move.
 
@@ -436,13 +500,14 @@ An engine cannot know that a thing moved. A move is the application's: it rewrit
 An engine refuses rather than guesses. Every refusal names one of the reasons below, so that an application can tell them apart in its own logic, and the model does not say how a refusal is carried in a given language or what the application does next. A refusal is never one of the answers allowed, denied or not covered.
 
 - **invalid catalog**: the catalog breaks a rule of [Section 5](#5-catalog). The engine has no catalog.
-- **unknown permission**: a permission not in the catalog, in a question, or in a statement or a stored role being validated. Statements read from a store that name one are inert, never an error ([Section 5](#5-catalog)).
-- **outside the structure**: a canonical key that does not fit the structure, in a question, in a base or in a statement being validated. Statements read from a store at such a key are inert, never an error ([Section 6](#6-place)).
+- **unknown permission**: a permission not in the catalog, in a question, or in a statement or a stored role being validated. Statements read from a store that name one are inert, and so are grants that do, never an error ([Section 5](#5-catalog)).
+- **outside the structure**: a canonical key that does not fit the structure, in a question, in a base or in a statement being validated. Statements read from a store at such a key are inert, and so is such a key in grants, never an error ([Section 6](#6-place)).
 - **malformed**: a key, a permission, a pattern, a role entry or a time that does not match its canonical form, `*:*` and a non-canonical key included, and grants that fail a check of [Section 8.4](#84-the-grants-object).
 - **invalid question**: no permission, or a wildcard.
 - **invalid role**: a stored role being validated that references an unknown role or holds a cycle ([Section 7.1](#71-role-resolution)), a statement being validated that assigns a role that is neither a preset nor among the stored roles handed in, and two stored roles of one name handed to any operation.
 - **already ended**: a statement being validated whose end is not later than the time of the validation.
-- **other format**, **other catalog**: grants whose revision or fingerprint is not the engine's own, named apart so that the application knows whether its own code or the engine changed.
+- **other format**: grants whose revision is not the engine's own.
+- **other catalog**: grants that name a preset they hold no copy of, read under a catalog whose presets are not those they were issued under ([Section 8.3](#83-reading)). The refusal names the segment of the fingerprint that differs. The two are named apart so that the application knows whether the engine or its own catalog changed.
 - **before issue**: a read of grants at a time earlier than their time of issue.
 
 ## 12. Limitations
@@ -496,6 +561,8 @@ What the model does not do, with what an application does instead.
 **Not covered and refused are not allowed.** A read that answers not covered, or that refuses, has allowed nothing. An application MUST NOT perform the action on either: it asks another set of grants or the statements, or it declines.
 
 **The catalog is authority.** Changing the catalog changes what subjects hold without any statement being written. A new permission falls under every wildcard that matches it, a new implication widens what every statement naming it gives or blocks, and an edited preset changes for everyone assigned it. No rule of this document checks a change of the catalog. An application SHOULD review one as it would a change to the statements.
+
+**Copies of presets outlive a change of the catalog.** Grants that hold copies answer with the presets as they were at issue, whatever the catalog declares since ([Section 8.3](#83-reading)). A catalog that takes a permission out of a preset, or removes the preset, reaches those grants only when they are issued again. A read says which roles have diverged and does nothing about it. An application that changes a preset to take something away issues the grants again before it relies on the change, or carries presets by name and accepts that every read of grants that name a preset is refused until it does. A stored role held under a name that a later catalog gives to a preset is read as the stored role, and told as diverged the same way. Grants have no end of their own, so the delay lasts at most as long as their carrier ([Section 8.5](#85-when-grants-are-issued-again)).
 
 **Keys have no bound in the model.** An engine checks a key against its grammar, and against the structure when the catalog declares one, before computing anything. A structure in which no level nests under itself bounds the depth of every key. A value has no bound, and neither has the depth where a level nests under itself, so an application MAY refuse keys over a length or depth it declares, so that a hostile request cannot hand it a chain of thousands of places.
 
