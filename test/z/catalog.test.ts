@@ -43,13 +43,9 @@ describe("defineCatalog fingerprint", () => {
       implies: { "report:write": ["report:read"] },
       presets: { viewer: ["report:read"], owner: ["*"], admin: ["owner", "-user:invite"] },
       places: { "/": ["org"], "org": ["unit", "project"], "*": ["folder"] },
-      manager: "access:manage",
-      assigner: { viewer: "user:invite" },
     });
     const canonical =
-      '{"assigner":{"viewer":"user:invite"},' +
-      '"implies":{"report:write":["report:read"]},' +
-      '"manager":"access:manage",' +
+      '{"implies":{"report:write":["report:read"]},' +
       '"permissions":["access:manage","report:read","report:write","user:invite"],' +
       '"places":{"*":["folder"],"/":["org"],"org":["project","unit"]},' +
       '"presets":{"admin":["-user:invite","owner"],"owner":["*"],"viewer":["report:read"]}}';
@@ -62,7 +58,6 @@ describe("defineCatalog fingerprint", () => {
       implies: { "a:y": ["a:x", "b:x", "a:x"], "b:x": [] },
       presets: { r: ["a:x", "b:x", "a:x"], q: ["r", "-a:y"] },
       places: { "org": ["unit", "unit"], "/": ["org"], "unit": [] },
-      assigner: {},
     });
     const b = defineCatalog({
       places: { "/": ["org"], "org": ["unit"] },
@@ -93,7 +88,7 @@ describe("defineCatalog fingerprint", () => {
   it("differs when the catalog declares something else", () => {
     const a = defineCatalog({ permissions: ["a:x", "a:y"] });
     const b = defineCatalog({ permissions: ["a:x", "a:y"], implies: { "a:y": ["a:x"] } });
-    const c = defineCatalog({ permissions: ["a:x", "a:y"], manager: "a:x" });
+    const c = defineCatalog({ permissions: ["a:x", "a:y"], presets: { r: ["a:x"] } });
     expect(new Set([a.fingerprint, b.fingerprint, c.fingerprint]).size).toBe(3);
   });
 
@@ -166,8 +161,6 @@ describe("defineCatalog refusals", () => {
     expect(refuse({ permissions: ["a:x"], implies: [] })).toBe("shape");
     expect(refuse({ permissions: ["a:x"], presets: { r: "a:x" } })).toBe("shape");
     expect(refuse({ permissions: ["a:x"], places: true })).toBe("shape");
-    expect(refuse({ permissions: ["a:x"], manager: 1 })).toBe("shape");
-    expect(refuse({ permissions: ["a:x"], assigner: { r: ["a:x"] } })).toBe("shape");
     expect(refuse(JSON.parse('{"permissions":["a:x"],"__proto__":{"manager":"a:x"}}'))).toBe(
       "shape",
     );
@@ -183,9 +176,6 @@ describe("defineCatalog refusals", () => {
     );
     expect(refuse(JSON.parse('{"permissions":["a:x"],"places":{"__proto__":["org"]}}'))).toBe(
       "token",
-    );
-    expect(refuse(JSON.parse('{"permissions":["a:x"],"assigner":{"__proto__":"a:x"}}'))).toBe(
-      "assigner",
     );
     expect(Object.prototype).not.toHaveProperty("r");
   });
@@ -215,18 +205,19 @@ describe("defineCatalog refusals", () => {
     ).toBe("cycle");
   });
 
-  it("refuses a manager that is not a concrete declared permission", () => {
-    expect(refuse({ permissions: ["a:x"], manager: "a:y" })).toBe("manager");
-    expect(refuse({ permissions: ["a:x"], manager: "a:*" })).toBe("manager");
-    expect(refuse({ permissions: ["a:x"], manager: "*" })).toBe("manager");
-  });
-
-  it("refuses an assigner naming an undeclared preset or a permission not concrete and declared", () => {
+  it("refuses `manager` and `assigner` as any member the model does not define", () => {
     const base = { permissions: ["a:x", "u:invite"], presets: { r: ["a:x"] } };
-    expect(refuse({ ...base, assigner: { q: "u:invite" } })).toBe("assigner");
-    expect(refuse({ ...base, assigner: { r: "u:*" } })).toBe("assigner");
-    expect(refuse({ ...base, assigner: { r: "u:kick" } })).toBe("assigner");
-    expect(defineCatalog({ ...base, assigner: { r: "u:invite" } })).toBeTruthy();
+    for (const [member, value] of [
+      ["manager", "a:x"],
+      ["assigner", { r: "u:invite" }],
+      ["extra", true],
+    ] as const) {
+      const data: unknown = { ...base, [member]: value };
+      expect(refused(() => defineCatalog(data as CatalogData))).toMatchObject({
+        code: "ERR_AUTHZ_CATALOG_INVALID",
+        cause: { reason: "shape", at: member },
+      });
+    }
   });
 
   it("refuses a preset that does not resolve", () => {

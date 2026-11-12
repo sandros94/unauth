@@ -1,5 +1,4 @@
-import { readCatalogData } from "./_internal/catalog-data.ts";
-import { compileCatalog, rememberCompiled } from "./_internal/compile.ts";
+import { compileCatalog, rememberCompiled, readCatalogData } from "./_internal/compile.ts";
 
 /** A permission, or a wildcard over the declared ones: `report:*`, `*:read`, `*`. */
 export type PermissionPattern<TPermission extends string = string> =
@@ -39,10 +38,6 @@ export interface CatalogData<TPermission extends string = string, TPreset extend
    * - absent: places are not checked beyond their grammar.
    */
   places?: false | Record<string, readonly string[]>;
-  /** The permission that makes its holder a manager of a place. Without it no statement can be changed. */
-  manager?: NoInfer<TPermission>;
-  /** For a preset, the permission whose holders may assign it without holding what it gives. */
-  assigner?: { readonly [K in NoInfer<TPreset>]?: NoInfer<TPermission> };
 }
 
 /** A catalog the engine checked. Hand it as the first argument to every function of `unauth/z`. */
@@ -57,17 +52,16 @@ export interface Catalog<TPermission extends string = string, TPreset extends st
  * captured as types: a misspelled permission does not compile, in the catalog's own entries or in
  * a question asked later.
  *
- * @throws `ERR_AUTHZ_CATALOG_INVALID` for a permission declared twice, a name that is not a
- * lowercase token, an implication between undeclared permissions or in a cycle, a preset that does
- * not resolve, a `manager` or an `assigner` that is not a declared permission, or `places` that
- * declare no level or put a level under one that sits nowhere.
+ * @throws `ERR_AUTHZ_CATALOG_INVALID` for a member the model does not define, a permission
+ * declared twice, a name that is not a lowercase token, an implication between undeclared
+ * permissions or in a cycle, a preset that does not resolve, or `places` that declare no level or
+ * put a level under one that sits nowhere.
  *
  * @example
  * export const catalog = defineCatalog({
  *   permissions: ["report:read", "report:write", "access:manage"],
  *   implies: { "report:write": ["report:read"] },
  *   presets: { viewer: ["report:read"], owner: ["*"] },
- *   manager: "access:manage",
  * });
  */
 export function defineCatalog<

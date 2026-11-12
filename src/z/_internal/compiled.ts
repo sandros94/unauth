@@ -1,3 +1,11 @@
+/** Catalog data checked for shape: the members the model defines, lists of strings, nothing else. */
+export interface PlainCatalogData {
+  readonly permissions: readonly string[];
+  readonly implies?: Readonly<Record<string, readonly string[]>>;
+  readonly presets?: Readonly<Record<string, readonly string[]>>;
+  readonly places?: false | Readonly<Record<string, readonly string[]>>;
+}
+
 /**
  * What a role resolves to: `gives`, the concrete permissions it gives (the model's `P`), and
  * `withholds`, what it still forbids to the roles that reference it (`E`). Only resolution reads
@@ -42,9 +50,5 @@ export interface CompiledCatalog {
   readonly impliedBy: ReadonlyMap<string, ReadonlySet<string>>;
   /** Every preset, resolved. */
   readonly presets: ReadonlyMap<string, ResolvedRole>;
-  /** The permission that makes a manager, when the catalog designates one. */
-  readonly manager: string | undefined;
-  /** For a preset, the permission whose holders assign it. */
-  readonly assigner: ReadonlyMap<string, string>;
   readonly structure: Structure;
 }

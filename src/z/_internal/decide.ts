@@ -2,7 +2,7 @@ import type { CompiledCatalog } from "./compiled.ts";
 import { chainOf } from "./keys.ts";
 import { blocking, expand, removed, wanted } from "./permissions.ts";
 import type { RoleReader } from "./roles.ts";
-import { type ReadStatement, permanentManagementOf } from "./statements.ts";
+import type { ReadStatement } from "./statements.ts";
 import { isLive } from "./time.ts";
 
 /** What every decision reads: the catalog, the stored roles and the statements, read once. */
@@ -13,12 +13,11 @@ export interface DecisionSource {
 }
 
 /**
- * Who asks, where and when. `place` is a canonical key that fits the catalog, `time` a time in
- * seconds. `groups` must be whole: a group left out is a deny missed.
+ * Who asks, where and when. `subject` tells the statements about the asker itself from those about
+ * its groups, `place` is a canonical key that fits the catalog, `time` a time in seconds.
  */
 export interface Asked {
   readonly subject: string;
-  readonly groups: readonly string[];
   readonly place: string;
   readonly time: number;
 }
@@ -31,19 +30,17 @@ export interface Ruling {
 }
 
 /**
- * Decides one declared, concrete permission from the statements, as the model's `decide`: a
- * permanent manager is allowed, named by its permanent management; else a live deny on the chain
- * that blocks it denies; else what allows and assignments give, walked from the root down with
- * exclusions taken out at each place, allows when the permission or one implying it is left.
- * Statements about other identifiers, off the chain or ended at `time` are skipped.
+ * Decides one declared, concrete permission from the statements, as the model's `decide`: a live
+ * deny on the chain that blocks it denies, whatever else its subject holds; else what allows and
+ * assignments give, walked from the root down with exclusions taken out at each place, allows when
+ * the permission or one implying it is left. Every statement applies: one about `subject` is the
+ * asker's own, any other a group's. Statements off the chain or ended at `time` are skipped.
  */
 export function decidePermission(
   source: DecisionSource,
   asked: Asked & { readonly permission: string },
 ): Ruling {
   const { permission } = asked;
-  const manager = permanentManagementOf(source.statements, asked);
-  if (manager) return { permission, allowed: true, by: manager };
   const relevant = relevantTo(source.statements, asked);
   const deny = denyIn(source.catalog, relevant, permission);
   if (deny) return { permission, allowed: false, by: deny };
@@ -66,15 +63,11 @@ export function blocks(
   return false;
 }
 
-/** The statements live at `time`, about `subject` or one of `groups`, on the chain of `place`. */
+/** The statements live at `time` on the chain of `place`. */
 function relevantTo(statements: readonly ReadStatement[], asked: Asked): ReadStatement[] {
-  const identifiers = new Set([asked.subject, ...asked.groups]);
   const chain = new Set(chainOf(asked.place));
   return statements.filter(
-    (statement) =>
-      identifiers.has(statement.subject) &&
-      chain.has(statement.place) &&
-      isLive(statement.expiresAt, asked.time),
+    (statement) => chain.has(statement.place) && isLive(statement.expiresAt, asked.time),
   );
 }
 
@@ -101,12 +94,15 @@ function givenBy(
       const given =
         statement.kind === "allow"
           ? expand(catalog, statement.value)
-          : roles.resolve(statement.value, place).gives;
+          : roles.resolve(statement.value).gives;
       for (const permission of given) {
         if (!satisfying.has(permission)) continue;
         let held = carried.get(statement.subject);
         if (!held) carried.set(statement.subject, (held = new Map()));
-        if (!held.has(permission)) held.set(permission, statement);
+        const first = held.get(permission);
+        if (!first || (first.kind === "assign" && statement.kind === "allow")) {
+          held.set(permission, statement);
+        }
       }
     }
     for (const statement of here) {
@@ -117,9 +113,11 @@ function givenBy(
       for (const held of about) if (held) for (const permission of taken) held.delete(permission);
     }
   }
-  for (const identifier of [asked.subject, ...asked.groups]) {
-    const held = carried.get(identifier);
-    if (held) for (const statement of held.values()) return statement;
+  const own = carried.get(asked.subject);
+  for (const held of own ? [own, ...carried.values()] : carried.values()) {
+    const giving = [...held.values()];
+    const named = giving.find((statement) => statement.kind === "allow") ?? giving[0];
+    if (named) return named;
   }
   return undefined;
 }

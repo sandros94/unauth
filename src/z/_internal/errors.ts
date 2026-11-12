@@ -60,3 +60,19 @@ export function roleInvalid(
 ): UnauthError<"ERR_AUTHZ_ROLE_INVALID"> {
   return new UnauthError(message, "ERR_AUTHZ_ROLE_INVALID", { status: 400, cause });
 }
+
+/** `ERR_AUTHZ_ROLE_INVALID` (`unknown`) for a name that is neither a preset nor a stored role handed in. */
+export function roleUnknown(role: string): UnauthError<"ERR_AUTHZ_ROLE_INVALID"> {
+  return roleInvalid("The role is neither a preset nor a stored role handed in.", {
+    role,
+    reason: "unknown",
+  });
+}
+
+/** `ERR_AUTHZ_STATEMENT_ENDED` (400) for the end of a statement being validated. */
+export function statementEnded(expiresAt: number): UnauthError<"ERR_AUTHZ_STATEMENT_ENDED"> {
+  return new UnauthError("The statement has already ended.", "ERR_AUTHZ_STATEMENT_ENDED", {
+    status: 400,
+    cause: { expiresAt },
+  });
+}

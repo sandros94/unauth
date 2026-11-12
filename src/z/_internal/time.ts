@@ -1,4 +1,5 @@
 import { nowOf } from "../../_internal/shared.ts";
+import type { UnauthError } from "../../error.ts";
 import { malformed } from "./errors.ts";
 
 /** The last second of the year 9999: the largest time the model reads. */
@@ -14,9 +15,13 @@ export function isTime(value: unknown): value is number {
  * negative number never passes for one.
  */
 export function assertTime(value: unknown): number {
-  if (!isTime(value))
-    throw malformed("The time is not a count of seconds.", { what: "time", value });
+  if (!isTime(value)) throw timeMalformed(value);
   return value;
+}
+
+/** `ERR_AUTHZ_MALFORMED` (`time`) for a value that is not a time. */
+export function timeMalformed(value: unknown): UnauthError<"ERR_AUTHZ_MALFORMED"> {
+  return malformed("The time is not a count of seconds.", { what: "time", value });
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defineCatalog } from "../../src/z/catalog.ts";
-import { decide } from "../../src/z/decide.ts";
+import { ask } from "../../src/z/ask.ts";
 import { relatedValues } from "../../src/z/relate.ts";
 import type { Statement } from "../../src/z/types.ts";
 import { refused } from "./_expect.ts";
@@ -21,7 +21,6 @@ const catalog = defineCatalog({
     cashier: ["billing:read"],
     owner: ["*"],
   },
-  manager: "access:manage",
 });
 
 const NOW = 1_794_214_800;
@@ -91,7 +90,7 @@ describe("the values that relate to a permission", () => {
       { kind: "deny", subject: "cy", value: "chat:send" },
       { kind: "assign", subject: "dee", value: "desk", place: ACME },
     ];
-    const roles = [{ name: "desk", home: ACME, entries: ["report:write"] }];
+    const roles = [{ name: "desk", entries: ["report:write"] }];
     const presetNames = new Set(Object.keys(catalog.data.presets ?? {}));
     const people = [
       { subject: "ana", groups: ["staff"] },
@@ -110,9 +109,16 @@ describe("the values that relate to a permission", () => {
       });
       for (const who of people) {
         for (const place of [ACME, `${ACME}/area=archives`]) {
-          const question = { ...who, permission, place };
-          const whole = decide(catalog, question, { statements: stored, roles, now });
-          const part = decide(catalog, question, { statements: narrowed, roles, now });
+          const identifiers = new Set([who.subject, ...who.groups]);
+          const applying = (statement: Statement) => identifiers.has(statement.subject);
+          const read = (statements: Statement[]) => ({
+            subject: who.subject,
+            statements: statements.filter(applying),
+            roles,
+          });
+          const question = { permission, place };
+          const whole = ask(catalog, read(stored), question, { now });
+          const part = ask(catalog, read(narrowed), question, { now });
           expect(part.allowed, `${who.subject} ${permission} ${place}`).toBe(whole.allowed);
         }
       }

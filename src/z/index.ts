@@ -3,12 +3,14 @@ export type {
   Grants,
   GrantsEntry,
   GrantsItem,
-  GrantsQuestion,
   Question,
+  QuestionOptions,
   Statement,
   StatementIdentity,
   StatementKind,
   StoredRole,
+  SubjectStatements,
+  ValidationIssue,
 } from "./types.ts";
 export {
   type Catalog,
@@ -26,21 +28,16 @@ export {
   placeKey,
   placeRange,
 } from "./place.ts";
-export { type StatementsOptions, decide } from "./decide.ts";
+export { ask } from "./ask.ts";
+export { type IssueGrantsOptions, assertGrants, can, could, issueGrants } from "./grants.ts";
 export {
-  type CanOptions,
-  type IssueGrantsOptions,
-  assertGrants,
-  can,
-  issueGrants,
-  readGrants,
-} from "./grants.ts";
-export {
-  type Change,
-  type CheckChangeOptions,
-  type CheckGenesisOptions,
-  checkChange,
-  checkGenesis,
-} from "./change.ts";
+  type ValidateRoleOptions,
+  type ValidateStatementOptions,
+  assertRole,
+  assertStatement,
+  validateRole,
+  validateStatement,
+} from "./validate.ts";
 export { type ResolveRoleOptions, resolveRole } from "./roles.ts";
 export { type RelatedValues, relatedValues } from "./relate.ts";
+export { type Authz, defineAuthz } from "./authz.ts";
