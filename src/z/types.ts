@@ -58,7 +58,7 @@ export interface Question<TPermission extends string = string> {
   place?: string;
 }
 
-/** Options of a question: `ask`, `could` and `can`. */
+/** Options of a question, `ask` and `could`, and of `diverged`. */
 export interface QuestionOptions {
   /** The clock, in ms. Read once per call. @default Date.now */
   now?: () => number;
@@ -82,6 +82,36 @@ export interface Decision<TBy = Omit<Statement, "subject"> & { subject?: string 
    * place is not covered.
    */
   by?: TBy;
+  /**
+   * What of the grants read differs from the catalog in force, present whenever something does,
+   * whatever the answer, not covered included: see {@link Diverged}. Absent when every set read
+   * was issued under this very catalog. Never set by a question asked of statements.
+   */
+  diverged?: Diverged;
+}
+
+/**
+ * What of grants differs from the catalog they are read under. A read still answers: patterns,
+ * implications and places take their meaning from the catalog in force, and a copy of a preset is
+ * read as it was at issue. It is the application's signal to issue the grants again, when it no
+ * longer accepts what they give.
+ */
+export interface Diverged {
+  /**
+   * The segments of the fingerprint that differ, at least one, in this order: `permissions` covers
+   * the permissions, the implications and the places, `presets` the presets.
+   */
+  segments: ("permissions" | "presets")[];
+  /** The concrete permissions the grants name that the catalog does not declare, sorted by bytes. */
+  permissions: string[];
+  /**
+   * The roles the grants hold whose name no longer means the same, sorted by bytes: a copy of a
+   * preset the catalog no longer declares, or declares with other entries, and a stored role held
+   * under a name the catalog now declares as a preset with other entries. Entries are compared as
+   * sets. Either keeps giving what it gave at issue, while the statements would now read the
+   * catalog's preset.
+   */
+  presets: string[];
 }
 
 /** The codes a validation reports a problem of the value with. */
@@ -109,6 +139,13 @@ export type ValidationIssue = {
 }[ValidationIssueCode];
 
 /**
+ * A part of grants that can travel by name instead of as a copy: `presets`, the definitions of the
+ * presets they name, then read from the catalog in force, and only while its presets are those of
+ * issue.
+ */
+export type GrantsPart = "presets";
+
+/**
  * What the statements about a subject amount to, carried outside them: in a session cookie, a
  * token, a server-side record. The engine reads the members below and ignores any other, so an
  * application may add its own beside them.
@@ -116,7 +153,7 @@ export type ValidationIssue = {
 export interface Grants {
   /** The revision of this format. */
   v: "1";
-  /** The fingerprint of the catalog they were issued for. */
+  /** The fingerprint of the catalog they were issued under, its two segments joined by `.`. */
   ct: string;
   /** When they were issued, in seconds. */
   at: number;
@@ -124,13 +161,29 @@ export interface Grants {
   bs?: string[];
   /** The place table the items index. */
   pl?: string[];
-  /** The role table: what each stored role resolved to when the grants were issued. */
-  rl?: string[][];
-  /** The entries, by value: a permission as written, a preset name, or `#` and a row of `rl`. */
+  /**
+   * The permission table: every concrete permission these grants name, each once, in an entry or in
+   * a definition. Written only beside `ps` or `sr`. It is not the catalog's list: a position is a
+   * position in `pm`, never in the catalog.
+   */
+  pm?: string[];
+  /** The copies of the presets these grants name, by name. Absent when presets travel by name. */
+  ps?: Record<string, GrantsRoleEntry[]>;
+  /** The definitions of the stored roles these grants name, by name. */
+  sr?: Record<string, GrantsRoleEntry[]>;
+  /**
+   * The entries, by value: a pattern as written, a role name, or a permission, by its name without
+   * `pm` and by its position in `pm`, as `"2"`, with one.
+   */
   nt: Record<string, GrantsEntry>;
   [member: string]: unknown;
 }
 
+/**
+ * One entry of a role's definition in grants: a concrete permission as its position in `pm`, an
+ * excluded one as `-` and that position (`"-0"`), anything else as written in the role.
+ */
+export type GrantsRoleEntry = string | number;
 /** What is given (`a`), denied (`d`) and taken out (`x`) under one value. */
 export interface GrantsEntry {
   a?: GrantsItem[];

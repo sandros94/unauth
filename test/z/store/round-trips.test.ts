@@ -236,8 +236,12 @@ describe("sign-in", () => {
     expect(disagreements(measured.result, ["/"], later)).toStrictEqual([]);
   });
 
-  it("issues grants of 597 bytes as JSON for the person with access in every organisation", () => {
-    expect(JSON.stringify(signIn().result).length).toBe(597);
+  it("issues grants of 685 bytes as JSON for the person with access in every organisation, 570 with presets by name", () => {
+    expect(JSON.stringify(signIn().result).length).toBe(685);
+    const read = gather(db, "sign-in", { subject: "pat", at: NOW, chain: ["/"], under: ["/"] });
+    const named = issueGrants(forge, read, { omit: ["presets"], now: now(NOW) });
+    expect(JSON.stringify(named).length).toBe(570);
+    expect(disagreements(named)).toStrictEqual([]);
   });
 });
 

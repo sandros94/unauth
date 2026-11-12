@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineCatalog } from "../../../src/z/catalog.ts";
-import { assertGrants, can, could, issueGrants } from "../../../src/z/grants.ts";
+import { assertGrants, could, issueGrants } from "../../../src/z/grants.ts";
 import type { Grants } from "../../../src/z/types.ts";
 import { refused } from "../_expect.ts";
 
@@ -13,7 +13,10 @@ const catalog = defineCatalog({
   implies: { "report:write": ["report:read"] },
   places: { "/": ["org"] },
 });
-const other = defineCatalog({ permissions: ["report:read", "access:manage"] });
+const other = defineCatalog({
+  permissions: ["report:read", "access:manage"],
+  presets: { viewer: ["report:read"] },
+});
 
 const issued = issueGrants(
   catalog,
@@ -32,20 +35,21 @@ function carried(grants: unknown = issued): unknown {
 }
 
 describe("grants handed over as a carrier holds them", () => {
-  it("are read by `could` and `can` typed `unknown`", () => {
+  it("are read by `could` typed `unknown`", () => {
     const payload = carried();
     expect(could(catalog, payload, { permission: "report:read", place: ACME }, { now })).toEqual({
       allowed: true,
       covered: true,
       by: { kind: "allow", value: "report:write", place: ACME },
     });
-    expect(can(catalog, payload, { permission: "report:write", place: ACME }, { now })).toBe(true);
-    expect(can(catalog, payload, { permission: "report:write" }, { now })).toBe(false);
+    expect(could(catalog, payload, { permission: "report:write" }, { now }).allowed).toBe(false);
     const list: unknown = [payload, carried()];
-    expect(can(catalog, list, { permission: "report:read", place: ACME }, { now })).toBe(true);
+    expect(could(catalog, list, { permission: "report:read", place: ACME }, { now }).allowed).toBe(
+      true,
+    );
   });
 
-  it("are still checked whole before any read: `could` refuses them, `can` answers false", () => {
+  it("are still checked whole before any read", () => {
     const broken = carried({ ...issued, nt: [] });
     const question = { permission: "report:read" } as const;
     expect(refused(() => could(catalog, broken, question, { now })).code).toBe(
@@ -54,8 +58,6 @@ describe("grants handed over as a carrier holds them", () => {
     expect(refused(() => could(catalog, "grants", question, { now })).code).toBe(
       "ERR_AUTHZ_MALFORMED",
     );
-    expect(can(catalog, broken, { permission: "report:read" }, { now })).toBe(false);
-    expect(can(catalog, "grants", { permission: "report:read" }, { now })).toBe(false);
   });
 });
 
@@ -80,7 +82,8 @@ describe("assertGrants", () => {
       { ...issued, nt: [] },
       { ...issued, at: MONDAY * 1000 },
       { ...issued, pl: ["/org=acme/"] },
-      { ...issued, nt: { "report:delete": { a: [[]] } } },
+      { ...issued, nt: { "Report:Delete": { a: [[]] } } },
+      { ...issued, ct: "other" },
     ];
     for (const value of values) {
       expect([value, refused(() => assertGrants(catalog, value, { now })).code]).toEqual([
@@ -96,8 +99,12 @@ describe("assertGrants", () => {
     );
   });
 
-  it("throws `ERR_AUTHZ_GRANTS_CATALOG` for grants issued for another catalog", () => {
-    const stale = issueGrants(other, { subject: "ann", statements: [] }, { now });
+  it("throws `ERR_AUTHZ_GRANTS_CATALOG` for grants naming a preset by name, issued under other presets", () => {
+    const stale = issueGrants(
+      other,
+      { subject: "ann", statements: [{ kind: "assign", subject: "ann", value: "viewer" }] },
+      { omit: ["presets"], now },
+    );
     expect(refused(() => assertGrants(catalog, carried(stale), { now })).code).toBe(
       "ERR_AUTHZ_GRANTS_CATALOG",
     );
@@ -116,6 +123,7 @@ describe("assertGrants", () => {
       { ...issued, v: "2", nt: [] },
       { ...issued, ct: "other", nt: [] },
       { ...issued, ct: 7 },
+      { ...issued, ct: `${issued.ct.slice(0, 12)}AAAAAAAAAAA`, nt: { viewer: { a: [[]] } } },
       { ...issued, nt: { "report:read": { a: [[0]], z: [] } } },
       { ...issued, nt: { "report:read": { a: [[1]] } } },
       { ...issued, nt: { "report:read": { a: [[null, null, 0]] } } },

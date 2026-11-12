@@ -33,6 +33,9 @@ const writers: CatalogData = {
 /** Tuesday 2026-12-01 00:00 UTC, the end of the month. */
 const DEC_1 = 1796083200;
 
+/** Monday 2026-11-16 09:00 UTC, a week after `MONDAY`. */
+const NEXT_MONDAY = 1794819600;
+
 export const grantsScenarios: readonly Scenario[] = [
   {
     id: "grants/sue-thursday-and-saturday",
@@ -374,6 +377,27 @@ export const grantsScenarios: readonly Scenario[] = [
         { issuedAt: SATURDAY + 2 * DAY },
       ),
       read(DEC_1, "saturday", { permission: "report:read", place: ACME }, "denied"),
+    ],
+  },
+  {
+    id: "grants/presets-both-ways-same-catalog",
+    title:
+      "Ed, with no places, is a viewer for good and an editor for a week: grants carrying presets as copies and by name answer alike, and nothing has diverged",
+    proves: ["G8"],
+    catalog: {
+      permissions: ["post:read", "post:write"],
+      presets: { viewer: ["*:read"], editor: ["viewer", "post:write"] },
+      places: false,
+    },
+    statements: [assign("ed", "viewer"), assign("ed", "editor", undefined, NEXT_MONDAY)],
+    steps: [
+      issue(MONDAY, "copies", "ed", { presets: "copies" }),
+      issue(MONDAY, "names", "ed", { presets: "names" }),
+      read(TUESDAY, "copies", { permission: "post:write" }, "allowed", null),
+      read(TUESDAY, "names", { permission: "post:write" }, "allowed", null),
+      read(TUESDAY, ["copies", "names"], { permission: "post:read" }, "allowed", null),
+      read(NEXT_MONDAY, ["copies", "names"], { permission: "post:write" }, "denied", null),
+      read(NEXT_MONDAY, ["copies", "names"], { permission: "post:read" }, "allowed"),
     ],
   },
 ];

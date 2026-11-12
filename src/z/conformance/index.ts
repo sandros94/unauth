@@ -1,7 +1,9 @@
 export type {
   ClockOptions,
   Decision,
+  Diverged,
   Engine,
+  GrantsPart,
   Issue,
   IssueGrantsOptions,
   Question,
@@ -15,6 +17,8 @@ export type {
   CatalogCase,
   ConformanceFailure,
   ConformanceReport,
+  DeployStep,
+  ExpectedDiverged,
   ExpectedIssue,
   FromGrants,
   GrantsCase,
@@ -22,6 +26,7 @@ export type {
   IssueCode,
   IssueStep,
   PlaceCase,
+  PresetsWay,
   ReadStep,
   RoleCase,
   RuleId,
@@ -33,9 +38,8 @@ export type {
   ValidationExpect,
   WriteStep,
 } from "./types.ts";
-export { cases, scenarios } from "./cases.ts";
+export { cases, grantsCases, scenarios } from "./cases.ts";
 export { catalogCases } from "./cases/catalog.ts";
-export { grantsCases } from "./cases/grants.ts";
 export { placeCases } from "./cases/place.ts";
 export { roleCases } from "./cases/role.ts";
 export { statementCases } from "./cases/statement.ts";

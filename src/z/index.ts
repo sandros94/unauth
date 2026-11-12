@@ -1,8 +1,11 @@
 export type {
   Decision,
+  Diverged,
   Grants,
   GrantsEntry,
   GrantsItem,
+  GrantsPart,
+  GrantsRoleEntry,
   Question,
   QuestionOptions,
   Statement,
@@ -29,7 +32,7 @@ export {
   placeRange,
 } from "./place.ts";
 export { ask } from "./ask.ts";
-export { type IssueGrantsOptions, assertGrants, can, could, issueGrants } from "./grants.ts";
+export { type IssueGrantsOptions, assertGrants, could, diverged, issueGrants } from "./grants.ts";
 export {
   type ValidateRoleOptions,
   type ValidateStatementOptions,
@@ -40,4 +43,4 @@ export {
 } from "./validate.ts";
 export { type ResolveRoleOptions, resolveRole } from "./roles.ts";
 export { type RelatedValues, relatedValues } from "./relate.ts";
-export { type Authz, defineAuthz } from "./authz.ts";
+export { type Authz, type AuthzOptions, defineAuthz } from "./authz.ts";

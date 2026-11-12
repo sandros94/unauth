@@ -1,6 +1,7 @@
 import type { CatalogData } from "../../catalog.ts";
 import type { StoredRole } from "../../types.ts";
 import type { RoleCase, ValidationExpect } from "../types.ts";
+import { DEPTH, link, storedChain, storedRing } from "../_internal/deep.ts";
 import { malformed, roleInvalid, unknownPermission } from "./_internal/issues.ts";
 
 const catalog: CatalogData = {
@@ -230,6 +231,19 @@ export const roleCases: readonly RoleCase[] = [
       { name: "first", entries: ["second"] },
       { name: "second", entries: ["first", "deploy:run"] },
     ],
+  ),
+  valid(
+    "deep-chain",
+    `A role at the head of a chain of ${DEPTH} stored roles ending in reading reports`,
+    storedChain(DEPTH, "report:read")[0],
+    storedChain(DEPTH, "report:read").slice(1),
+  ),
+  refused(
+    "deep-ring",
+    `A role on a ring of ${DEPTH} stored roles, the last naming it back`,
+    [roleInvalid("entries", 0)],
+    { name: link(0), entries: [link(1)] },
+    storedRing(DEPTH).slice(1),
   ),
 ];
 

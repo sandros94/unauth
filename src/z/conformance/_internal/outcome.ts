@@ -1,5 +1,5 @@
 import { isUnauthError } from "../../../error.ts";
-import type { ConformanceFailure } from "../types.ts";
+import type { ConformanceFailure, PresetsWay } from "../types.ts";
 import { isRecord, sameData } from "./data.ts";
 
 export type Given = "everything" | "needed";
@@ -10,6 +10,7 @@ export interface Context {
   id: string;
   step?: number;
   given?: Given;
+  presets?: PresetsWay;
 }
 
 export type Attempt<T> = { ok: true; value: T } | { ok: false; code: string; error: unknown };
@@ -54,10 +55,12 @@ export function fail(context: Context, expected: unknown, received: unknown): ne
   const failure: ConformanceFailure = { id: context.id, expected, received };
   if (context.step !== undefined) failure.step = context.step;
   if (context.given !== undefined) failure.given = context.given;
+  if (context.presets !== undefined) failure.presets = context.presets;
   const where = [
     context.id,
     context.step === undefined ? "" : ` step ${context.step}`,
     context.given === undefined ? "" : ` given ${context.given}`,
+    context.presets === undefined ? "" : ` presets as ${context.presets}`,
   ].join("");
   throw new Error(`${where}: expected ${show(expected)}, received ${show(received)}`, {
     cause: failure,

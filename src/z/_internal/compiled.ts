@@ -50,5 +50,7 @@ export interface CompiledCatalog {
   readonly impliedBy: ReadonlyMap<string, ReadonlySet<string>>;
   /** Every preset, resolved. */
   readonly presets: ReadonlyMap<string, ResolvedRole>;
+  /** Every preset's entries, as the catalog writes them. */
+  readonly presetEntries: ReadonlyMap<string, readonly string[]>;
   readonly structure: Structure;
 }

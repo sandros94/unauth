@@ -20,11 +20,24 @@ export interface SubjectStatements {
   roles?: readonly StoredRole[];
 }
 
+/**
+ * What of grants differs from the catalog they are read under: the segments of the fingerprint
+ * that differ, the preset copies that have diverged, and the permissions the grants name that the
+ * catalog does not declare. Every member is always present, each list sorted by bytes.
+ */
+export interface Diverged {
+  segments: ("permissions" | "presets")[];
+  permissions: string[];
+  presets: string[];
+}
+
 /** The answer to a question, as the cases read it. */
 export interface Decision {
   allowed: boolean;
   /** `false` only when grants do not speak for the place asked. */
   covered: boolean;
+  /** For a question asked of grants: what has diverged, present whenever something has. */
+  diverged?: Diverged;
 }
 
 /** One problem validation found in a value, at the member `path` names. */
@@ -42,10 +55,15 @@ export interface ClockOptions {
   now?: () => number;
 }
 
+/** A part of grants an application may leave out at issue: `"presets"` carries presets by name alone. */
+export type GrantsPart = "presets";
+
 /** What issuing grants is handed beside the statements. */
 export interface IssueGrantsOptions extends ClockOptions {
   /** The places the grants speak for. @default the root */
   bases?: readonly string[];
+  /** What to leave out. @default nothing: presets travel as copies */
+  omit?: readonly GrantsPart[];
 }
 
 /** What validating a stored role is handed beside it. */
@@ -72,6 +90,11 @@ export interface Engine {
   ): Decision;
   /** Answers a question from grants, one set or several read together. */
   could(catalog: Catalog, grants: unknown, question: Question, options?: ClockOptions): Decision;
+  /**
+   * What of grants, one set or several, has diverged from the catalog, without a question:
+   * `undefined` when both segments of every set match. Refuses what a read refuses.
+   */
+  diverged(catalog: Catalog, grants: unknown, options?: ClockOptions): Diverged | undefined;
   issueGrants(catalog: Catalog, read: SubjectStatements, options?: IssueGrantsOptions): unknown;
   /** Every problem of the statement, none when it may be written. */
   validateStatement(

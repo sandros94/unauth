@@ -1,17 +1,12 @@
 import { clock, isRecord, sameData } from "./_internal/data.ts";
 import { defineFor, loose } from "./_internal/define.ts";
 import { expectIssues } from "./_internal/issues.ts";
-import {
-  type Context,
-  attempt,
-  expectOutcome,
-  fail,
-  failureOf,
-  untouched,
-} from "./_internal/outcome.ts";
+import { type Context, attempt, fail, failureOf, untouched } from "./_internal/outcome.ts";
+import { GRANTS_REFUSALS, expectRead } from "./_internal/read.ts";
 import {
   type ScenarioState,
   runAsk,
+  runDeploy,
   runHand,
   runIssue,
   runRead,
@@ -52,6 +47,10 @@ export function runScenario(engine: Engine, scenario: Scenario): void {
     switch (step.step) {
       case "ask": {
         runAsk(engine, state, step, context);
+        break;
+      }
+      case "deploy": {
+        runDeploy(engine, state, step, context);
         break;
       }
       case "hand": {
@@ -150,20 +149,27 @@ export function runPlaceCase(engine: Engine, placeCase: PlaceCase): void {
 }
 
 /**
- * Reads grants written by hand, its `"$ct"` replaced with the catalog's fingerprint.
+ * Reads grants written by hand under the case's catalog, each `"$ct"` replaced with the
+ * fingerprint of the catalog they were issued under, and checks the answer and what is told has
+ * diverged. Grants a read refuses must be refused by `diverged` alone too.
  *
  * @throws an `Error` whose `cause` is a `ConformanceFailure` on a wrong answer.
  */
 export function runGrantsCase(engine: Engine, grantsCase: GrantsCase): void {
   const context: Context = { id: grantsCase.id };
   const catalog = defineFor(engine, grantsCase.catalog, context);
+  const issuedUnder =
+    grantsCase.issuedUnder === undefined
+      ? catalog
+      : defineFor(engine, grantsCase.issuedUnder, context);
   const grants: unknown = structuredClone(grantsCase.grants);
-  if (isRecord(grants) && grants.ct === "$ct") grants.ct = catalog.fingerprint;
-  const now = clock(grantsCase.at);
-  const result = untouched(context, { grants, question: grantsCase.question }, (input) =>
-    engine.could(catalog, input.grants, input.question, { now }),
-  );
-  expectOutcome(context, grantsCase.expect, result);
+  for (const set of Array.isArray(grants) ? grants : [grants]) {
+    if (isRecord(set) && set.ct === "$ct") set.ct = issuedUnder.fingerprint;
+  }
+  expectRead(engine, context, { ...grantsCase, catalog, grants }, grantsCase, [
+    ...GRANTS_REFUSALS,
+    "ERR_AUTHZ_MALFORMED",
+  ]);
 }
 
 /**

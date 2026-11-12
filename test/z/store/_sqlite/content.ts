@@ -109,8 +109,9 @@ export function sessionWithRepo(
 
 /**
  * The session kept one entry per row and the repository, in one read. With `related`, only the
- * entries it names and every entry of a stored role are read, with the head that holds the tables
- * they index.
+ * entries it names, a permission through its position in `pm` where the head holds one, and every
+ * entry of a stored role the head holds in `sr` are read, with the head that holds the tables and
+ * definitions they point into.
  */
 export function sessionRowsWithRepo(
   db: CountedDatabase,
@@ -126,9 +127,11 @@ export function sessionRowsWithRepo(
     related === undefined ? "session-rows+repo" : "session-related+repo",
     `SELECT 'session' AS row, head AS a, NULL AS b FROM session_heads WHERE id = $id
      UNION ALL
-     SELECT 'entry', name, entry FROM session_entries
-     WHERE session = $id
-       AND ($names IS NULL OR name IN (SELECT value FROM json_each($names)) OR substr(name, 1, 1) = '#')
+     SELECT 'entry', e.name, e.entry FROM session_entries e JOIN session_heads h ON h.id = e.session
+     WHERE e.session = $id
+       AND ($names IS NULL OR e.name IN (SELECT key FROM json_each(h.head, '$.sr')) OR (
+         CASE WHEN e.name GLOB '[0-9]*' THEN json_extract(h.head, '$.pm[' || e.name || ']') ELSE e.name END
+       ) IN (SELECT value FROM json_each($names)))
      UNION ALL
      SELECT 'repo', visibility, NULL FROM repos WHERE org = $org AND name = $name`,
     { id, org: repo.org, name: repo.name, names },
