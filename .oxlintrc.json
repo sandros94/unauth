@@ -62,6 +62,12 @@
       }
     },
     {
+      "files": ["spec/examples/**"],
+      "rules": {
+        "import/no-nodejs-modules": "off"
+      }
+    },
+    {
       "files": ["playgrounds/**", "docs/**"],
       "rules": {
         "consistent-return": "off"
