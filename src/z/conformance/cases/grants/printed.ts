@@ -168,18 +168,44 @@ export const printedCases: readonly GrantsCase[] = [
     "billing:read",
     ACME,
   ),
-  readCase(
-    "ada-by-name-later-viewer",
-    "The same grants without copies, under the later catalog: refused, nothing says what viewer meant",
-    {
-      catalog: adaLater,
-      issuedUnder: ada,
-      grants: adaByName,
-      expect: "ERR_AUTHZ_GRANTS_CATALOG",
-      diverged: "ERR_AUTHZ_GRANTS_CATALOG",
-    },
-    "report:read",
-    ACME,
+  ...(
+    [
+      [
+        "no-longer-reads-reports",
+        "The same grants without copies, under the later catalog: viewer is the catalog's, so through reviewer Ada no longer reads reports, and no role has diverged",
+        "report:read",
+        "denied",
+        diverged(["presets"]),
+      ],
+      [
+        "reads-posts",
+        "Through reviewer and the later viewer Ada now reads posts",
+        "post:read",
+        "allowed",
+        undefined,
+      ],
+      [
+        "writes-reports",
+        "Ada still writes reports, which reviewer names itself",
+        "report:write",
+        "allowed",
+        undefined,
+      ],
+    ] as const
+  ).map(([id, title, permission, expect, told]) =>
+    readCase(
+      `ada-by-name-later-${id}`,
+      title,
+      {
+        catalog: adaLater,
+        issuedUnder: ada,
+        grants: adaByName,
+        expect,
+        ...(told !== undefined && { diverged: told }),
+      },
+      permission,
+      ACME,
+    ),
   ),
   readCase(
     "members-in-another-order",

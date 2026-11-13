@@ -191,6 +191,88 @@ export function entryMalformed(entry: unknown): UnauthError<"ERR_AUTHZ_MALFORMED
 }
 
 /**
+ * A {@link RoleReader} for a question, over the presets and the stored roles handed in, reading of
+ * `roles` only what the question reads: each role's name, once a name is looked up, and a role's
+ * shape and entries once it is read. A name that is both a preset and a stored role reads as the
+ * preset, so no stored role of that name is read. Throws `ERR_AUTHZ_MALFORMED` (`roles`) for
+ * `roles` that is not a list, and for a role read that is not in its shape,
+ * `ERR_AUTHZ_ROLE_INVALID` (`duplicate`) for a name read that two stored roles hold.
+ */
+export function askedRoleReader(catalog: CompiledCatalog, roles: unknown): RoleReader {
+  if (roles !== undefined && !Array.isArray(roles)) throw rolesError(roles);
+  const list: readonly unknown[] = roles ?? [];
+  let byName: Map<string, unknown[]> | undefined;
+  const stored = (name: string): StoredRole | undefined => {
+    byName ??= namesOf(list);
+    const found = byName.get(name);
+    if (!found) return undefined;
+    if (found.length > 1) {
+      throw roleInvalid("Two stored roles have the same name.", {
+        role: name,
+        reason: "duplicate",
+      });
+    }
+    const [role] = found;
+    if (!isStoredRoleShape(role)) throw rolesError(role);
+    return role;
+  };
+  return readerOver(catalog, (name) => catalog.presets.get(name) ?? stored(name));
+}
+
+/**
+ * Whether `role` would break when resolved through `find`, and why, without resolving it: the
+ * references alone are followed, depth first and in the order of the entries, each role's entries
+ * read for their form before any of its references is followed, as a resolution reads them. The
+ * first break met is the answer, the one a resolution gives. `checked` holds what is known of the
+ * roles seen so far, for a caller that checks several roles over one source.
+ *
+ * @throws `ERR_AUTHZ_MALFORMED` (`entry`) for an entry of a role reached that does not match its
+ * grammar.
+ */
+export function referenceBreak(
+  find: RoleSource,
+  role: StoredRole,
+  checked: Map<StoredRole, RoleBreak | undefined> = new Map(),
+): RoleBreak | undefined {
+  const visiting = new Set<StoredRole>();
+  const open = (node: StoredRole): ReferenceFrame => {
+    const names: string[] = [];
+    for (const entry of node.entries) {
+      const parts = readEntry(entry);
+      if (!parts) throw entryMalformed(entry);
+      if (parts.kind === "role") names.push(parts.name);
+    }
+    visiting.add(node);
+    return { node, names, index: 0 };
+  };
+  const stack = [open(role)];
+  for (let frame = stack.at(-1); frame; frame = stack.at(-1)) {
+    const name = frame.names[frame.index];
+    frame.index++;
+    let result: RoleBreak | undefined;
+    if (name !== undefined) {
+      const found = find(name);
+      if (found && isResolved(found)) continue;
+      if (!found) result = { reason: "reference", role: frame.node.name, reference: name };
+      else if (visiting.has(found)) {
+        result = { reason: "cycle", role: frame.node.name, reference: name };
+      } else if (checked.has(found)) result = checked.get(found);
+      else {
+        stack.push(open(found));
+        continue;
+      }
+      if (result === undefined) continue;
+    }
+    for (const ended of result ? stack.splice(0) : [stack.pop() ?? frame]) {
+      visiting.delete(ended.node);
+      checked.set(ended.node, result);
+    }
+    if (result || stack.length === 0) return result;
+  }
+  return undefined;
+}
+
+/**
  * The stored roles handed in, by name. `ERR_AUTHZ_MALFORMED` (`roles`) for a value that is not a
  * list of stored roles, `ERR_AUTHZ_ROLE_INVALID` (`duplicate`) for two of one name. Entries are
  * read where a role is.
@@ -212,6 +294,23 @@ export function indexRoles(roles: unknown): Map<string, StoredRole> {
   return byName;
 }
 
+interface ReferenceFrame {
+  readonly node: StoredRole;
+  readonly names: readonly string[];
+  index: number;
+}
+
+function namesOf(roles: readonly unknown[]): Map<string, unknown[]> {
+  const byName = new Map<string, unknown[]>();
+  for (const role of roles) {
+    if (!isRecord(role) || typeof role.name !== "string") continue;
+    const found = byName.get(role.name);
+    if (found) found.push(role);
+    else byName.set(role.name, [role]);
+  }
+  return byName;
+}
+
 interface RoleFrame<TNode> {
   readonly node: TNode;
   readonly entries: readonly EntryParts[];
@@ -219,7 +318,7 @@ interface RoleFrame<TNode> {
   pending: EntryParts | undefined;
   readonly includes: Set<string>;
   readonly excludes: Set<string>;
-  readonly inherited: Set<string>;
+  readonly referenced: ResolvedRole[];
   readonly forbidden: Set<string>;
 }
 
@@ -231,7 +330,7 @@ function frameOf<TNode>(node: TNode, entries: readonly EntryParts[]): RoleFrame<
     pending: undefined,
     includes: new Set(),
     excludes: new Set(),
-    inherited: new Set(),
+    referenced: [],
     forbidden: new Set(),
   };
 }
@@ -253,15 +352,17 @@ function addRole(
       for (const above of implying(catalog, permission)) frame.excludes.add(above);
     }
   } else {
-    for (const permission of role.gives) frame.inherited.add(permission);
+    frame.referenced.push(role);
     for (const permission of role.withholds) frame.forbidden.add(permission);
   }
 }
 
 function combined(frame: RoleFrame<unknown>): ResolvedRole {
-  const { includes, excludes, inherited, forbidden } = frame;
+  const { includes, excludes, referenced, forbidden } = frame;
   const gives = new Set<string>(includes);
-  for (const permission of inherited) if (!forbidden.has(permission)) gives.add(permission);
+  for (const role of referenced) {
+    for (const permission of role.gives) if (!forbidden.has(permission)) gives.add(permission);
+  }
   for (const permission of excludes) gives.delete(permission);
   const withholds = new Set<string>(excludes);
   for (const permission of forbidden) if (!includes.has(permission)) withholds.add(permission);

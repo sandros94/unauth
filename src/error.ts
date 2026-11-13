@@ -34,7 +34,6 @@ export type KnownUnauthErrorCode =
   | "ERR_AUTHZ_QUESTION_INVALID" // a question naming no permission, or a wildcard
   | "ERR_AUTHZ_ROLE_INVALID" // a role that is not a preset nor handed in, a stored role that references one or loops, or two stored roles of one name
   | "ERR_AUTHZ_GRANTS_FORMAT" // grants of another format revision
-  | "ERR_AUTHZ_GRANTS_CATALOG" // grants that name a preset by name, read under other presets than those of issue
   | "ERR_AUTHZ_GRANTS_EARLY" // grants read at a time before their issue
   | "ERR_AUTHZ_STATEMENT_ENDED"; // a statement being validated whose end is not later than the time of the call
 
@@ -156,11 +155,6 @@ export interface UnauthErrorCauseMap {
     reason: "unknown" | "reference" | "cycle" | "duplicate";
     reference?: string;
   };
-  /**
-   * Which segment of the catalog's fingerprint differs from the one grants were issued under, for
-   * grants that cannot be read under it: `presets`, they name a preset they hold no copy of.
-   */
-  ERR_AUTHZ_GRANTS_CATALOG: { segment: "presets" };
   /** The permission a question, a statement or a role names that the catalog does not declare. */
   ERR_AUTHZ_PERMISSION_UNKNOWN: { permission: string };
   /** The place that does not fit the structure the catalog declares. */

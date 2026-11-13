@@ -110,10 +110,56 @@ describe("diverged", () => {
     expect(diverged(later, [fresh, fresh], { now })).toBeUndefined();
   });
 
-  it("refuses what a read refuses", () => {
+  it("tells what every set holds once one set differs, a set issued under the very catalog included", () => {
+    const later = defineCatalog({ ...data, presets: { ...data.presets, viewer: ["post:read"] } });
+    const invoice = { kind: "allow", subject: "ed", value: "invoice:read" } satisfies Statement;
+    const fresh = issueGrants(later, { subject: "ed", statements: [...ed, invoice] }, { now });
+    expect(diverged(later, [fresh], { now })).toBeUndefined();
+    expect(diverged(later, [fresh, issued], { now })).toStrictEqual({
+      segments: ["presets"],
+      permissions: ["invoice:read"],
+      presets: ["viewer"],
+    });
+  });
+
+  it("tells of grants by name under other presets, naming no copy", () => {
     const later = defineCatalog({ ...data, presets: { viewer: ["post:read"] } });
-    expect(refused(() => diverged(later, named, { now })).code).toBe("ERR_AUTHZ_GRANTS_CATALOG");
-    expect(refused(() => diverged(catalog, { ...issued, nt: [] }, { now })).code).toBe(
+    expect(diverged(later, named, { now })).toStrictEqual({
+      segments: ["presets"],
+      permissions: [],
+      presets: [],
+    });
+  });
+
+  it("reads nothing but `v`, `ct` and `at` when both segments match", () => {
+    expect(diverged(catalog, { ...issued, nt: [], pm: 7, ps: [], bs: 1 }, { now })).toBeUndefined();
+  });
+
+  it("reads `pm`, `ps` and `sr` whole when a segment differs, and refuses them malformed", () => {
+    const later = defineCatalog({ ...data, presets: { ...data.presets, viewer: ["post:read"] } });
+    for (const broken of [
+      { ...issued, pm: [...issued.pm!, "post:write"] },
+      { ...issued, ps: { ...issued.ps, viewer: ["*:*"] } },
+      { ...issued, sr: { Desk: [] } },
+      { ...named, nt: [] },
+    ]) {
+      expect(refused(() => diverged(later, broken, { now }))).toMatchObject({
+        code: "ERR_AUTHZ_MALFORMED",
+        cause: { what: "grants" },
+      });
+    }
+    expect(diverged(later, { ...issued, sr: { viewer: [] } }, { now })?.presets).toStrictEqual([
+      "viewer",
+    ]);
+    expect(diverged(later, { ...issued, nt: [], bs: 7, pl: 1 }, { now })).toStrictEqual({
+      segments: ["presets"],
+      permissions: [],
+      presets: ["viewer"],
+    });
+  });
+
+  it("refuses what a read refuses of the head of each set", () => {
+    expect(refused(() => diverged(catalog, { ...issued, ct: "x" }, { now })).code).toBe(
       "ERR_AUTHZ_MALFORMED",
     );
     expect(refused(() => diverged(catalog, { ...issued, v: "2" }, { now })).code).toBe(

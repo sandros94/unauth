@@ -2,7 +2,7 @@ import type { Grants, GrantsEntry, GrantsItem, GrantsRoleEntry, StoredRole } fro
 import type { CompiledCatalog } from "../compiled.ts";
 import { compareBytes, isPermission, readEntry, sortedUnique } from "../grammar.ts";
 import { covers } from "../keys.ts";
-import { entryMalformed, isBreak, readerOver } from "../roles.ts";
+import { type RoleBreak, entryMalformed, referenceBreak } from "../roles.ts";
 import type { ReadStatement } from "../statements.ts";
 import { isLive } from "../time.ts";
 
@@ -44,11 +44,12 @@ export function issueSet(
 ): Grants {
   const { subject, time } = input;
   const bases = widest(input.bases);
-  const reader = readerOver(catalog, (name) => catalog.presets.get(name) ?? stored.get(name));
+  const find = (name: string) => catalog.presets.get(name) ?? stored.get(name);
+  const checked = new Map<StoredRole, RoleBreak | undefined>();
   const resolves = (name: string) => {
     if (catalog.presets.has(name)) return true;
     const role = stored.get(name);
-    return role !== undefined && !isBreak(reader.resolveStored(role));
+    return role !== undefined && referenceBreak(find, role, checked) === undefined;
   };
   const kept: ReadStatement[] = [];
   for (const statement of statements) {

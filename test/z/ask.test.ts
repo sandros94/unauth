@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { compiledOf } from "../../src/z/_internal/compile.ts";
 import { blocks, decidePermission } from "../../src/z/_internal/decide.ts";
 import { roleReader } from "../../src/z/_internal/roles.ts";
-import { readStatements } from "../../src/z/_internal/statements.ts";
+import { readWrittenStatements } from "../../src/z/_internal/statements.ts";
 import { ask } from "../../src/z/ask.ts";
 import { defineCatalog } from "../../src/z/catalog.ts";
 import type { Question, Statement, StoredRole, SubjectStatements } from "../../src/z/types.ts";
@@ -692,8 +692,7 @@ describe("what is read", () => {
     ["a subject that is not a string", { subject: 7, statements: [] }, "subject"],
     ["statements that are not a list", { subject: "a", statements: {} }, "statement"],
     ["no statements", { subject: "a" }, "statement"],
-    ["a statement not in its shape", { subject: "a", statements: [null] }, "statement"],
-    ["roles that are not stored roles", { subject: "a", statements: [], roles: [7] }, "roles"],
+    ["roles that are not a list", { subject: "a", statements: [], roles: 7 }, "roles"],
   ];
 
   it.each(reasons)("is refused as malformed for %s", (_, read, what) => {
@@ -702,6 +701,11 @@ describe("what is read", () => {
       status: 400,
       cause: { what },
     });
+  });
+
+  it("is answered, not refused, for a statement or a stored role the question does not read", () => {
+    const read = { subject: "a", statements: [null], roles: [7] } as unknown as SubjectStatements;
+    expect(ask(catalog, read, question)).toStrictEqual({ allowed: false, covered: true });
   });
 
   it("is read after the question is checked", () => {
@@ -727,7 +731,7 @@ describe("the decision core", () => {
   const source = {
     catalog: compiled,
     roles: roleReader(compiled, []),
-    statements: readStatements(compiled, rows),
+    statements: readWrittenStatements(rows),
   };
   const asked = { subject: "alice", place: "/org=acme", time: NOW };
 

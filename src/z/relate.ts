@@ -25,10 +25,10 @@ export interface RelatedValues {
  * Names what can change the answer to a question about `permission`, as plain values for the
  * application's own query. A read that returns only the allows, denies and exclusions carrying
  * them, the assignments of these presets and every assignment of a stored role, answers as the
- * whole would. The same names are the entries of grants a read looks up, with every stored role
- * of `sr`, except that grants holding `pm` name a permission by its position there. Under a
- * catalog other than the one of issue, a copy of a preset gives what it gave at issue, so every
- * copy of `ps` is looked up too.
+ * whole would. The same names are the entries of grants a read looks up, except that grants
+ * holding `pm` name a permission by its position there, and that a read tries every role the
+ * grants hold in `ps` and `sr` and every preset of the catalog: a copy of a preset gives what it
+ * gave at issue, whatever the catalog declares now.
  *
  * @throws what a question about `permission` throws: `ERR_AUTHZ_MALFORMED`,
  * `ERR_AUTHZ_QUESTION_INVALID` for a wildcard, `ERR_AUTHZ_PERMISSION_UNKNOWN`.

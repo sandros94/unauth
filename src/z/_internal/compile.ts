@@ -29,13 +29,12 @@ export function compileCatalog(data: PlainCatalogData): CompiledCatalog {
     addTo(byResource, permission.slice(0, colon), permission);
     addTo(byAction, permission.slice(colon + 1), permission);
   }
-  const declared = (value: string) => isPermission(value) && permissions.has(value);
 
   const direct = new Map<string, Set<string>>();
   for (const [from, targets] of Object.entries(data.implies ?? {})) {
-    if (!declared(from)) throw invalid("implication", "implies", from);
+    if (!permissions.has(from)) throw invalid("implication", "implies", from);
     for (const target of targets) {
-      if (!declared(target)) throw invalid("implication", `implies.${from}`, target);
+      if (!permissions.has(target)) throw invalid("implication", `implies.${from}`, target);
       addTo(direct, from, target);
     }
   }
@@ -133,9 +132,7 @@ function plainObject(value: unknown, at: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw shapeError(at);
   const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) throw shapeError(at);
-  const record: Record<string, unknown> = {};
-  for (const [key, member] of Object.entries(value)) define(record, key, member);
-  return record;
+  return Object.fromEntries(Object.entries(value));
 }
 
 function list(value: unknown, at: string): readonly string[] {
@@ -151,19 +148,11 @@ function list(value: unknown, at: string): readonly string[] {
 
 function listMap(value: unknown, at: string): Readonly<Record<string, readonly string[]>> {
   const source = plainObject(value, at);
-  const out: Record<string, readonly string[]> = {};
-  for (const [name, items] of Object.entries(source))
-    define(out, name, list(items, `${at}.${name}`));
-  return Object.freeze(out);
-}
-
-function define<T>(target: Record<string, T>, key: string, value: T): void {
-  Object.defineProperty(target, key, {
-    value,
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(source).map(([name, items]) => [name, list(items, `${at}.${name}`)]),
+    ),
+  );
 }
 
 function shapeError(at: string) {

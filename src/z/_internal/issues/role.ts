@@ -6,7 +6,7 @@ import { malformed, permissionUnknown, roleInvalid } from "../errors.ts";
 import { isToken, readEntry } from "../grammar.ts";
 import { issueOf } from "./issue.ts";
 import { expand } from "../permissions.ts";
-import { entryMalformed, isBreak, roleReader } from "../roles.ts";
+import { entryMalformed, isBreak, readerOver } from "../roles.ts";
 
 /**
  * Every problem of a stored role being validated against the catalog and `roles`, the stored roles
@@ -19,7 +19,7 @@ import { entryMalformed, isBreak, roleReader } from "../roles.ts";
 export function roleIssues(
   catalog: CompiledCatalog,
   role: unknown,
-  roles: readonly StoredRole[],
+  roles: ReadonlyMap<string, StoredRole>,
 ): ValidationIssue[] {
   if (!isRecord(role)) return [issueOf(shapeError(role), [])];
   const { name, entries } = role;
@@ -56,12 +56,15 @@ export function roleIssues(
 function referenceCheck(
   catalog: CompiledCatalog,
   name: unknown,
-  roles: readonly StoredRole[],
+  roles: ReadonlyMap<string, StoredRole>,
 ): (reference: string) => UnauthError<"ERR_AUTHZ_ROLE_INVALID"> | undefined {
   const own = isToken(name) ? name : unusedName(catalog, roles);
   const role = typeof name === "string" ? name : "";
-  const others = roles.filter((other) => other.name !== own);
-  const reader = roleReader(catalog, [...others, { name: own, entries: [own] }]);
+  const replaced: StoredRole = { name: own, entries: [own] };
+  const reader = readerOver(
+    catalog,
+    (found) => catalog.presets.get(found) ?? (found === own ? replaced : roles.get(found)),
+  );
   return (reference) => {
     const result = reader.resolveStored({ name: own, entries: [reference] });
     if (!isBreak(result)) return undefined;
@@ -73,10 +76,9 @@ function referenceCheck(
   };
 }
 
-function unusedName(catalog: CompiledCatalog, roles: readonly StoredRole[]): string {
-  const taken = new Set(roles.map((other) => other.name));
+function unusedName(catalog: CompiledCatalog, roles: ReadonlyMap<string, StoredRole>): string {
   let candidate = "x";
-  while (taken.has(candidate) || catalog.presets.has(candidate)) candidate += "x";
+  while (roles.has(candidate) || catalog.presets.has(candidate)) candidate += "x";
   return candidate;
 }
 

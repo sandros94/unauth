@@ -75,7 +75,7 @@ describe("the engine bound to its catalog", () => {
     expect(authz.issueGrants(ana, { omit: ["presets"], now })).not.toHaveProperty("ps");
   });
 
-  it("tells what has diverged as the function does, and refuses in `could` grants by name under other presets", () => {
+  it("tells what has diverged as the function does, and reads in `could` grants by name with its own presets", () => {
     const older = defineAuthz({
       ...authz.catalog.data,
       presets: { viewer: ["report:write"], owner: ["*"] },
@@ -91,12 +91,15 @@ describe("the engine bound to its catalog", () => {
         diverged: told,
       },
     );
-    const stale = older.issueGrants(ana, { omit: ["presets"], now });
-    expect(refused(() => authz.could(stale, { permission: "report:read" }, { now }))).toMatchObject(
-      {
-        code: "ERR_AUTHZ_GRANTS_CATALOG",
-        cause: { segment: "presets" },
-      },
+    const named = older.issueGrants(ana, { omit: ["presets"], now });
+    const write = { permission: "report:write", place: ACME } as const;
+    expect(authz.could(named, write, { now })).toStrictEqual({
+      allowed: false,
+      covered: true,
+      diverged: { segments: ["presets"], permissions: [], presets: [] },
+    });
+    expect(authz.could(named, write, { now })).toStrictEqual(
+      could(authz.catalog, named, write, { now }),
     );
   });
 

@@ -73,13 +73,15 @@ export interface AskStep extends FromGrants {
 
 /**
  * A question asked of exactly the statements listed, whatever the application keeps: what an
- * engine makes of statements about a subject the asker is not, or of a group's left out.
+ * engine makes of statements about a subject the asker is not, of a group's left out, or of
+ * statements no engine should have been handed.
  */
 export interface HandStep extends FromGrants {
   step: "hand";
   at: number;
   subject: string;
-  statements: readonly Statement[];
+  /** Possibly not statements at all: the point of some cases. */
+  statements: readonly unknown[];
   question: Question;
   expect: "allowed" | "denied" | ScenarioRefusal;
 }
@@ -156,8 +158,9 @@ export interface PlaceCase {
 }
 
 /**
- * Grants written by hand, as another engine or a tampering client would hand them over, and what
- * a read must make of them.
+ * Grants written by hand, as another engine or a tampering client would hand them over: what a
+ * read must make of them, and what validating the whole object must give. A read checks only what
+ * it reads, so grants malformed where the question does not look are answered all the same.
  */
 export interface GrantsCase {
   id: string;
@@ -173,7 +176,14 @@ export interface GrantsCase {
   grants: unknown;
   at: number;
   question: Question;
+  /** What the read must answer, from the parts of the grants it reads. */
   expect: "allowed" | "denied" | "not-covered" | ScenarioRefusal;
+  /**
+   * What validating the whole object, each set on its own, must give at `at`: `"valid"` or the
+   * code it must throw. @default the read's refusal when it refuses the grants for what they are,
+   * malformed, of another format or read early, `"valid"` otherwise
+   */
+  whole?: "valid" | ScenarioRefusal;
   /** What the read must tell has diverged. Unchecked when absent. */
   diverged?: ExpectedDiverged;
 }

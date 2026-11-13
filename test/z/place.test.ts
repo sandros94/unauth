@@ -203,6 +203,12 @@ describe("fits", () => {
     }
   });
 
+  it("reads each level up to the first `=` of its segment, whatever its value holds", () => {
+    expect(fits(declared, "/org=unit=b/unit=org=a")).toBe(true);
+    expect(fits(declared, "/org=a=b/project=%2Fx/folder=:@=")).toBe(true);
+    expect(fits(declared, "/unit=org=a")).toBe(false);
+  });
+
   it("lets only the root fit when the catalog has no places, and every key when it says nothing", () => {
     expect(fits(none, "/")).toBe(true);
     expect(fits(none, "/org=a")).toBe(false);

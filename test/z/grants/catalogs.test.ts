@@ -82,16 +82,20 @@ function issueFor(world: World, asker: Asker, omit?: GrantsPart[]) {
 
 /**
  * Issues grants under C1, then asks every permission of `later` at every place that fits it and
- * every time, of the grants under `later`, and of the same statements under `later` with C1's
- * presets as they were, handed in as stored roles. Returns every disagreement, and whether both
- * outcomes were met.
+ * every time, of the grants under `later`, and of the same statements under `later`: with copies,
+ * with C1's presets as they were, handed in as stored roles; by name, with the presets as `later`
+ * declares them. The stored roles are those of issue either way. Returns every disagreement, and
+ * whether both outcomes were met.
  */
 function across(later: Catalog, world: World, asker: Asker, omit?: GrantsPart[]) {
   const grants = issueFor(world, asker, omit);
+  const byName = omit?.includes("presets") ?? false;
   const { presets = {}, ...rest } = later.data;
   void presets;
-  const bare = defineCatalog(rest);
-  const kept = Object.entries(C1.presets).map(([name, entries]) => ({ name, entries }));
+  const oracle = byName ? later : defineCatalog(rest);
+  const kept = byName
+    ? []
+    : Object.entries(C1.presets).map(([name, entries]) => ({ name, entries }));
   const read = readOf(world, asker);
   const roles = [...kept, ...(read.roles ?? []).filter(({ name }) => !(name in C1.presets))];
   const bases = asker.bases ?? ["/"];
@@ -106,7 +110,7 @@ function across(later: Catalog, world: World, asker: Asker, omit?: GrantsPart[])
           if (carried.covered) disagreements.push(`covered outside ${place}`);
           continue;
         }
-        const fresh = ask(bare, { ...read, roles }, { permission, place }, { now });
+        const fresh = ask(oracle, { ...read, roles }, { permission, place }, { now });
         const [one, other] = [JSON.stringify(summary(fresh)), JSON.stringify(summary(carried))];
         if (one !== other) disagreements.push(`${at} ${place} ${permission}: ${one} != ${other}`);
         tally[fresh.allowed ? "allowed" : "denied"]++;
@@ -277,16 +281,22 @@ describe("a preset changed or removed since issue", () => {
     });
   });
 
-  it("refuses grants that carry presets by name, naming the presets segment", () => {
+  it("is read from the catalog in force where the grants carry presets by name", () => {
+    expect(across(narrower, ana, asker, BY_NAME)).toStrictEqual(AGREE);
+    expect(across(gone, ana, asker, BY_NAME)).toStrictEqual(AGREE);
     const grants = issueFor(ana, asker, BY_NAME);
-    for (const later of [narrower, gone]) {
-      expect(
-        refused(() => couldAt(later, grants, { permission: "file:read", place: ACME })),
-      ).toMatchObject({
-        code: "ERR_AUTHZ_GRANTS_CATALOG",
-        cause: { segment: "presets" },
-      });
-    }
+    const reading = { permission: "report:read", place: "/org=acme/unit=u7" } as const;
+    expect(couldAt(issuedUnder, grants, reading).allowed).toBe(true);
+    expect(couldAt(narrower, grants, reading).by).toMatchObject({
+      kind: "allow",
+      value: "report:*",
+    });
+    const chat = { permission: "chat:read", place: "/org=acme/unit=u7" } as const;
+    expect(couldAt(issuedUnder, grants, chat).by).toMatchObject({ value: "player" });
+    expect(couldAt(gone, grants, chat)).toMatchObject({
+      allowed: false,
+      diverged: { segments: ["presets"], permissions: [], presets: [] },
+    });
   });
 
   it("reads grants by name that name no preset at all, as the statements answer", () => {
@@ -324,15 +334,13 @@ describe("a stored role that references a preset", () => {
     });
   });
 
-  it("names the preset by name and is refused once presets change, read while only permissions do", () => {
+  it("names the preset by name and reads it as the catalog in force declares it", () => {
     const grants = issueFor(auditor, { subject: "ada" }, BY_NAME);
     expect(grants).not.toHaveProperty("ps");
-    expect(
-      refused(() => couldAt(narrower, grants, { permission: "report:list", place: ACME })),
-    ).toMatchObject({
-      code: "ERR_AUTHZ_GRANTS_CATALOG",
-      cause: { segment: "presets" },
-    });
+    expect(across(narrower, auditor, { subject: "ada" }, BY_NAME)).toStrictEqual(AGREE);
+    const list = { permission: "report:list", place: ACME } as const;
+    expect(couldAt(issuedUnder, grants, list).allowed).toBe(true);
+    expect(couldAt(narrower, grants, list).allowed).toBe(false);
     expect(across(wider, auditor, { subject: "ada" }, BY_NAME)).toStrictEqual(AGREE);
     expect(
       couldAt(wider, grants, { permission: "audit:delete", place: ACME }).diverged,

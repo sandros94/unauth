@@ -34,7 +34,9 @@ export interface Ruling {
  * deny on the chain that blocks it denies, whatever else its subject holds; else what allows and
  * assignments give, walked from the root down with exclusions taken out at each place, allows when
  * the permission or one implying it is left. Every statement applies: one about `subject` is the
- * asker's own, any other a group's. Statements off the chain or ended at `time` are skipped.
+ * asker's own, any other a group's. Statements off the chain or ended at `time` are skipped. An
+ * inert statement needs no filter: one on the chain of a place that fits fits too, and one that
+ * names nothing declared gives, removes and blocks nothing.
  */
 export function decidePermission(
   source: DecisionSource,
@@ -95,8 +97,7 @@ function givenBy(
         statement.kind === "allow"
           ? expand(catalog, statement.value)
           : roles.resolve(statement.value).gives;
-      for (const permission of given) {
-        if (!satisfying.has(permission)) continue;
+      for (const permission of satisfiedBy(given, satisfying)) {
         let held = carried.get(statement.subject);
         if (!held) carried.set(statement.subject, (held = new Map()));
         const first = held.get(permission);
@@ -120,4 +121,11 @@ function givenBy(
     if (named) return named;
   }
   return undefined;
+}
+
+/** The permissions of `given` that are in `satisfying`, in the order of `given`. */
+function satisfiedBy(given: ReadonlySet<string>, satisfying: ReadonlySet<string>): string[] {
+  const found = [...satisfying].filter((permission) => given.has(permission));
+  if (found.length < 2) return found;
+  return [...given].filter((permission) => satisfying.has(permission));
 }

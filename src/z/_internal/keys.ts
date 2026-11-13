@@ -11,24 +11,13 @@ export type KeySegment = readonly [level: string, value: string];
  * written literally, and the decoded octets of each value valid UTF-8.
  */
 export function readKey(key: unknown): KeySegment[] | undefined {
-  if (typeof key !== "string" || !key.startsWith("/")) return undefined;
-  if (key === "/") return [];
   const segments: KeySegment[] = [];
-  for (const part of key.slice(1).split("/")) {
-    const equals = part.indexOf("=");
-    if (equals < 0) return undefined;
-    const level = part.slice(0, equals);
-    if (!isToken(level)) return undefined;
-    const value = decodeValue(part.slice(equals + 1));
-    if (value === undefined) return undefined;
-    segments.push([level, value]);
-  }
-  return segments;
+  return scanKey(key, segments) ? segments : undefined;
 }
 
 /** Whether `key` is a canonical key. */
 export function isCanonicalKey(key: unknown): key is string {
-  return readKey(key) !== undefined;
+  return scanKey(key);
 }
 
 /** `key` when it is canonical, else `ERR_AUTHZ_MALFORMED`. Never repaired. */
@@ -44,11 +33,14 @@ export function keyMalformed(key: unknown): UnauthError<"ERR_AUTHZ_MALFORMED"> {
 
 /** The levels of a canonical key, from the root down. */
 export function levelsOf(key: string): string[] {
-  if (key === "/") return [];
-  return key
-    .slice(1)
-    .split("/")
-    .map((part) => part.slice(0, part.indexOf("=")));
+  const levels: string[] = [];
+  for (let start = 1; start < key.length;) {
+    const equals = key.indexOf("=", start);
+    levels.push(key.slice(start, equals));
+    const slash = key.indexOf("/", start);
+    start = slash < 0 ? key.length : slash + 1;
+  }
+  return levels;
 }
 
 /**
@@ -99,8 +91,27 @@ const LITERAL: readonly boolean[] = Array.from({ length: 256 }, (_, octet) =>
   /^[A-Za-z0-9\-._~!$&'()*+,;=:@]$/.test(String.fromCharCode(octet)),
 );
 
+function scanKey(key: unknown, segments?: KeySegment[]): key is string {
+  if (typeof key !== "string" || !key.startsWith("/")) return false;
+  if (key === "/") return true;
+  for (let start = 1; start <= key.length;) {
+    const slash = key.indexOf("/", start);
+    const end = slash < 0 ? key.length : slash;
+    const equals = key.indexOf("=", start);
+    if (equals < 0 || equals > end) return false;
+    const level = key.slice(start, equals);
+    if (!isToken(level)) return false;
+    const value = decodeValue(key.slice(equals + 1, end));
+    if (value === undefined) return false;
+    segments?.push([level, value]);
+    start = end + 1;
+  }
+  return true;
+}
+
 function decodeValue(text: string): string | undefined {
   if (text === "") return undefined;
+  if (!text.includes("%")) return isLiteral(text) ? text : undefined;
   const octets: number[] = [];
   for (let index = 0; index < text.length; index++) {
     const code = text.charCodeAt(index);
@@ -121,6 +132,14 @@ function decodeValue(text: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function isLiteral(text: string): boolean {
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code >= 0x80 || !LITERAL[code]) return false;
+  }
+  return true;
 }
 
 function upperHex(code: number): number {

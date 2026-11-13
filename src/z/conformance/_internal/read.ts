@@ -59,12 +59,43 @@ export function expectRead(
   }
 }
 
-/** The codes a read refuses grants with for what they are, whatever the question. */
+/**
+ * Validates grants whole, each set on its own, and checks the first refusal against `expected`,
+ * `"valid"` when none may refuse.
+ */
+export function expectWhole(
+  engine: Engine,
+  context: Context,
+  reading: Omit<Reading, "question">,
+  expected: string,
+): void {
+  const now = clock(reading.at);
+  let received = "valid";
+  for (const set of Array.isArray(reading.grants)
+    ? (reading.grants as unknown[])
+    : [reading.grants]) {
+    const result = untouched(context, set, (copy) =>
+      engine.assertGrants(reading.catalog, copy, { now }),
+    );
+    if (!result.ok) {
+      received = result.code;
+      break;
+    }
+  }
+  if (received !== expected) fail(context, { assertGrants: expected }, { assertGrants: received });
+}
+
+/**
+ * The codes a read refuses grants with whatever the question, since every read meets what they
+ * are about. A malformed part is met only by the reads that look there.
+ */
 export const GRANTS_REFUSALS: readonly string[] = [
-  "ERR_AUTHZ_GRANTS_CATALOG",
   "ERR_AUTHZ_GRANTS_EARLY",
   "ERR_AUTHZ_GRANTS_FORMAT",
 ];
+
+/** The codes a read refuses grants with for what they are, which validating them whole refuses too. */
+export const WHOLE_REFUSALS: readonly string[] = [...GRANTS_REFUSALS, "ERR_AUTHZ_MALFORMED"];
 
 function divergedOn(decision: unknown): unknown {
   return isRecord(decision) ? (decision.diverged ?? null) : null;

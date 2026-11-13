@@ -1,5 +1,3 @@
-const TOKEN = /^[a-z][a-z0-9_-]{0,31}$/;
-
 /** A role entry split into its parts: whether it excludes, and what it names. */
 export interface EntryParts {
   /** Written with the `-` prefix. */
@@ -12,7 +10,12 @@ export interface EntryParts {
 
 /** Whether `value` is a token: a lowercase ASCII letter, then up to 31 lowercase letters, digits, `-` or `_`. */
 export function isToken(value: unknown): value is string {
-  return typeof value === "string" && TOKEN.test(value);
+  if (typeof value !== "string" || value.length === 0 || value.length > 32) return false;
+  if (!TOKEN_START[value.charCodeAt(0)]) return false;
+  for (let index = 1; index < value.length; index++) {
+    if (!TOKEN_PART[value.charCodeAt(index)]) return false;
+  }
+  return true;
 }
 
 /** Whether `value` is a concrete permission: two tokens joined by `:`. */
@@ -66,4 +69,11 @@ export function compareBytes(a: string, b: string): number {
 /** The values once each, ordered by {@link compareBytes}. */
 export function sortedUnique(values: Iterable<string>): string[] {
   return [...new Set(values)].toSorted(compareBytes);
+}
+
+const TOKEN_START = asciiTable(/[a-z]/);
+const TOKEN_PART = asciiTable(/[a-z0-9_-]/);
+
+function asciiTable(allowed: RegExp): readonly boolean[] {
+  return Array.from({ length: 128 }, (_, code) => allowed.test(String.fromCharCode(code)));
 }
