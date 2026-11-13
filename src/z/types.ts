@@ -140,8 +140,7 @@ export type ValidationIssue = {
 
 /**
  * A part of grants that can travel by name instead of as a copy: `presets`, the definitions of the
- * presets they name, then read from the catalog in force, and only while its presets are those of
- * issue.
+ * presets they name, then read from the catalog in force, as it declares them when read.
  */
 export type GrantsPart = "presets";
 

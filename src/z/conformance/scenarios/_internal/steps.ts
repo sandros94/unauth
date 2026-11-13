@@ -70,7 +70,7 @@ export function ask(
 export function hand(
   at: number,
   subject: string,
-  statements: readonly Statement[],
+  statements: readonly unknown[],
   question: Question,
   expect: HandStep["expect"],
   grants?: FromGrants,

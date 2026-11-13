@@ -40,9 +40,7 @@ function segmentOf(text: string): string {
 
 function writeList(values: readonly string[]): string | undefined {
   if (values.length === 0) return undefined;
-  return `[${sortedUnique(values)
-    .map((value) => JSON.stringify(value))
-    .join(",")}]`;
+  return JSON.stringify(sortedUnique(values));
 }
 
 function writeLists(

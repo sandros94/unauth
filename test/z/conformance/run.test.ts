@@ -30,6 +30,8 @@ const catalogData: CatalogData = {
   permissions: ["doc:read", "doc:write", "access:manage"],
 };
 
+const CHANGED: Diverged = { segments: ["permissions"], permissions: [], presets: [] };
+
 const scenario: Scenario = {
   id: "fake/office",
   title: "An office where the owner allows Bob to read and later stops",
@@ -154,7 +156,7 @@ const fake: Engine = {
     const answers: boolean[] = [];
     for (const set of sets) {
       if (!isRecord(set)) refuse("ERR_AUTHZ_MALFORMED");
-      if (set.ct !== catalog.fingerprint) refuse("ERR_AUTHZ_GRANTS_CATALOG");
+      if (set.v !== "1") refuse("ERR_AUTHZ_GRANTS_FORMAT");
       if (typeof set.at !== "number" || at < set.at) refuse("ERR_AUTHZ_GRANTS_EARLY");
       const place = question.place ?? "/";
       const bases = Array.isArray(set.bs) ? (set.bs as string[]) : undefined;
@@ -163,17 +165,26 @@ const fake: Engine = {
       if (kept === undefined) refuse("ERR_AUTHZ_MALFORMED");
       answers.push(fakeDecide(catalog, question, kept, at));
     }
-    if (answers.length === 0) return { allowed: false, covered: false };
-    return { allowed: answers.every(Boolean), covered: true };
+    const told = fakeDiverged(catalog, sets);
+    if (answers.length === 0) return { allowed: false, covered: false, ...told };
+    return { allowed: answers.every(Boolean), covered: true, ...told };
   },
   diverged: (catalog, grants, options) => {
     const at = seconds(options?.now);
-    for (const set of Array.isArray(grants) ? (grants as unknown[]) : [grants]) {
+    const sets: unknown[] = Array.isArray(grants) ? grants : [grants];
+    for (const set of sets) {
       if (!isRecord(set)) refuse("ERR_AUTHZ_MALFORMED");
-      if (set.ct !== catalog.fingerprint) refuse("ERR_AUTHZ_GRANTS_CATALOG");
+      if (set.v !== "1") refuse("ERR_AUTHZ_GRANTS_FORMAT");
       if (typeof set.at !== "number" || at < set.at) refuse("ERR_AUTHZ_GRANTS_EARLY");
     }
-    return undefined;
+    return fakeDiverged(catalog, sets).diverged;
+  },
+  assertGrants: (_catalog, value, options) => {
+    if (!isRecord(value) || value.broken === true) refuse("ERR_AUTHZ_MALFORMED");
+    if (value.v !== "1") refuse("ERR_AUTHZ_GRANTS_FORMAT");
+    if (typeof value.at !== "number" || seconds(options?.now) < value.at) {
+      refuse("ERR_AUTHZ_GRANTS_EARLY");
+    }
   },
   validateStatement: (catalog, value, options) => {
     refuseTwoOfOneName(options?.roles);
@@ -342,6 +353,26 @@ describe("runScenario", () => {
       ),
     );
     expect(failure).toMatchObject({ step: 3, expected: "not-covered", received: "denied" });
+  });
+
+  it("fails grants the engine issues that it does not validate whole", () => {
+    const failure = failureOf(() =>
+      runScenario(
+        {
+          ...fake,
+          assertGrants: (catalog, value, options) => {
+            if (isRecord(value) && value.fid !== "hand") refuse("ERR_AUTHZ_MALFORMED");
+            fake.assertGrants(catalog, value, options);
+          },
+        },
+        scenario,
+      ),
+    );
+    expect(failure).toMatchObject({
+      step: 2,
+      expected: { assertGrants: "valid" },
+      received: { assertGrants: "ERR_AUTHZ_MALFORMED" },
+    });
   });
 
   it("fails a read of grants that were never issued", () => {
@@ -553,7 +584,8 @@ describe("how presets travel, other catalogs, and what has diverged", () => {
         at: MONDAY,
         grants: "both",
         question: { permission: "doc:read" },
-        expect: "ERR_AUTHZ_GRANTS_CATALOG",
+        expect: "allowed",
+        diverged: CHANGED,
       },
     ],
   };
@@ -634,24 +666,29 @@ describe("how presets travel, other catalogs, and what has diverged", () => {
     });
   });
 
-  it("expects diverged alone to refuse what a read refuses", () => {
+  it("expects diverged alone to refuse what every read refuses, and nothing of a malformed part", () => {
     const lenient: Engine = { ...fake, diverged: () => undefined };
-    const other = { ...grantsCase, grants: { ...(grantsCase.grants as object), ct: "other" } };
+    const other = { ...grantsCase, grants: { ...(grantsCase.grants as object), v: "2" } };
     expect(
-      failureOf(() => runGrantsCase(lenient, { ...other, expect: "ERR_AUTHZ_GRANTS_CATALOG" })),
+      failureOf(() => runGrantsCase(lenient, { ...other, expect: "ERR_AUTHZ_GRANTS_FORMAT" })),
     ).toMatchObject({
-      expected: { "diverged()": "ERR_AUTHZ_GRANTS_CATALOG" },
+      expected: { "diverged()": "ERR_AUTHZ_GRANTS_FORMAT" },
       received: { "diverged()": null },
     });
+    const strict: Engine = {
+      ...lenient,
+      could: (catalog, grants, question, options) => {
+        if (isRecord(grants) && grants.broken === true) refuse("ERR_AUTHZ_MALFORMED");
+        return fake.could(catalog, grants, question, options);
+      },
+    };
+    const broken = { ...grantsCase, grants: { ...(grantsCase.grants as object), broken: true } };
+    expect(() => runGrantsCase(strict, { ...broken, expect: "ERR_AUTHZ_MALFORMED" })).not.toThrow();
   });
 
   it("reads hand-written grants with the fingerprint of the catalog they were issued under", () => {
     expect(() =>
-      runGrantsCase(fake, {
-        ...grantsCase,
-        issuedUnder: later,
-        expect: "ERR_AUTHZ_GRANTS_CATALOG",
-      }),
+      runGrantsCase(fake, { ...grantsCase, issuedUnder: later, diverged: CHANGED }),
     ).not.toThrow();
     expect(() =>
       runGrantsCase(fake, {
@@ -732,9 +769,30 @@ describe("runGrantsCase", () => {
       runGrantsCase(fake, {
         ...grantsCase,
         grants: { v: "1", ct: "other", at: MONDAY, fid: "hand", nt: {} },
-        expect: "ERR_AUTHZ_GRANTS_CATALOG",
+        diverged: CHANGED,
       }),
     ).not.toThrow();
+  });
+
+  it("validates the grants whole beside the read", () => {
+    const broken = { ...grantsCase, grants: { ...(grantsCase.grants as object), broken: true } };
+    expect(() => runGrantsCase(fake, { ...broken, whole: "ERR_AUTHZ_MALFORMED" })).not.toThrow();
+    expect(failureOf(() => runGrantsCase(fake, broken))).toMatchObject({
+      expected: { assertGrants: "valid" },
+      received: { assertGrants: "ERR_AUTHZ_MALFORMED" },
+    });
+    expect(() =>
+      runGrantsCase(fake, { ...grantsCase, at: MONDAY - 1, expect: "ERR_AUTHZ_GRANTS_EARLY" }),
+    ).not.toThrow();
+    const lenient: Engine = { ...fake, assertGrants: () => undefined };
+    expect(
+      failureOf(() =>
+        runGrantsCase(lenient, { ...grantsCase, at: MONDAY - 1, expect: "ERR_AUTHZ_GRANTS_EARLY" }),
+      ),
+    ).toMatchObject({
+      expected: { assertGrants: "ERR_AUTHZ_GRANTS_EARLY" },
+      received: { assertGrants: "valid" },
+    });
   });
 });
 
@@ -1034,6 +1092,13 @@ describe("the cases themselves", () => {
     }
   });
 
+  it("never expects a read to refuse as malformed grants that validate whole", () => {
+    const lenient = cases.grantsCases
+      .filter((item) => item.expect === "ERR_AUTHZ_MALFORMED" && item.whole === "valid")
+      .map((item) => item.id);
+    expect(lenient).toEqual([]);
+  });
+
   it("lets time move forward, but for a clock running behind", () => {
     const backwards: string[] = [];
     for (const item of cases.scenarios) {
@@ -1075,6 +1140,11 @@ function fakeDecide(
         statement.kind === "allow" && (statement.value === permission || statement.value === "*"),
     )
   );
+}
+
+function fakeDiverged(catalog: Catalog, sets: readonly unknown[]): { diverged?: Diverged } {
+  const changed = sets.some((set) => isRecord(set) && set.ct !== catalog.fingerprint);
+  return changed ? { diverged: structuredClone(CHANGED) } : {};
 }
 
 function refuseTwoOfOneName(roles: readonly StoredRole[] | undefined): void {

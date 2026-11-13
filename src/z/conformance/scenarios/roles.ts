@@ -360,14 +360,19 @@ export const roleScenarios: readonly Scenario[] = [
   {
     id: "roles/two-of-one-name",
     title:
-      "Two stored roles of one name reach the engine after a botched import: it refuses rather than picks one, until one is removed",
+      "Two stored roles of one name reach the engine after a botched import: a question that reads the name and every issue refuse rather than pick one, until one is removed",
     proves: [],
     catalog: ops,
     roles: [
       { name: "analyst", entries: ["report:read"] },
       { name: "analyst", entries: ["report:write", "deploy:run"] },
+      { name: "senior", entries: ["analyst"] },
     ],
-    statements: [assign("kim", "analyst", ACME)],
+    statements: [
+      assign("kim", "analyst", ACME),
+      assign("max", "senior", ACME),
+      allow("lee", "report:read", ACME),
+    ],
     steps: [
       ask(
         MONDAY,
@@ -375,7 +380,21 @@ export const roleScenarios: readonly Scenario[] = [
         "ERR_AUTHZ_ROLE_INVALID",
         { issuedAt: MONDAY, fromGrants: "ERR_AUTHZ_ROLE_INVALID" },
       ),
+      ask(
+        MONDAY,
+        { subject: "max", permission: "report:read", place: ACME },
+        "ERR_AUTHZ_ROLE_INVALID",
+      ),
+      ask(MONDAY, { subject: "kim", permission: "report:read", place: "/org=globex" }, "denied", {
+        issuedAt: MONDAY,
+        fromGrants: "ERR_AUTHZ_ROLE_INVALID",
+      }),
+      ask(MONDAY, { subject: "lee", permission: "report:read", place: ACME }, "allowed", {
+        issuedAt: MONDAY,
+        fromGrants: "ERR_AUTHZ_ROLE_INVALID",
+      }),
       issue(MONDAY, "kim", "kim", { expect: "ERR_AUTHZ_ROLE_INVALID" }),
+      issue(MONDAY, "lee", "lee", { expect: "ERR_AUTHZ_ROLE_INVALID" }),
       write({ roles: [{ name: "analyst", entries: ["report:read"] }] }),
       ask(TUESDAY, { subject: "kim", permission: "report:read", place: ACME }, "allowed", {
         issuedAt: TUESDAY,

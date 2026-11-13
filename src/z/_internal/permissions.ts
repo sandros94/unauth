@@ -74,6 +74,30 @@ export function spellings(permission: string): [string, string, string, string] 
 }
 
 /**
+ * Whether `value` is one of the four values that can carry a permission of `permissions`, as
+ * {@link spellings} writes them, without writing them: no value is built.
+ */
+export function isSpellingOf(value: unknown, permissions: ReadonlySet<string>): boolean {
+  if (typeof value !== "string") return false;
+  if (value === "*") return permissions.size > 0;
+  if (permissions.has(value)) return true;
+  const colon = value.indexOf(":");
+  if (colon < 0) return false;
+  const resource = value.slice(0, colon);
+  const action = value.slice(colon + 1);
+  if (resource !== "*" && action !== "*") return false;
+  for (const permission of permissions) {
+    const at = permission.indexOf(":");
+    if (
+      resource === "*" ? permission.slice(at + 1) === action : permission.slice(0, at) === resource
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * `value` when it may be asked in a question: `ERR_AUTHZ_QUESTION_INVALID` (`wildcard`) for a
  * pattern, `ERR_AUTHZ_MALFORMED` for anything that is not a pattern, `ERR_AUTHZ_PERMISSION_UNKNOWN`
  * for a permission the catalog does not declare.

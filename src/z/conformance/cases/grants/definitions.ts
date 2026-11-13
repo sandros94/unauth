@@ -5,8 +5,9 @@ import { ACME, MONDAY, readCase, reports } from "./_internal/model.ts";
 const base = { v: "1", ct: "$ct", at: MONDAY, pl: [ACME], pm: ["report:read", "report:write"] };
 
 /**
- * Roles read from the definitions grants hold (G9 of the model): a role that cannot be resolved
- * gives nothing, and so does every role that names it, with or without `-`.
+ * Roles read from the definitions grants hold (G9 of the model): a name is found as a copy, then
+ * as a stored role, then as a preset of the catalog in force, a role that cannot be resolved gives
+ * nothing, and so does every role that names it, with or without `-`.
  */
 export const definitionCases: readonly GrantsCase[] = (
   [
@@ -100,10 +101,24 @@ export const definitionCases: readonly GrantsCase[] = (
     ],
     [
       "catalog-preset-not-copied",
-      "Grants carrying preset copies name writer without its copy: writer is a role that does not exist there, and gives nothing",
+      "Grants carrying a copy of another preset name writer without its copy: writer is found as the catalog declares it, and gives reading",
       { ...base, ps: { editor: [1] }, nt: { writer: { a: [[0]] } } },
       "report:read",
+      "allowed",
+    ],
+    [
+      "stored-role-named-like-preset",
+      "Grants holding a stored writer that only reads, under a catalog whose writer preset also writes: the stored role is found before the preset",
+      { ...base, sr: { writer: [0] }, nt: { writer: { a: [[0]] } } },
+      "report:write",
       "denied",
+    ],
+    [
+      "stored-role-named-like-preset-gives-what-it-holds",
+      "The same stored writer still gives the reading it holds",
+      { ...base, sr: { writer: [0] }, nt: { writer: { a: [[0]] } } },
+      "report:read",
+      "allowed",
     ],
   ] as const
 ).map(([id, title, grants, permission, expect]) =>

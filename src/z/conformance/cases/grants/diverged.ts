@@ -15,6 +15,7 @@ import {
 } from "./_internal/model.ts";
 
 const THURSDAY = MONDAY + 3 * DAY;
+const SATURDAY = MONDAY + 5 * DAY;
 
 /** `reports` with no implication. */
 const unimplied: CatalogData = {
@@ -31,6 +32,9 @@ const withExport: CatalogData = {
 
 /** `reports` while its writer preset only wrote. */
 const writeOnly: CatalogData = { ...reports, presets: { writer: ["report:write"] } };
+
+/** `reports` once its writer preset only reads. */
+const readOnly: CatalogData = { ...reports, presets: { writer: ["report:read"] } };
 
 /** `reports` while it declared a legacy permission and its writer preset only read. */
 const legacy: CatalogData = {
@@ -60,17 +64,38 @@ export const divergedCases: readonly GrantsCase[] = [
   ),
   readCase(
     "by-name-presets-changed",
-    "Sue's grants carry writer by name and the presets changed since: refused, nothing says what writer meant",
+    "Sue's grants carry writer by name and the presets changed since: read, the second segment told and no role, since none is held as a copy",
     {
       catalog: reports,
       issuedUnder: writeOnly,
       grants: sue,
-      expect: "ERR_AUTHZ_GRANTS_CATALOG",
+      expect: "allowed",
       at: THURSDAY,
-      diverged: "ERR_AUTHZ_GRANTS_CATALOG",
+      diverged: diverged(["presets"]),
     },
     "report:write",
     ARCHIVES,
+  ),
+  readCase(
+    "by-name-preset-means-what-the-catalog-says",
+    "Writer comes to only read: on Saturday, her own allow ended, Sue's writer by name no longer writes at the organisation",
+    {
+      catalog: readOnly,
+      issuedUnder: reports,
+      grants: sue,
+      expect: "denied",
+      at: SATURDAY,
+      diverged: diverged(["presets"]),
+    },
+    "report:write",
+    ACME,
+  ),
+  readCase(
+    "by-name-preset-still-reads",
+    "The same writer by name still reads at the organisation",
+    { catalog: readOnly, issuedUnder: reports, grants: sue, expect: "allowed", at: SATURDAY },
+    "report:read",
+    ACME,
   ),
   readCase(
     "no-preset-presets-changed",
@@ -206,11 +231,11 @@ export const divergedCases: readonly GrantsCase[] = [
   ),
   readCase(
     "same-catalog-copy-differs-tells-nothing",
-    "Grants of this very catalog holding a writer copy that only writes, unlike the catalog's: read from the copy, and nothing has diverged",
+    "Grants of this very catalog holding a writer copy that only writes, unlike the catalog's: the presets are those of issue, so the read takes the catalog's writer, which reads, and nothing has diverged",
     {
       catalog: { ...unimplied },
       grants: { ...zoe, pm: ["report:write"], ps: { writer: [0] }, nt: { writer: { a: [[0]] } } },
-      expect: "denied",
+      expect: "allowed",
       diverged: null,
     },
     "report:read",

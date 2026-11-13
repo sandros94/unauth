@@ -1,6 +1,6 @@
 import type { Catalog, CatalogData } from "../../catalog.ts";
 import type { Statement, StoredRole } from "../../types.ts";
-import type { Decision, Engine, Question, SubjectStatements } from "../engine.ts";
+import type { Decision, Engine, Question } from "../engine.ts";
 import type {
   AskStep,
   DeployStep,
@@ -12,7 +12,7 @@ import type {
   WriteStep,
 } from "../types.ts";
 import { clock, identityOf } from "./data.ts";
-import { defineFor } from "./define.ts";
+import { type LooseRead, defineFor, loose } from "./define.ts";
 import {
   type Attempt,
   type Context,
@@ -22,7 +22,7 @@ import {
   fail,
   untouched,
 } from "./outcome.ts";
-import { GRANTS_REFUSALS, expectRead } from "./read.ts";
+import { GRANTS_REFUSALS, expectRead, expectWhole } from "./read.ts";
 import { type Member, selectToAsk, selectToIssue } from "./select.ts";
 
 export interface ScenarioState {
@@ -159,14 +159,14 @@ function askOf(
   engine: Engine,
   state: ScenarioState,
   context: Context,
-  read: Omit<SubjectStatements, "roles">,
+  read: Omit<LooseRead, "roles">,
   step: { at: number },
   question: Question,
 ): Attempt<Decision> {
   const input = { read: { ...read, roles: state.roles }, question };
   const now = clock(step.at);
   return untouched(context, input, (copy) =>
-    engine.ask(state.catalog, copy.read, copy.question, { now }),
+    loose(engine).ask(state.catalog, copy.read, copy.question, { now }),
   );
 }
 
@@ -174,7 +174,7 @@ function fromGrants(
   engine: Engine,
   state: ScenarioState,
   context: Context,
-  read: Omit<SubjectStatements, "roles">,
+  read: Omit<LooseRead, "roles">,
   step: FromGrants & { at: number; expect: string },
   question: Question,
 ): void {
@@ -196,19 +196,24 @@ function issueOf(
   engine: Engine,
   state: ScenarioState,
   context: Context,
-  read: Omit<SubjectStatements, "roles">,
+  read: Omit<LooseRead, "roles">,
   options: { bases?: readonly string[]; at: number; presets?: PresetsWay },
 ): Attempt<unknown> {
   const input = { read: { ...read, roles: state.roles }, bases: options.bases };
   const now = clock(options.at);
   const omit = options.presets === "names" ? { omit: ["presets"] as const } : undefined;
-  return untouched(context, input, (copy) =>
-    engine.issueGrants(state.catalog, copy.read, {
+  const issued = untouched(context, input, (copy) =>
+    loose(engine).issueGrants(state.catalog, copy.read, {
       ...(copy.bases !== undefined && { bases: copy.bases }),
       ...omit,
       now,
     }),
   );
+  if (issued.ok) {
+    const reading = { catalog: state.catalog, grants: issued.value, at: options.at };
+    expectWhole(engine, context, reading, "valid");
+  }
+  return issued;
 }
 
 function everything(state: ScenarioState): Statement[] {

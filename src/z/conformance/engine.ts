@@ -92,9 +92,17 @@ export interface Engine {
   could(catalog: Catalog, grants: unknown, question: Question, options?: ClockOptions): Decision;
   /**
    * What of grants, one set or several, has diverged from the catalog, without a question:
-   * `undefined` when both segments of every set match. Refuses what a read refuses.
+   * `undefined` when both segments of every set match. Refuses what every read refuses, and, of a
+   * set whose segment differs, a permission table, a preset table or a stored role table that is
+   * malformed, since it reads those whole.
    */
   diverged(catalog: Catalog, grants: unknown, options?: ClockOptions): Diverged | undefined;
+  /**
+   * Validates one whole grants object against every rule of its form, where the application
+   * receives one: throws `ERR_AUTHZ_MALFORMED` for a rule that fails, `ERR_AUTHZ_GRANTS_FORMAT`
+   * for another revision, `ERR_AUTHZ_GRANTS_EARLY` when the clock reads earlier than the issue.
+   */
+  assertGrants(catalog: Catalog, value: unknown, options?: ClockOptions): void;
   issueGrants(catalog: Catalog, read: SubjectStatements, options?: IssueGrantsOptions): unknown;
   /** Every problem of the statement, none when it may be written. */
   validateStatement(

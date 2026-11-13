@@ -115,6 +115,17 @@ export const adaByName: Written = {
   nt: { "0": { a: [[1]] }, "reviewer": { a: [[0]] } },
 };
 
+/** Grants with a permission table and a stored role, `analyst`, assigned at the organisation. */
+export const tabled: Written = {
+  v: "1",
+  ct: "$ct",
+  at: MONDAY,
+  pl: [ACME],
+  pm: ["report:read", "report:write"],
+  sr: { analyst: [0] },
+  nt: { analyst: { a: [[0]] } },
+};
+
 /** What a read tells has diverged. */
 export function diverged(
   segments: Diverged["segments"],
@@ -128,7 +139,7 @@ export function readCase(
   id: string,
   title: string,
   read: Pick<GrantsCase, "catalog" | "grants" | "expect"> &
-    Partial<Pick<GrantsCase, "issuedUnder" | "diverged" | "at">>,
+    Partial<Pick<GrantsCase, "issuedUnder" | "whole" | "diverged" | "at">>,
   permission: string,
   place?: string,
 ): GrantsCase {
@@ -139,4 +150,10 @@ export function readCase(
     question: place === undefined ? { permission } : { permission, place },
     ...read,
   };
+}
+
+/** `value` without `member`. */
+export function without<T extends object, K extends keyof T>(value: T, member: K): Omit<T, K> {
+  const { [member]: _dropped, ...rest } = value;
+  return rest;
 }

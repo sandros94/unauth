@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defineCatalog } from "../../../src/z/catalog.ts";
-import { could, issueGrants } from "../../../src/z/grants.ts";
+import { assertGrants, could, issueGrants } from "../../../src/z/grants.ts";
 import type { Grants, Question, Statement } from "../../../src/z/types.ts";
 import { refused } from "../_expect.ts";
 
@@ -233,6 +233,31 @@ describe("bases", () => {
     expect(ask([allowing, empty, denying])).toStrictEqual({ allowed: false, covered: true });
   });
 
+  it("names the first role of the grants that gives the permission at a place covering the target", () => {
+    const unit = "/org=acme/unit=u1";
+    const grants = issue(
+      [
+        { kind: "assign", subject: "mel", value: "player", place: ARCHIVES },
+        { kind: "assign", subject: "mel", value: "viewer", place: ACME },
+        { kind: "assign", subject: "mel", value: "writer", place: ACME },
+        { kind: "assign", subject: "mel", value: "writer", place: unit },
+      ],
+      { subject: "mel" },
+    );
+    const by = (permission: P, place: string) => read(grants, { permission, place }, MONDAY).by;
+    expect(by("chat:send", unit)).toStrictEqual({ kind: "assign", value: "writer", place: ACME });
+    expect(by("chat:send", ARCHIVES)).toStrictEqual({
+      kind: "assign",
+      value: "player",
+      place: ARCHIVES,
+    });
+    expect(by("report:list", unit)).toStrictEqual({ kind: "assign", value: "viewer", place: ACME });
+    expect(read(grants, { permission: "chat:read", place: unit }, MONDAY)).toStrictEqual({
+      allowed: false,
+      covered: true,
+    });
+  });
+
   it("refuses the whole read when one set refuses, even one that does not cover the place", () => {
     const people = [{ kind: "assign", subject: "mel", value: "viewer" }] satisfies Statement[];
     const platform = issue(people, { subject: "mel", bases: ["/server=s1"] });
@@ -241,12 +266,18 @@ describe("bases", () => {
       { subject: "mel", statements: people },
       { bases: [ACME], omit: ["presets"], now: () => MONDAY * 1000 },
     );
-    const stale = { ...named, ct: otherPresets };
+    const later = { ...named, at: MONDAY + 1 };
     expect(
       refused(() =>
-        read([platform, stale], { permission: "report:read", place: "/server=s1" }, MONDAY),
+        read([platform, later], { permission: "report:read", place: "/server=s1" }, MONDAY),
       ),
-    ).toMatchObject({ code: "ERR_AUTHZ_GRANTS_CATALOG" });
+    ).toMatchObject({ code: "ERR_AUTHZ_GRANTS_EARLY" });
+    const unfit = { ...named, bs: ["/org=acme/"] };
+    expect(
+      refused(() =>
+        read([platform, unfit], { permission: "report:read", place: "/server=s1" }, MONDAY),
+      ),
+    ).toMatchObject({ code: "ERR_AUTHZ_MALFORMED" });
   });
 });
 
@@ -512,34 +543,38 @@ describe("grants written by hand", () => {
     expect(read(withRl, { permission: "chat:read" }, MONDAY).allowed).toBe(true);
   });
 
-  it("are refused with an own `__proto__` entry instead of reading through it", () => {
+  it("never read through an own `__proto__` entry, and are refused for it when checked whole", () => {
     const grants: unknown = JSON.parse(
       `{"v":"1","ct":"${ct}","at":${MONDAY},"nt":{"__proto__":{"a":[[]]}}}`,
     );
-    expect(refused(() => read(grants, { permission: "chat:read" }, MONDAY))).toMatchObject({
-      code: "ERR_AUTHZ_MALFORMED",
-      cause: { what: "grants" },
+    expect(read(grants, { permission: "chat:read" }, MONDAY)).toStrictEqual({
+      allowed: false,
+      covered: true,
     });
+    expect(
+      refused(() => assertGrants(catalog, grants, { now: () => MONDAY * 1000 })),
+    ).toMatchObject({ code: "ERR_AUTHZ_MALFORMED", cause: { what: "grants" } });
   });
 });
 
 describe("roles, resolved at read from the definitions the grants hold", () => {
   const at = { v: "1", at: MONDAY } as const;
 
-  it("read a copy of a preset whatever the catalog's preset of that name gives", () => {
+  it("read a copy of a preset whatever the catalog's preset of that name gives, under other presets", () => {
     const grants = {
       ...at,
-      ct,
+      ct: otherPresets,
       pm: ["match:join"],
       ps: { viewer: [0] },
       nt: { viewer: { a: [[]] } },
     };
-    expect(read(grants, { permission: "match:join" }, MONDAY)).toStrictEqual({
+    expect(read(grants, { permission: "match:join" }, MONDAY)).toMatchObject({
       allowed: true,
       covered: true,
       by: { kind: "assign", value: "viewer", place: "/" },
     });
     expect(read(grants, { permission: "report:read" }, MONDAY).allowed).toBe(false);
+    expect(read({ ...grants, ct }, { permission: "report:read" }, MONDAY).allowed).toBe(true);
   });
 
   it("read a name in no table as the catalog's preset where the grants hold no copies", () => {
@@ -559,7 +594,7 @@ describe("roles, resolved at read from the definitions the grants hold", () => {
     });
   });
 
-  it("read a name in no table as a role that does not exist where the grants hold copies", () => {
+  it("read a name in no table as the catalog's preset where the grants hold copies too", () => {
     const copies = {
       ...at,
       ct,
@@ -567,14 +602,21 @@ describe("roles, resolved at read from the definitions the grants hold", () => {
       sr: { desk: ["viewer"], mixed: ["player", "-viewer"] },
       nt: { desk: { a: [[]] }, viewer: { a: [[]] }, mixed: { a: [[]] }, player: { a: [[]] } },
     };
-    expect(read(copies, { permission: "report:read" }, MONDAY).allowed).toBe(false);
+    expect(read(copies, { permission: "report:read" }, MONDAY).by).toStrictEqual({
+      kind: "assign",
+      value: "desk",
+      place: "/",
+    });
     expect(read(copies, { permission: "chat:send" }, MONDAY).by).toStrictEqual({
       kind: "assign",
       value: "player",
       place: "/",
     });
     const alone = { ...copies, nt: { mixed: { a: [[]] } } };
-    expect(read(alone, { permission: "chat:send" }, MONDAY).allowed).toBe(false);
+    expect(read(alone, { permission: "chat:send" }, MONDAY).by).toMatchObject({ value: "mixed" });
+    expect(read(alone, { permission: "report:list" }, MONDAY).allowed).toBe(false);
+    const missing = { ...copies, sr: { mixed: ["player", "-ghost"] }, nt: { mixed: { a: [[]] } } };
+    expect(read(missing, { permission: "chat:send" }, MONDAY).allowed).toBe(false);
   });
 
   it("read a name in `sr` as that stored role, even where the catalog declares a preset of it", () => {
@@ -647,29 +689,32 @@ describe("grants issued under another catalog", () => {
     { omit: ["presets"], now: () => MONDAY * 1000 },
   );
 
-  it("are refused, naming the presets segment, when they name a preset they hold no copy of", () => {
-    expect(
-      refused(() => read({ ...named, ct: otherPresets }, { permission: "chat:read" }, MONDAY)),
-    ).toMatchObject({
-      code: "ERR_AUTHZ_GRANTS_CATALOG",
-      cause: { segment: "presets" },
-    });
+  it("are read with the catalog's preset where they name one they hold no copy of", () => {
+    expect(read({ ...named, ct: otherPresets }, { permission: "chat:read" }, MONDAY)).toStrictEqual(
+      {
+        allowed: true,
+        covered: true,
+        by: { kind: "assign", value: "player", place: "/" },
+        diverged: { segments: ["presets"], permissions: [], presets: [] },
+      },
+    );
   });
 
-  it("are refused for a preset named only inside a stored role's definition, with or without `-`", () => {
-    for (const entry of ["player", "-player"]) {
+  it("are read with the catalog's preset where a stored role's definition names it, with or without `-`", () => {
+    for (const [entry, allowed] of [
+      ["player", true],
+      ["-player", false],
+    ] as const) {
       const grants = {
         v: "1",
         ct: otherPresets,
         at: MONDAY,
-        pm: ["chat:read"],
+        pm: ["report:list"],
         sr: { desk: [0, entry] },
-        nt: { "0": { a: [[]] } },
+        nt: { desk: { a: [[]] } },
       };
-      expect(refused(() => read(grants, { permission: "chat:read" }, MONDAY))).toMatchObject({
-        code: "ERR_AUTHZ_GRANTS_CATALOG",
-        cause: { segment: "presets" },
-      });
+      expect(read(grants, { permission: "chat:read" }, MONDAY).allowed).toBe(allowed);
+      expect(read(grants, { permission: "report:list" }, MONDAY).allowed).toBe(true);
     }
   });
 
@@ -685,7 +730,7 @@ describe("grants issued under another catalog", () => {
     );
   });
 
-  it("refuse another format and malformed grants before another catalog, and another catalog before the time of issue", () => {
+  it("refuse another format, then a read before issue, then malformed grants, whatever the catalog", () => {
     expect(
       refused(() =>
         read({ ...named, v: "2", ct: otherPresets }, { permission: "chat:read" }, MONDAY),
@@ -699,7 +744,12 @@ describe("grants issued under another catalog", () => {
     expect(
       refused(() => read({ ...named, ct: otherPresets }, { permission: "chat:read" }, MONDAY - 1))
         .code,
-    ).toBe("ERR_AUTHZ_GRANTS_CATALOG");
+    ).toBe("ERR_AUTHZ_GRANTS_EARLY");
+    expect(
+      refused(() =>
+        read({ ...named, ct: otherPresets, nt: [] }, { permission: "chat:read" }, MONDAY - 1),
+      ).code,
+    ).toBe("ERR_AUTHZ_GRANTS_EARLY");
   });
 });
 
@@ -793,12 +843,62 @@ describe("refusals", () => {
     ["a deny with a bundle under a position", { ...valid, nt: { "0": { d: [[null, null, 1]] } } }],
   ];
 
-  it.each(malformed)("refuses %s as malformed", (_, grants) => {
-    expect(refused(() => read(grants, ask, MONDAY))).toMatchObject({
-      code: "ERR_AUTHZ_MALFORMED",
-      cause: { what: "grants" },
-    });
+  const unread = new Set([
+    "`pl` holding the root",
+    "`pl` holding a key in lowercase hex",
+    "a pattern in `pm`",
+    "a permission not in its form in `pm`",
+    "a position in `pm`",
+    "a definition that is not a list",
+    "a role name that is not a token",
+    "an own `__proto__` definition",
+    "a name in both `ps` and `sr`",
+    "a permission by name in a definition",
+    "an excluded permission by name in a definition",
+    "a position past the table",
+    "an excluded position past the table",
+    "a negative position",
+    "a fractional position",
+    "a position as text",
+    "an excluded position with a leading zero",
+    "an entry excluded twice",
+    "`*:*` in a definition",
+    "a position in a definition without `pm`",
+    "`*:*`",
+    "a name of the former `#` rows",
+    "a name out of its form",
+    "a permission by name beside `pm`",
+    "an unknown permission by name beside `pm`",
+    "a position without `pm`",
+    "a position past `pm`",
+    "a position in an empty `pm`",
+    "a position with a leading zero",
+    "a negative position as a name",
+    "a fractional position as a name",
+  ]);
+
+  it.each(malformed)("refuses %s as malformed, checked whole", (_, grants) => {
+    expect(
+      refused(() => assertGrants(catalog, grants, { now: () => MONDAY * 1000 })),
+    ).toMatchObject({ code: "ERR_AUTHZ_MALFORMED", cause: { what: "grants" } });
   });
+
+  it.each(malformed.filter(([name]) => !unread.has(name)))(
+    "refuses %s as malformed, in what the read reads",
+    (_, grants) => {
+      expect(refused(() => read(grants, ask, MONDAY))).toMatchObject({
+        code: "ERR_AUTHZ_MALFORMED",
+        cause: { what: "grants" },
+      });
+    },
+  );
+
+  it.each(malformed.filter(([name]) => unread.has(name)))(
+    "answers past %s, which the read does not read",
+    (_, grants) => {
+      expect(read(grants, ask, MONDAY)).toStrictEqual({ allowed: false, covered: true });
+    },
+  );
 
   it("accepts the largest bundle and the largest end", () => {
     const grants = { ...plain, nt: { "chat:read": { a: [[null, 253402300799, 253402300799]] } } };
@@ -839,12 +939,17 @@ describe("refusals", () => {
     });
   });
 
-  it("refuses a read before issue, once the members are checked", () => {
+  it("refuses a read before issue before the entries are read, and a whole check after them", () => {
     expect(refused(() => read(valid, ask, MONDAY - 1))).toMatchObject({
       code: "ERR_AUTHZ_GRANTS_EARLY",
     });
     expect(refused(() => read({ ...valid, nt: [] }, ask, MONDAY - 1))).toMatchObject({
-      code: "ERR_AUTHZ_MALFORMED",
+      code: "ERR_AUTHZ_GRANTS_EARLY",
     });
+    expect(
+      refused(() =>
+        assertGrants(catalog, { ...valid, nt: [] }, { now: () => (MONDAY - 1) * 1000 }),
+      ),
+    ).toMatchObject({ code: "ERR_AUTHZ_MALFORMED" });
   });
 });

@@ -45,7 +45,8 @@ const ada: CatalogData = {
 /**
  * Grants issued under one catalog and read under another (G8 of the model): what the permissions,
  * implications and structure in force make of what the grants carry, and how presets read as
- * copies or by name.
+ * copies, kept as they were, or by name, read from the catalog in force. No read is refused because
+ * the catalog changed.
  */
 export const catalogScenarios: readonly Scenario[] = [
   {
@@ -206,7 +207,7 @@ export const catalogScenarios: readonly Scenario[] = [
   {
     id: "grants/preset-changed",
     title:
-      "The viewer preset moves from reports to posts: Ada's copies keep reports and say the copy diverged, her grants by name are refused, the statements follow the catalog",
+      "The viewer preset moves from reports to posts: Ada's copies keep reports and say the copy diverged, her grants by name follow the catalog as the statements do",
     proves: ["G8"],
     catalog: presets,
     statements: [assign("ada", "viewer", ACME)],
@@ -226,18 +227,14 @@ export const catalogScenarios: readonly Scenario[] = [
         diverged(["presets"], { presets: ["viewer"] }),
       ),
       read(TUESDAY, "copies", { permission: "post:read", place: ACME }, "denied"),
-      read(
-        TUESDAY,
-        "names",
-        { permission: "report:read", place: ACME },
-        "ERR_AUTHZ_GRANTS_CATALOG",
-        "ERR_AUTHZ_GRANTS_CATALOG",
-      ),
+      read(TUESDAY, "names", { permission: "report:read", place: ACME }, "denied", PRESETS),
+      read(TUESDAY, "names", { permission: "post:read", place: ACME }, "allowed", PRESETS),
       read(
         TUESDAY,
         ["copies", "names"],
         { permission: "report:read", place: ACME },
-        "ERR_AUTHZ_GRANTS_CATALOG",
+        "denied",
+        diverged(["presets"], { presets: ["viewer"] }),
       ),
       ask(TUESDAY, { subject: "ada", permission: "report:read", place: ACME }, "denied", {
         issuedAt: TUESDAY,
@@ -250,7 +247,7 @@ export const catalogScenarios: readonly Scenario[] = [
   {
     id: "grants/preset-removed",
     title:
-      "The viewer preset is removed from the catalog: Ada's copy still reads reports and is reported diverged, her grants by name are refused",
+      "The viewer preset is removed from the catalog: Ada's copy still reads reports and is reported diverged, by name viewer is a role that no longer exists",
     proves: ["G8"],
     catalog: presets,
     statements: [assign("ada", "viewer", ACME)],
@@ -265,12 +262,7 @@ export const catalogScenarios: readonly Scenario[] = [
         "allowed",
         diverged(["presets"], { presets: ["viewer"] }),
       ),
-      read(
-        TUESDAY,
-        "names",
-        { permission: "report:read", place: ACME },
-        "ERR_AUTHZ_GRANTS_CATALOG",
-      ),
+      read(TUESDAY, "names", { permission: "report:read", place: ACME }, "denied", PRESETS),
       ask(TUESDAY, { subject: "ada", permission: "report:read", place: ACME }, "denied", {
         issuedAt: TUESDAY,
       }),
@@ -279,7 +271,7 @@ export const catalogScenarios: readonly Scenario[] = [
   {
     id: "grants/preset-not-held-changed",
     title:
-      "Only the editor preset changes and Bo holds viewer: her copies read on and name no diverged copy, her grants by name are refused all the same",
+      "Only the editor preset changes and Bo holds viewer: her copies and her grants by name read on, and name no diverged role",
     proves: ["G8"],
     catalog: presets,
     statements: [assign("bo", "viewer", ACME)],
@@ -288,14 +280,8 @@ export const catalogScenarios: readonly Scenario[] = [
       issue(MONDAY, "names", "bo", { presets: "names" }),
       deploy({ ...presets, presets: { viewer: ["report:read"], editor: ["report:write"] } }),
       read(TUESDAY, "copies", { permission: "report:read", place: ACME }, "allowed", PRESETS),
-      read(
-        TUESDAY,
-        "names",
-        { permission: "report:read", place: ACME },
-        "ERR_AUTHZ_GRANTS_CATALOG",
-        "ERR_AUTHZ_GRANTS_CATALOG",
-      ),
-      read(TUESDAY, "names", { permission: "post:read", place: ACME }, "ERR_AUTHZ_GRANTS_CATALOG"),
+      read(TUESDAY, "names", { permission: "report:read", place: ACME }, "allowed", PRESETS),
+      read(TUESDAY, "names", { permission: "post:read", place: ACME }, "denied", PRESETS),
     ],
   },
   {
@@ -330,7 +316,7 @@ export const catalogScenarios: readonly Scenario[] = [
   {
     id: "grants/stored-role-references-preset",
     title:
-      "Ada's stored reviewer builds on viewer, which moves from everything readable to posts: the copy keeps reports and is reported, by name the read is refused",
+      "Ada's stored reviewer builds on viewer, which moves from everything readable to posts: the copy keeps reports and is reported, by name she reads posts and no longer reports",
     proves: ["G8", "G4"],
     catalog: ada,
     roles: [{ name: "reviewer", entries: ["viewer", "report:write", "-billing:read"] }],
@@ -350,14 +336,12 @@ export const catalogScenarios: readonly Scenario[] = [
       read(TUESDAY, "copies", { permission: "billing:read", place: ACME }, "denied"),
       read(TUESDAY, "copies", { permission: "billing:read", place: U7 }, "allowed"),
       read(TUESDAY, "copies", { permission: "report:write", place: ACME }, "allowed"),
-      read(
-        TUESDAY,
-        "names",
-        { permission: "report:write", place: ACME },
-        "ERR_AUTHZ_GRANTS_CATALOG",
-        "ERR_AUTHZ_GRANTS_CATALOG",
-      ),
+      read(TUESDAY, "names", { permission: "report:write", place: ACME }, "allowed", PRESETS),
+      read(TUESDAY, "names", { permission: "report:read", place: ACME }, "denied", PRESETS),
+      read(TUESDAY, "names", { permission: "post:read", place: ACME }, "allowed"),
+      read(TUESDAY, "names", { permission: "billing:read", place: ACME }, "denied"),
       ask(TUESDAY, { subject: "ada", permission: "report:read", place: ACME }, "denied"),
+      ask(TUESDAY, { subject: "ada", permission: "post:read", place: ACME }, "allowed"),
     ],
   },
   {
@@ -378,7 +362,7 @@ export const catalogScenarios: readonly Scenario[] = [
   {
     id: "grants/stored-role-named-like-preset-not-carried",
     title:
-      "Fay's stored role shares the name of the viewer preset, which is later removed: her grants carried the preset, never the stored role",
+      "Fay's stored role shares the name of the viewer preset, which is later removed: her grants carried the preset, never the stored role, so by name viewer no longer exists for them",
     proves: ["G8", "G9"],
     catalog: { ...presets, presets: { viewer: ["report:read"] } },
     roles: [{ name: "viewer", entries: ["report:write"] }],
@@ -397,12 +381,8 @@ export const catalogScenarios: readonly Scenario[] = [
         diverged(["presets"], { presets: ["viewer"] }),
       ),
       read(TUESDAY, "copies", { permission: "report:write", place: ACME }, "denied"),
-      read(
-        TUESDAY,
-        "names",
-        { permission: "report:write", place: ACME },
-        "ERR_AUTHZ_GRANTS_CATALOG",
-      ),
+      read(TUESDAY, "names", { permission: "report:write", place: ACME }, "denied", PRESETS),
+      read(TUESDAY, "names", { permission: "report:read", place: ACME }, "denied", PRESETS),
       ask(TUESDAY, { subject: "fay", permission: "report:write", place: ACME }, "allowed"),
     ],
   },

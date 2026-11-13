@@ -1,7 +1,7 @@
 import { compiledOf } from "./_internal/compile.ts";
 import { errorOf } from "./_internal/issues/issue.ts";
 import { roleIssues } from "./_internal/issues/role.ts";
-import { roleReader } from "./_internal/roles.ts";
+import { indexRoles, roleReader } from "./_internal/roles.ts";
 import { statementIssues } from "./_internal/issues/statement.ts";
 import { clockSeconds } from "./_internal/time.ts";
 import type { Catalog } from "./catalog.ts";
@@ -103,8 +103,7 @@ export function validateRole(
   options?: ValidateRoleOptions,
 ): ValidationIssue[] {
   const compiled = compiledOf(catalog);
-  roleReader(compiled, options?.roles);
-  return roleIssues(compiled, value, options?.roles ?? []);
+  return roleIssues(compiled, value, indexRoles(options?.roles));
 }
 
 /**

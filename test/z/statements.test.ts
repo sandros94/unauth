@@ -1,19 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { compiledOf } from "../../src/z/_internal/compile.ts";
-import { readStatement, readStatements } from "../../src/z/_internal/statements.ts";
-import { defineCatalog } from "../../src/z/catalog.ts";
+import { readWrittenStatements } from "../../src/z/_internal/statements.ts";
 import type { Statement } from "../../src/z/types.ts";
 import { refused } from "./_expect.ts";
 
-const catalog = defineCatalog({
-  permissions: ["report:read", "report:write", "access:manage"],
-  presets: { viewer: ["report:read"] },
-  places: { "/": ["org"], "org": ["unit"] },
-});
-const compiled = compiledOf(catalog);
-const read = (statement: unknown) => readStatement(compiled, statement);
+const read = (statement: unknown) => readWrittenStatements([statement])[0];
 
-describe("readStatement", () => {
+describe("readWrittenStatements", () => {
   it("reads an absent place as the root and keeps the object handed in", () => {
     const row = { kind: "allow", subject: "alice", value: "report:read", id: 7 } as Statement;
     expect(read(row)).toEqual({
@@ -74,43 +66,25 @@ describe("readStatement", () => {
     }
   });
 
-  it("keeps out, silently, a statement that names nothing declared or sits outside the structure", () => {
-    expect(read({ kind: "allow", subject: "a", value: "invoice:read" })).toBeUndefined();
-    expect(read({ kind: "deny", subject: "a", value: "invoice:*" })).toBeUndefined();
-    expect(read({ kind: "exclude", subject: "a", value: "*:delete" })).toBeUndefined();
-    expect(
-      read({ kind: "allow", subject: "a", value: "report:read", place: "/unit=u7" }),
-    ).toBeUndefined();
-  });
-
-  it("never drops an assignment for its role, which only its place resolves", () => {
-    expect(read({ kind: "assign", subject: "a", value: "deleted" })).toMatchObject({
-      value: "deleted",
-    });
+  it("keeps, as written, a statement that names nothing declared or sits outside the structure", () => {
+    const rows: Statement[] = [
+      { kind: "allow", subject: "a", value: "invoice:read" },
+      { kind: "allow", subject: "a", value: "report:read", place: "/unit=u7" },
+      { kind: "assign", subject: "a", value: "deleted" },
+    ];
+    expect(readWrittenStatements(rows).map((statement) => statement.source)).toEqual(rows);
   });
 });
 
-describe("readStatements", () => {
-  it("reads in order, leaving inert statements out", () => {
-    const rows: Statement[] = [
-      { kind: "allow", subject: "a", value: "report:read" },
-      { kind: "allow", subject: "a", value: "gone:read" },
-      { kind: "assign", subject: "b", value: "viewer", place: "/org=acme" },
-    ];
-    expect(readStatements(compiled, rows).map((statement) => statement.source)).toEqual([
-      rows[0],
-      rows[2],
-    ]);
-  });
-
+describe("readWrittenStatements, of a list", () => {
   it("refuses a value that is not a list, and any malformed item", () => {
-    expect(refused(() => readStatements(compiled, { kind: "allow" }))).toMatchObject({
+    expect(refused(() => readWrittenStatements({ kind: "allow" }))).toMatchObject({
       code: "ERR_AUTHZ_MALFORMED",
       cause: { what: "statement" },
     });
     expect(
       refused(() =>
-        readStatements(compiled, [{ kind: "allow", subject: "a", value: "report:read" }, null]),
+        readWrittenStatements([{ kind: "allow", subject: "a", value: "report:read" }, null]),
       ),
     ).toMatchObject({ code: "ERR_AUTHZ_MALFORMED", cause: { what: "statement", value: null } });
   });

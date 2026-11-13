@@ -49,7 +49,7 @@ describe("grants handed over as a carrier holds them", () => {
     );
   });
 
-  it("are still checked whole before any read", () => {
+  it("are refused for what a read reads that is not in its form", () => {
     const broken = carried({ ...issued, nt: [] });
     const question = { permission: "report:read" } as const;
     expect(refused(() => could(catalog, broken, question, { now })).code).toBe(
@@ -99,15 +99,13 @@ describe("assertGrants", () => {
     );
   });
 
-  it("throws `ERR_AUTHZ_GRANTS_CATALOG` for grants naming a preset by name, issued under other presets", () => {
-    const stale = issueGrants(
+  it("accepts grants naming a preset by name, issued under other presets", () => {
+    const named = issueGrants(
       other,
       { subject: "ann", statements: [{ kind: "assign", subject: "ann", value: "viewer" }] },
       { omit: ["presets"], now },
     );
-    expect(refused(() => assertGrants(catalog, carried(stale), { now })).code).toBe(
-      "ERR_AUTHZ_GRANTS_CATALOG",
-    );
+    expect(() => assertGrants(catalog, carried(named), { now })).not.toThrow();
   });
 
   it("throws `ERR_AUTHZ_GRANTS_EARLY` when the clock reads before their issue", () => {
@@ -123,7 +121,6 @@ describe("assertGrants", () => {
       { ...issued, v: "2", nt: [] },
       { ...issued, ct: "other", nt: [] },
       { ...issued, ct: 7 },
-      { ...issued, ct: `${issued.ct.slice(0, 12)}AAAAAAAAAAA`, nt: { viewer: { a: [[]] } } },
       { ...issued, nt: { "report:read": { a: [[0]], z: [] } } },
       { ...issued, nt: { "report:read": { a: [[1]] } } },
       { ...issued, nt: { "report:read": { a: [[null, null, 0]] } } },
