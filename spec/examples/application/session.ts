@@ -2,7 +2,6 @@ import { type H3Event, HTTPError } from "h3";
 import { isUnauthError } from "unauth/error";
 import { type OpaqueSession, defineOpaqueSession } from "unauth/session";
 import type { Authz, Grants } from "unauth/z";
-import { assertGrants } from "unauth/z";
 import { type SessionData, sqliteSessionStore } from "../storage/sessions.ts";
 import { useDB } from "./db.ts";
 
@@ -16,7 +15,7 @@ export type GrantsOf = (subject: string, bases?: readonly string[]) => Grants;
 
 export interface SignedIn {
   subject: string;
-  grants?: Grants;
+  grants?: unknown;
 }
 
 const sessions = defineOpaqueSession<SessionData, H3Event>({
@@ -42,11 +41,10 @@ export async function findAuthSession(event: H3Event, authz: Authz): Promise<Sig
   const { subject, grants } = data;
   if (grants === undefined) return { subject };
   try {
-    assertGrants(authz.catalog, grants);
     if (!authz.diverged(grants)?.presets.length) return { subject, grants };
   } catch (error) {
-    if (!isUnauthError(error) || !error.code.startsWith("ERR_AUTHZ_")) throw error;
-    if (error.code !== "ERR_AUTHZ_GRANTS_CATALOG") return undefined;
+    if (isUnauthError(error) && error.code.startsWith("ERR_AUTHZ_")) return undefined;
+    throw error;
   }
   const grantsOf = event.context.grantsOf;
   if (grantsOf === undefined) throw new Error("The application issues no grants.");

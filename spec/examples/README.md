@@ -4,7 +4,7 @@ Reference platforms built on `unauth/z` the way a downstream application builds 
 
 ## Layout
 
-- `application/`: the wiring every platform shares: the database on the request, the session, sign-in, the guard, the checks before a write. The application decides in `session.ts`, where grants leave the session: grants holding a preset that is no longer the catalog's, or refused for another catalog, are issued again with the function the platform hands to `createApp`, and saved in the session.
+- `application/`: the wiring every platform shares: the database on the request, the session, sign-in, the guard, the checks before a write. The application decides in `session.ts`, where grants leave the session: grants holding a preset that is no longer the catalog's are issued again with the function the platform hands to `createApp`, and saved in the session.
 - `storage/`: the tables every platform keeps and the SQL over them. `statements.ts` reads what a question or an issue of grants needs, in one query. `ask.ts` answers a question inside SQL.
 - `platforms/<name>/`: one platform. Its catalog (`authz.ts`), its own tables and rules, its routes, its seed data, and `walkthrough.ts`, which calls the application and asserts the responses the platform documents.
 - `platforms/client.ts`: how a walkthrough calls an application.
