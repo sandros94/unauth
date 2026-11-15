@@ -5,6 +5,7 @@
 export type KnownUnauthErrorCode =
   | "ERR_UNAUTH_CONFIG_INVALID" // a configuration that cannot work
   // session (`unauth/session`)
+  | "ERR_SESSION_INVALID" // `use()` got an event the driver does not take, or a token does not fit its cookies
   | "ERR_SESSION_TOKEN_INVALID" // the request's session token names no live session, or its session header holds no token
   | "ERR_SESSION_READONLY_EVENT" // the session cannot change: the event has no response, or it was already sent
   | "ERR_SESSION_NONE" // the request has no session to rotate

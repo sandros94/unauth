@@ -69,8 +69,9 @@ const kOpaqueSessions: unique symbol = Symbol("unauth_opaque_sessions");
 /**
  * The request's session, claimed under its name on the first call, the same object after. No
  * store call happens here: the token is read from the request, nothing else.
- * @throws `ERR_UNAUTH_CONFIG_INVALID` if another kind of session uses the name on this request, the
- * event is not one the driver takes, or a request event has no token source.
+ * @throws `ERR_SESSION_INVALID` if the event is not one the driver takes.
+ * @throws `ERR_UNAUTH_CONFIG_INVALID` if another kind of session uses the name on this request, or
+ * a request event has no token source.
  */
 export function bindSession<TData extends object, TEvent>(
   driver: SessionDriver<TEvent>,
@@ -122,7 +123,9 @@ function sessionOf<TData extends object>(
     binding.error = undefined;
   };
   const deliver = (next: string, record: OpaqueSessionRecord<TData>) => {
-    transport.write?.(next, { expiresAt: absoluteEndOf(settings, record.createdAt) });
+    unjwtRethrown(() =>
+      transport.write?.(next, { expiresAt: absoluteEndOf(settings, record.createdAt) }),
+    );
     binding.issued = next;
     binding.cleared = false;
   };

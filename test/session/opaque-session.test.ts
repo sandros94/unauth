@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
+import { isJWTError } from "unjwt/error";
 import {
   type JWK_oct,
   type WebSessionEvent,
@@ -341,7 +342,11 @@ describe("defineOpaqueSession", () => {
     const session = handed.use({ token });
     expect(session.source).toBe("token");
     expect((await session.record).data).toEqual({ userId: "u1" });
-    expect(() => handed.use(request())).toThrow(/token source/);
+    const sourceless = caught(() => handed.use(request()));
+    expect(isUnauthError(sourceless, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
+    expect(
+      isUnauthError(sourceless) && isJWTError(sourceless.cause, "ERR_SESSION_CONFIG_INVALID"),
+    ).toBe(true);
 
     const bearer = defineOpaqueSession<Data>({
       store,
@@ -429,8 +434,18 @@ describe("defineOpaqueSession", () => {
   it("refuses an event the driver does not take, and a name another kind of session bound", async () => {
     const { store } = counted();
     const sessions = defineOpaqueSession<Data>({ store, maxAge: "1h" });
-    // @ts-expect-error -- neither a request event nor a token
-    expect(() => sessions.use({})).toThrow(/^\[unauth\/session\]/);
+    const unusable = [
+      // @ts-expect-error -- neither a request event nor a token
+      caught(() => sessions.use({})),
+      // @ts-expect-error -- `req` is not a web Request
+      caught(() => sessions.use({ req: { headers: {} } })),
+    ];
+    for (const refused of unusable) {
+      expect(isUnauthError(refused, "ERR_SESSION_INVALID")).toBe(true);
+      expect(isUnauthError(refused) && refused.status).toBe(500);
+      expect(isUnauthError(refused) && refused.message).toMatch(/^\[unauth\/session\]/);
+      expect(isUnauthError(refused) && isJWTError(refused.cause, "ERR_SESSION_INVALID")).toBe(true);
+    }
     const key: JWK_oct<"HS256"> = await generateJWK("HS256");
     const jws = defineJWSSession({ key, name: "__Host-unauth" });
     const event = request();
@@ -438,6 +453,19 @@ describe("defineOpaqueSession", () => {
     const thrown = caught(() => sessions.use(event));
     expect(isUnauthError(thrown, "ERR_UNAUTH_CONFIG_INVALID")).toBe(true);
     expect(isUnauthError(thrown) && thrown.message).toMatch(/JWS/);
+  });
+
+  it("refuses a token that does not fit its cookies", async () => {
+    const { store } = counted();
+    const tight = defineOpaqueSession<Data>({ store, bytes: 384, cookie: { chunkMaxLength: 16 } });
+    const thrown = await tight
+      .use(request())
+      .update({ userId: "u1" })
+      .catch((error: unknown) => error);
+    expect(isUnauthError(thrown, "ERR_SESSION_INVALID")).toBe(true);
+    expect(isUnauthError(thrown) && thrown.status).toBe(500);
+    expect(isUnauthError(thrown) && thrown.message).toMatch(/^\[unauth\/session\]/);
+    expect(isUnauthError(thrown) && isJWTError(thrown.cause, "ERR_SESSION_INVALID")).toBe(true);
   });
 
   it("mints ids with the config's generator, refusing an empty one", async () => {

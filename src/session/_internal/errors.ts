@@ -21,18 +21,18 @@ export function noSessionError(prefix: string): UnauthError<"ERR_SESSION_NONE"> 
 
 /**
  * What `run` returns; a JWTError of unjwt's session helpers, already prefixed, becomes the
- * `UnauthError` of the same meaning: `ERR_SESSION_READONLY_EVENT` as it is, a config refusal as
- * `ERR_UNAUTH_CONFIG_INVALID`, unjwt's error as `cause`.
+ * `UnauthError` of the same meaning: `ERR_SESSION_INVALID` and `ERR_SESSION_READONLY_EVENT` as
+ * they are, a config refusal as `ERR_UNAUTH_CONFIG_INVALID`, unjwt's error as `cause`.
  */
 export function unjwtRethrown<T>(run: () => T): T {
   try {
     return run();
   } catch (error) {
-    if (isJWTError(error, "ERR_SESSION_READONLY_EVENT")) {
-      throw new UnauthError(error.message, "ERR_SESSION_READONLY_EVENT", {
-        status: 500,
-        cause: error,
-      });
+    if (
+      isJWTError(error, "ERR_SESSION_INVALID") ||
+      isJWTError(error, "ERR_SESSION_READONLY_EVENT")
+    ) {
+      throw new UnauthError(error.message, error.code, { status: 500, cause: error });
     }
     if (
       isJWTError(error, "ERR_SESSION_CONFIG_INVALID") ||

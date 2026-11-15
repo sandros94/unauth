@@ -54,8 +54,9 @@ export interface OpaqueSessionConfig<TData, TEvent = WebSessionEvent> {
   /**
    * Cookie attributes over unjwt's `DEFAULT_SESSION_COOKIE`, or `false` for no cookie: with no
    * `sessionHeader` either, the session lives in tokens in hand alone (`issue()`, `use({ token })`).
+   * `chunkMaxLength` is the size the token is split at (`4000` when unset).
    */
-  cookie?: false | CookieAttributes;
+  cookie?: false | (CookieAttributes & { chunkMaxLength?: number });
   /** Random bytes per token, 16 to 384. @default 32 */
   bytes?: number;
   /**
@@ -120,6 +121,7 @@ export interface OpaqueSession<TData extends object> {
    * token in the cookie (or on `token`); an empty `update` creates nothing, so a visitor who never
    * signs in never gets a record. Returns the record after, `undefined` when nothing was created.
    * @throws `ERR_SESSION_READONLY_EVENT` if a `"cookie"` session has no response, or it was sent.
+   * @throws `ERR_SESSION_INVALID` if a new token does not fit its cookies (`cookie.chunkMaxLength`).
    * @throws `TypeError` if `update` is not a plain object, or a function returning one or `undefined`.
    */
   update(update: OpaqueSessionUpdate<TData>): Promise<OpaqueSessionRecord<TData> | undefined>;
@@ -129,6 +131,7 @@ export interface OpaqueSession<TData extends object> {
    * the record as written.
    * @throws `ERR_SESSION_NONE` without a live session.
    * @throws `ERR_SESSION_READONLY_EVENT` if a `"cookie"` session has no response, or it was sent.
+   * @throws `ERR_SESSION_INVALID` if the new token does not fit its cookies (`cookie.chunkMaxLength`).
    */
   rotate(): Promise<OpaqueSessionRecord<TData>>;
   /**
@@ -144,9 +147,9 @@ export interface OpaqueSessionDefinition<TData extends object, TEvent = WebSessi
   /**
    * The request's session, without touching the store: the token is read from the request, the
    * rest waits for `record` or a write. Later calls on the same request return the same object.
+   * @throws `ERR_SESSION_INVALID` if the event is not one the driver takes.
    * @throws `ERR_UNAUTH_CONFIG_INVALID` if a session of another kind uses the name on this request,
-   * the event is not one the driver takes, or a request event has no token source to read
-   * (`cookie: false` without `sessionHeader`).
+   * or a request event has no token source to read (`cookie: false` without `sessionHeader`).
    */
   use(event: TEvent): OpaqueSession<TData>;
   /** A token for a new session over `data`, with the lifetimes of the config. Reads and writes no request. */
