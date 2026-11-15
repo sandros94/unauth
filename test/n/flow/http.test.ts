@@ -95,7 +95,9 @@ describe("getJson", () => {
 
     const error = await rejection(getJson(URL_, { fetch, label: "document", timeout: 20 }));
 
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
     expect((error as Error).message).toMatch(/did not answer within 20 ms/);
+    expect((error as Error).cause).toMatchObject({ reason: "timeout" });
   });
 
   it("refuses an oversized body streamed without a length", async () => {
@@ -147,6 +149,7 @@ describe("getJson", () => {
 
     const error = await rejection(getJson(URL_, { fetch, label: "document" }));
 
+    expect(isUnauthError(error, "ERR_AUTHN_PROVIDER_ERROR")).toBe(true);
     expect((error as Error).message).toMatch(/answered 503/);
     expect((error as Error).cause).toEqual({ reason: "status", status: 503 });
   });

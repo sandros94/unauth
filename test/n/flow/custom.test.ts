@@ -237,7 +237,12 @@ describe("a custom provider", () => {
     expect(() =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the shape under test
       defineProvider({ id: "custom", kind: "custom", start: async () => ({ url: "" }) } as never),
-    ).toThrow(/"start" and "complete"/);
+    ).toThrow(
+      expect.objectContaining({
+        code: "ERR_UNAUTH_CONFIG_INVALID",
+        message: expect.stringMatching(/"start" and "complete"/),
+      }),
+    );
   });
 });
 
@@ -319,6 +324,11 @@ describe("a custom provider's isCallback", () => {
         start: async () => ({ url: IDP }),
         complete: async () => ({ identity: { subject: "x", profile: {} } }),
       }),
-    ).toThrow(/"isCallback"/);
+    ).toThrow(
+      expect.objectContaining({
+        code: "ERR_UNAUTH_CONFIG_INVALID",
+        message: expect.stringMatching(/"isCallback"/),
+      }),
+    );
   });
 });

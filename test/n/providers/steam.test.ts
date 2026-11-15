@@ -401,7 +401,12 @@ describe("defineSteamProvider", () => {
   });
 
   it("refuses an empty apiKey", () => {
-    expect(() => defineSteamProvider({ apiKey: "" })).toThrow(/apiKey/);
+    expect(() => defineSteamProvider({ apiKey: "" })).toThrow(
+      expect.objectContaining({
+        code: "ERR_UNAUTH_CONFIG_INVALID",
+        message: expect.stringMatching(/apiKey/),
+      }),
+    );
   });
 
   it("has a handler", () => {

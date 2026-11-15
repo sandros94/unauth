@@ -751,43 +751,48 @@ describe("the client", () => {
   });
 
   it("refuses the configurations that cannot work", () => {
+    const refusal = (message: RegExp): unknown =>
+      expect.objectContaining({
+        code: "ERR_UNAUTH_CONFIG_INVALID",
+        message: expect.stringMatching(message),
+      });
     expect(() => defineAtprotoProvider({ redirectUri: REDIRECT_URI })).toThrow(
-      /development client/,
+      refusal(/development client/),
     );
     expect(() =>
       defineAtprotoProvider({
         clientId: "https://app.test:8443/m.json",
         redirectUri: REDIRECT_URI,
       }),
-    ).toThrow(/without a port/);
+    ).toThrow(refusal(/without a port/));
     expect(() =>
       defineAtprotoProvider({
         clientId: CLIENT_ID,
         redirectUri: "http://127.0.0.1:3000/auth/atproto",
       }),
-    ).toThrow(/must be https:/);
+    ).toThrow(refusal(/must be https:/));
     expect(() =>
       defineAtprotoProvider({ redirectUri: "http://localhost:3000/auth/atproto" }),
-    ).toThrow(/"devOrigins"/);
+    ).toThrow(refusal(/"devOrigins"/));
     expect(() =>
       defineAtprotoProvider({
         redirectUri: "http://localhost:3000/auth/atproto",
         devOrigins: ["http://localhost:4000"],
       }),
-    ).toThrow(/"devOrigins"/);
+    ).toThrow(refusal(/"devOrigins"/));
     expect(() =>
       defineAtprotoProvider({
         redirectUri: "http://localhost:3000/auth/atproto",
         devOrigins: ["localhost"],
       }),
-    ).toThrow(/must be origins/);
+    ).toThrow(refusal(/must be origins/));
     expect(() =>
       defineAtprotoProvider({
         clientId: "http://dev.test/m.json",
         redirectUri: "http://127.0.0.1:3000/auth/atproto",
       }),
-    ).toThrow(/https:/);
-    expect(() => provider({ scopes: ["transition:generic"] })).toThrow(/"atproto" scope/);
+    ).toThrow(refusal(/https:/));
+    expect(() => provider({ scopes: ["transition:generic"] })).toThrow(refusal(/"atproto" scope/));
   });
 
   it("moves a start on a devOrigins origin to the callback's host, recording the flow where it left", async () => {
