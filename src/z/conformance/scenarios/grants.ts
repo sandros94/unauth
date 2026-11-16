@@ -129,14 +129,14 @@ export const grantsScenarios: readonly Scenario[] = [
         MONDAY + HOUR - 1,
         "kim-a",
         { permission: "report:read", place: ACME },
-        "ERR_AUTHZ_GRANTS_EARLY",
+        "ERR_AUTHZ_GRANTS_FUTURE",
       ),
       issue(MONDAY + 2 * HOUR, "kim-b", "kim", { bases: [ACME] }),
       read(
         MONDAY + 2 * HOUR - 1,
         ["kim-a", "kim-b"],
         { permission: "report:read", place: ACME },
-        "ERR_AUTHZ_GRANTS_EARLY",
+        "ERR_AUTHZ_GRANTS_FUTURE",
       ),
       read(
         MONDAY + 2 * HOUR,

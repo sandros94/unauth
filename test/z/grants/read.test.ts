@@ -156,7 +156,7 @@ describe("time passing", () => {
   it("reads at the second of issue, and refuses a second before", () => {
     expect(read(grants, join, MONDAY).allowed).toBe(false);
     expect(refused(() => read(grants, join, MONDAY - 1))).toMatchObject({
-      code: "ERR_AUTHZ_GRANTS_EARLY",
+      code: "ERR_AUTHZ_GRANTS_FUTURE",
     });
   });
 });
@@ -271,7 +271,7 @@ describe("bases", () => {
       refused(() =>
         read([platform, later], { permission: "report:read", place: "/server=s1" }, MONDAY),
       ),
-    ).toMatchObject({ code: "ERR_AUTHZ_GRANTS_EARLY" });
+    ).toMatchObject({ code: "ERR_AUTHZ_GRANTS_FUTURE" });
     const unfit = { ...named, bs: ["/org=acme/"] };
     expect(
       refused(() =>
@@ -744,12 +744,12 @@ describe("grants issued under another catalog", () => {
     expect(
       refused(() => read({ ...named, ct: otherPresets }, { permission: "chat:read" }, MONDAY - 1))
         .code,
-    ).toBe("ERR_AUTHZ_GRANTS_EARLY");
+    ).toBe("ERR_AUTHZ_GRANTS_FUTURE");
     expect(
       refused(() =>
         read({ ...named, ct: otherPresets, nt: [] }, { permission: "chat:read" }, MONDAY - 1),
       ).code,
-    ).toBe("ERR_AUTHZ_GRANTS_EARLY");
+    ).toBe("ERR_AUTHZ_GRANTS_FUTURE");
   });
 });
 
@@ -941,10 +941,10 @@ describe("refusals", () => {
 
   it("refuses a read before issue before the entries are read, and a whole check after them", () => {
     expect(refused(() => read(valid, ask, MONDAY - 1))).toMatchObject({
-      code: "ERR_AUTHZ_GRANTS_EARLY",
+      code: "ERR_AUTHZ_GRANTS_FUTURE",
     });
     expect(refused(() => read({ ...valid, nt: [] }, ask, MONDAY - 1))).toMatchObject({
-      code: "ERR_AUTHZ_GRANTS_EARLY",
+      code: "ERR_AUTHZ_GRANTS_FUTURE",
     });
     expect(
       refused(() =>

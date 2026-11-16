@@ -243,13 +243,84 @@ describe("a read of grants looks only where its question looks (Section 8.3)", (
 
   it("refuses the time of issue before entries it would read", () => {
     expect(refused(() => read({ ...lea, nt: [] }, send, MONDAY - 1))).toMatchObject({
-      code: "ERR_AUTHZ_GRANTS_EARLY",
+      code: "ERR_AUTHZ_GRANTS_FUTURE",
     });
     expect(
       refused(() => assertGrants(catalog, { ...lea, nt: [] }, { now: () => (MONDAY - 1) * 1000 })),
     ).toMatchObject({
       code: "ERR_AUTHZ_MALFORMED",
     });
+  });
+});
+
+describe("the place an item it reads points at, refused when it is not text (Section 8.3)", () => {
+  const slots: [string, unknown][] = [
+    ["`null`", null],
+    ["a number", 7],
+    ["an object", { org: "acme" }],
+  ];
+  const items: [string, Record<string, unknown>][] = [
+    ["a deny", { "0": { d: [[2]] } }],
+    ["an allow", { "0": { a: [[2]] } }],
+    ["an exclusion", { "0": { x: [[2]] } }],
+    ["an ended allow", { "0": { a: [[2, MONDAY]] } }],
+    ["a second assignment of the role that allows", { desk: { a: [[0], [2]] } }],
+  ];
+  const cases = items.flatMap(([item, entries]) =>
+    slots.map(([slot, value]) => [item, slot, entries, value] as const),
+  );
+
+  it("refuses a deny at a `null` slot that would otherwise be passed over", () => {
+    const reading = defineCatalog({ permissions: ["post:read"], places: { "/": ["org"] } });
+    const grants = {
+      v: "1",
+      ct: reading.fingerprint,
+      at: MONDAY,
+      pl: [null],
+      nt: { "post:read": { a: [[]], d: [[0]] } },
+    };
+    const run = () =>
+      could(
+        reading,
+        grants,
+        { permission: "post:read", place: ACME },
+        { now: () => MONDAY * 1000 },
+      );
+    const error = refused(run);
+    expect(error.code).toBe("ERR_AUTHZ_MALFORMED");
+    expect(error.cause).toStrictEqual({ what: "grants", value: null });
+  });
+
+  it.each(cases)("refuses %s pointing at a slot holding %s", (_, __, entries, value) => {
+    const grants = { ...lea, pl: [S1, ACME, value], nt: { ...lea.nt, ...entries } };
+    for (const run of [() => read(grants, send), () => assertGrants(catalog, grants, { now })]) {
+      const error = refused(run);
+      expect(error.code).toBe("ERR_AUTHZ_MALFORMED");
+      expect(error.cause).toStrictEqual({ what: "grants", value });
+    }
+  });
+
+  it.each(slots)(
+    "answers when no item of an entry it looks up points at a slot holding %s, refused whole",
+    (_, value) => {
+      for (const grants of [
+        { ...lea, pl: [S1, ACME, value] },
+        { ...lea, pl: [S1, ACME, value], nt: { ...lea.nt, "2": { a: [[1], [2]] } } },
+      ]) {
+        expect(read(grants, send)).toStrictEqual(answer);
+        const error = refused(() => assertGrants(catalog, grants, { now }));
+        expect(error.code).toBe("ERR_AUTHZ_MALFORMED");
+        expect(error.cause).toStrictEqual({ what: "grants", value });
+      }
+    },
+  );
+
+  it("still passes over a place in another spelling, refused whole", () => {
+    const grants = { ...lea, pl: [S1, ACME, "/server=s1/"], nt: { ...lea.nt, "0": { d: [[2]] } } };
+    expect(read(grants, send)).toStrictEqual(answer);
+    const error = refused(() => assertGrants(catalog, grants, { now }));
+    expect(error.code).toBe("ERR_AUTHZ_MALFORMED");
+    expect(error.cause).toStrictEqual({ what: "grants", value: "/server=s1/" });
   });
 });
 

@@ -30,7 +30,10 @@ import type {
  * The runner plays the application: for each call it hands the engine the statements about the
  * subject and its groups, once all of them and once only those the call needs, and both answers
  * must be the one the step expects. A `hand` step hands exactly the statements it lists. Every
- * grants object the engine issues must validate whole.
+ * grants object the engine issues must validate whole. A `read` step gives the engine the clock tolerance
+ * it states as `clockTolerance`, and a step that states none gives no `clockTolerance` at all, so an
+ * engine that applies one of its own fails. No other call is given one, not even the read of the
+ * grants an `ask` or a `hand` step issues on the side.
  *
  * @throws an `Error` whose `cause` is a `ConformanceFailure` at the first wrong answer.
  */
@@ -152,8 +155,9 @@ export function runPlaceCase(engine: Engine, placeCase: PlaceCase): void {
 /**
  * Reads grants written by hand under the case's catalog, each `"$ct"` replaced with the
  * fingerprint of the catalog they were issued under, and checks the answer and what is told has
- * diverged, then validates them whole. Grants a read refuses for their revision or their time must
- * be refused by `diverged` alone too.
+ * diverged, then validates them whole, each with the clock tolerance the case states as `clockTolerance`,
+ * none when it states none. Grants a read refuses for their revision or their time must be refused by
+ * `diverged` alone too.
  *
  * @throws an `Error` whose `cause` is a `ConformanceFailure` on a wrong answer.
  */
@@ -171,7 +175,8 @@ export function runGrantsCase(engine: Engine, grantsCase: GrantsCase): void {
   expectRead(engine, context, { ...grantsCase, catalog, grants }, grantsCase, GRANTS_REFUSALS);
   const whole =
     grantsCase.whole ?? (WHOLE_REFUSALS.includes(grantsCase.expect) ? grantsCase.expect : "valid");
-  expectWhole(engine, context, { catalog, grants, at: grantsCase.at }, whole);
+  const { at, clockTolerance } = grantsCase;
+  expectWhole(engine, context, { catalog, grants, at, clockTolerance }, whole);
 }
 
 /**

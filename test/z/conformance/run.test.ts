@@ -4,7 +4,13 @@ import { type KnownUnauthErrorCode, UnauthError } from "../../../src/error.ts";
 import type { Catalog, CatalogData } from "../../../src/z/catalog.ts";
 import type { Statement, StoredRole } from "../../../src/z/types.ts";
 import { cases } from "../../../src/z/conformance/cases.ts";
-import type { Diverged, Engine, Issue, Question } from "../../../src/z/conformance/engine.ts";
+import type {
+  Diverged,
+  Engine,
+  GrantsReadOptions,
+  Issue,
+  Question,
+} from "../../../src/z/conformance/engine.ts";
 import {
   runCatalogCase,
   runConformance,
@@ -19,6 +25,7 @@ import type {
   ConformanceFailure,
   ExpectedIssue,
   GrantsCase,
+  ReadStep,
   RoleCase,
   Scenario,
   StatementCase,
@@ -94,7 +101,7 @@ const scenario: Scenario = {
       at: MONDAY + 179,
       grants: ["bob"],
       question: { permission: "doc:read", place: "/org=acme" },
-      expect: "ERR_AUTHZ_GRANTS_EARLY",
+      expect: "ERR_AUTHZ_GRANTS_FUTURE",
     },
     {
       step: "write",
@@ -136,7 +143,7 @@ const fake: Engine = {
     return { data, fingerprint: `fp:${data.permissions.join(",")}` };
   },
   ask: (catalog, read, question, options) => {
-    const allowed = fakeDecide(catalog, question, read.statements, seconds(options?.now));
+    const allowed = fakeDecide(catalog, question, read.statements, seconds(options?.now), 0);
     return { allowed, covered: true };
   },
   issueGrants: (catalog, read, options) => {
@@ -144,7 +151,7 @@ const fake: Engine = {
     const fid = `g${issued.size}`;
     issued.set(
       fid,
-      read.statements.filter((statement) => live(statement, at)),
+      read.statements.filter((statement) => live(statement, at, 0)),
     );
     const grants: Record<string, unknown> = { v: "1", ct: catalog.fingerprint, at, nt: {}, fid };
     if (options?.bases !== undefined) grants.bs = [...options.bases];
@@ -152,18 +159,20 @@ const fake: Engine = {
   },
   could: (catalog, grants, question, options) => {
     const at = seconds(options?.now);
+    const clockTolerance = tolerance(options?.clockTolerance);
     const sets: unknown[] = Array.isArray(grants) ? grants : [grants];
     const answers: boolean[] = [];
     for (const set of sets) {
       if (!isRecord(set)) refuse("ERR_AUTHZ_MALFORMED");
       if (set.v !== "1") refuse("ERR_AUTHZ_GRANTS_FORMAT");
-      if (typeof set.at !== "number" || at < set.at) refuse("ERR_AUTHZ_GRANTS_EARLY");
+      if (typeof set.at !== "number" || at + clockTolerance < set.at)
+        refuse("ERR_AUTHZ_GRANTS_FUTURE");
       const place = question.place ?? "/";
       const bases = Array.isArray(set.bs) ? (set.bs as string[]) : undefined;
       if (bases !== undefined && !bases.some((base) => covers(base, place))) continue;
       const kept = typeof set.fid === "string" ? issued.get(set.fid) : undefined;
       if (kept === undefined) refuse("ERR_AUTHZ_MALFORMED");
-      answers.push(fakeDecide(catalog, question, kept, at));
+      answers.push(fakeDecide(catalog, question, kept, at, clockTolerance));
     }
     const told = fakeDiverged(catalog, sets);
     if (answers.length === 0) return { allowed: false, covered: false, ...told };
@@ -171,19 +180,22 @@ const fake: Engine = {
   },
   diverged: (catalog, grants, options) => {
     const at = seconds(options?.now);
+    const clockTolerance = tolerance(options?.clockTolerance);
     const sets: unknown[] = Array.isArray(grants) ? grants : [grants];
     for (const set of sets) {
       if (!isRecord(set)) refuse("ERR_AUTHZ_MALFORMED");
       if (set.v !== "1") refuse("ERR_AUTHZ_GRANTS_FORMAT");
-      if (typeof set.at !== "number" || at < set.at) refuse("ERR_AUTHZ_GRANTS_EARLY");
+      if (typeof set.at !== "number" || at + clockTolerance < set.at)
+        refuse("ERR_AUTHZ_GRANTS_FUTURE");
     }
     return fakeDiverged(catalog, sets).diverged;
   },
   assertGrants: (_catalog, value, options) => {
+    const clockTolerance = tolerance(options?.clockTolerance);
     if (!isRecord(value) || value.broken === true) refuse("ERR_AUTHZ_MALFORMED");
     if (value.v !== "1") refuse("ERR_AUTHZ_GRANTS_FORMAT");
-    if (typeof value.at !== "number" || seconds(options?.now) < value.at) {
-      refuse("ERR_AUTHZ_GRANTS_EARLY");
+    if (typeof value.at !== "number" || seconds(options?.now) + clockTolerance < value.at) {
+      refuse("ERR_AUTHZ_GRANTS_FUTURE");
     }
   },
   validateStatement: (catalog, value, options) => {
@@ -774,6 +786,104 @@ describe("runGrantsCase", () => {
     ).not.toThrow();
   });
 
+  it("gives a read the clock tolerance the case states, and no clockTolerance at all when it states none", () => {
+    const given: unknown[] = [];
+    const engine: Engine = {
+      ...fake,
+      could: (catalog, grants, question, options) => {
+        given.push(["could", toleranceOf(options)]);
+        return fake.could(catalog, grants, question, options);
+      },
+      diverged: (catalog, grants, options) => {
+        given.push(["diverged", toleranceOf(options)]);
+        return fake.diverged(catalog, grants, options);
+      },
+      assertGrants: (catalog, value, options) => {
+        given.push(["assertGrants", toleranceOf(options)]);
+        fake.assertGrants(catalog, value, options);
+      },
+    };
+    expect(() => runGrantsCase(engine, grantsCase)).not.toThrow();
+    expect(() =>
+      runGrantsCase(engine, { ...grantsCase, at: MONDAY - 5, clockTolerance: 5 }),
+    ).not.toThrow();
+    expect(given).toEqual([
+      ["could", "absent"],
+      ["diverged", "absent"],
+      ["assertGrants", "absent"],
+      ["could", 5],
+      ["diverged", 5],
+      ["assertGrants", 5],
+    ]);
+    expect(failureOf(() => runGrantsCase(fake, { ...grantsCase, at: MONDAY - 5 }))).toMatchObject({
+      expected: "allowed",
+      received: "ERR_AUTHZ_GRANTS_FUTURE",
+    });
+    const behind: ReadStep = {
+      step: "read",
+      at: MONDAY + 175,
+      grants: "bob",
+      question: { permission: "doc:read", place: "/org=acme" },
+      expect: "allowed",
+    };
+    const issuedFirst: Scenario = { ...scenario, steps: [...scenario.steps.slice(0, 6), behind] };
+    expect(failureOf(() => runScenario(fake, issuedFirst))).toMatchObject({
+      step: 6,
+      received: "ERR_AUTHZ_GRANTS_FUTURE",
+    });
+    const tolerated = {
+      ...issuedFirst,
+      steps: [...issuedFirst.steps.slice(0, 6), { ...behind, clockTolerance: 5 }],
+    };
+    expect(() => runScenario(fake, tolerated)).not.toThrow();
+  });
+
+  it("never gives a question, issuing or the read of grants an ask issues a clockTolerance", () => {
+    const given: unknown[] = [];
+    const engine: Engine = {
+      ...fake,
+      ask: (catalog, read, question, options) => {
+        given.push(["ask", toleranceOf(options)]);
+        return fake.ask(catalog, read, question, options);
+      },
+      issueGrants: (catalog, read, options) => {
+        given.push(["issueGrants", toleranceOf(options)]);
+        return fake.issueGrants(catalog, read, options);
+      },
+      could: (catalog, grants, question, options) => {
+        given.push(["could", toleranceOf(options)]);
+        return fake.could(catalog, grants, question, options);
+      },
+    };
+    const question = { subject: "ann", permission: "doc:read", place: "/org=acme" };
+    const read: ReadStep = {
+      step: "read",
+      at: MONDAY,
+      grants: "ann",
+      question,
+      expect: "allowed",
+      clockTolerance: 7,
+    };
+    const steps: Scenario["steps"] = [
+      { step: "ask", at: MONDAY, question, expect: "allowed" },
+      { step: "ask", at: MONDAY, question, expect: "allowed", issuedAt: MONDAY },
+      { step: "issue", at: MONDAY, as: "ann", subject: "ann", presets: "names" },
+      read,
+    ];
+    expect(() => runScenario(engine, { ...scenario, steps })).not.toThrow();
+    const twice = (entry: unknown[]) => [entry, entry];
+    expect(given).toEqual([
+      ...twice(["ask", "absent"]),
+      ...twice(["ask", "absent"]),
+      ...[1, 2, 3, 4].flatMap(() => [
+        ["issueGrants", "absent"],
+        ["could", "absent"],
+      ]),
+      ...twice(["issueGrants", "absent"]),
+      ...twice(["could", 7]),
+    ]);
+  });
+
   it("validates the grants whole beside the read", () => {
     const broken = { ...grantsCase, grants: { ...(grantsCase.grants as object), broken: true } };
     expect(() => runGrantsCase(fake, { ...broken, whole: "ERR_AUTHZ_MALFORMED" })).not.toThrow();
@@ -782,15 +892,19 @@ describe("runGrantsCase", () => {
       received: { assertGrants: "ERR_AUTHZ_MALFORMED" },
     });
     expect(() =>
-      runGrantsCase(fake, { ...grantsCase, at: MONDAY - 1, expect: "ERR_AUTHZ_GRANTS_EARLY" }),
+      runGrantsCase(fake, { ...grantsCase, at: MONDAY - 1, expect: "ERR_AUTHZ_GRANTS_FUTURE" }),
     ).not.toThrow();
     const lenient: Engine = { ...fake, assertGrants: () => undefined };
     expect(
       failureOf(() =>
-        runGrantsCase(lenient, { ...grantsCase, at: MONDAY - 1, expect: "ERR_AUTHZ_GRANTS_EARLY" }),
+        runGrantsCase(lenient, {
+          ...grantsCase,
+          at: MONDAY - 1,
+          expect: "ERR_AUTHZ_GRANTS_FUTURE",
+        }),
       ),
     ).toMatchObject({
-      expected: { assertGrants: "ERR_AUTHZ_GRANTS_EARLY" },
+      expected: { assertGrants: "ERR_AUTHZ_GRANTS_FUTURE" },
       received: { assertGrants: "valid" },
     });
   });
@@ -1013,6 +1127,23 @@ describe("runConformance", () => {
     });
   });
 
+  it("fails an engine that applies a clock tolerance of its own when a case gives none", () => {
+    const own = (options?: GrantsReadOptions): GrantsReadOptions => ({
+      ...options,
+      clockTolerance: options?.clockTolerance ?? 30,
+    });
+    const lenient: Engine = {
+      ...fake,
+      could: (catalog, grants, question, options) =>
+        fake.could(catalog, grants, question, own(options)),
+      diverged: (catalog, grants, options) => fake.diverged(catalog, grants, own(options)),
+      assertGrants: (catalog, value, options) => fake.assertGrants(catalog, value, own(options)),
+    };
+    const exact = runConformance(fake, cases);
+    const failed = new Set(runConformance(lenient, cases).failed.map((failure) => failure.id));
+    expect(exact.passed.filter((id) => failed.has(id))).toContain("grants/browser-clock-behind");
+  });
+
   it("reports an engine that throws something else than an UnauthError", () => {
     const broken: Engine = {
       ...fake,
@@ -1105,7 +1236,8 @@ describe("the cases themselves", () => {
       let last = 0;
       for (const [index, step] of item.steps.entries()) {
         if (step.step === "write" || step.step === "deploy") continue;
-        if (step.step === "read" && step.expect === "ERR_AUTHZ_GRANTS_EARLY") continue;
+        if (step.step === "read" && step.expect === "ERR_AUTHZ_GRANTS_FUTURE") continue;
+        if (step.step === "read" && (step.clockTolerance ?? 0) > 0) continue;
         if (step.at < last) backwards.push(`${item.id} step ${index}`);
         if ((step.step === "ask" || step.step === "hand") && (step.issuedAt ?? step.at) > step.at) {
           backwards.push(`${item.id} step ${index} issued later`);
@@ -1125,13 +1257,14 @@ function fakeDecide(
   question: Question,
   statements: readonly Statement[],
   at: number,
+  clockTolerance: number,
 ): boolean {
   const { permission } = question;
   if (permission === "") refuse("ERR_AUTHZ_QUESTION_INVALID");
   if (!catalog.data.permissions.includes(permission)) refuse("ERR_AUTHZ_PERMISSION_UNKNOWN");
   const place = question.place ?? "/";
   const applying = statements.filter(
-    (statement) => live(statement, at) && covers(statement.place ?? "/", place),
+    (statement) => live(statement, at, clockTolerance) && covers(statement.place ?? "/", place),
   );
   return (
     !applying.some((statement) => statement.kind === "deny" && statement.value === permission) &&
@@ -1156,12 +1289,20 @@ function issue(code: KnownUnauthErrorCode, ...path: (string | number)[]): Issue 
   return { code, path, message: "Refused.", cause: {} };
 }
 
-function live(statement: Statement, at: number): boolean {
-  return statement.expiresAt === undefined || statement.expiresAt > at;
+function live(statement: Statement, at: number, clockTolerance: number): boolean {
+  return statement.expiresAt === undefined || statement.expiresAt + clockTolerance > at;
 }
 
 function covers(outer: string, inner: string): boolean {
   return outer === "/" || inner === outer || inner.startsWith(`${outer}/`);
+}
+
+function tolerance(given: number | undefined): number {
+  return given ?? 0;
+}
+
+function toleranceOf(options: object | undefined): unknown {
+  return options !== undefined && "clockTolerance" in options ? options.clockTolerance : "absent";
 }
 
 function seconds(now: (() => number) | undefined): number {

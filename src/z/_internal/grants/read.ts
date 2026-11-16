@@ -18,7 +18,7 @@ import {
   shapeError,
 } from "./form.ts";
 
-/** The item of grants that decided a permission, in the shape of a statement without its subject. */
+/** An item of grants in the shape of a statement without its subject. */
 type GrantsBy = Omit<Statement, "subject">;
 
 /** Who asks of one set of grants: one declared, concrete permission, at a place that fits, at one time. */
@@ -35,19 +35,20 @@ export interface AskedOfGrants {
  * it, what is given; then the roles named in `ps`, then in `sr`, then the presets of the catalog,
  * in that order, each resolved only once one of its items applies. A permission is looked up by its
  * position where the set holds `pm`. Every item of an entry looked up is checked, ended or not,
- * whatever the answer. Of `pl`, only the places those items point at are read, and only compared
- * with the keys of the chain of the target: a place in another spelling covers nothing. A live deny at a covering place
- * denies; else a live given value at a covering place allows when one of the permissions it gives
- * satisfies the question and no live exclusion between its place and the target, of no bundle or
- * of its own, takes that permission out. A role name is found in `ps`, then in `sr`, then among the
+ * whatever the answer. Of `pl`, only the places those items point at are read, each checked to be
+ * a string and only compared with the keys of the chain of the target: a place in another spelling
+ * covers nothing. A live deny at a covering place denies; else a live given value at a covering
+ * place allows when one of the permissions it gives satisfies the question and no live exclusion
+ * between its place and the target, of no bundle or of its own, takes that permission out. A role name is found in `ps`, then in `sr`, then among the
  * presets of the catalog in force, and gives nothing when it is in none. Where the second segment
  * of `ct` is the catalog's, a copy of a preset the catalog declares is read as that preset,
  * resolved already, and its definition is not read.
  *
  * @throws `ERR_AUTHZ_MALFORMED` (`grants`) for what it reads that is not in its form: `nt`, `pm`,
- * `ps` or `sr` of another type, `pl` of another type where an item names a place, a role name an
- * entry is found under that is not a token, an entry or an item looked up, the permission looked
- * up twice in `pm`, a definition resolved. A name in both `ps` and `sr` is read as the copy.
+ * `ps` or `sr` of another type, `pl` of another type where an item names a place, a place such an
+ * item points at that is not a string, a role name an entry is found under that is not a token,
+ * an entry or an item looked up, the permission looked up twice in `pm`, a definition resolved. A
+ * name in both `ps` and `sr` is read as the copy.
  */
 export function readSet(
   catalog: CompiledCatalog,
@@ -63,8 +64,7 @@ export function readSet(
   const sr = ownRecord(grants, "sr");
   const chain = new Set(chainOf(asked.place));
   const placeOf = placesOf(grants);
-  const applies = (item: GrantsItemRead<unknown>): item is GrantsItemRead =>
-    isLive(item.end, asked.time) && typeof item.place === "string" && chain.has(item.place);
+  const applies = (item: GrantsItemRead) => isLive(item.end, asked.time) && chain.has(item.place);
 
   const blocks = blocking(catalog, permission);
   const reaches = down(catalog, permission);
@@ -135,7 +135,7 @@ export function readSet(
  * The role names whose entries a read tries: those of `ps`, then of `sr`, then the presets of the
  * catalog, each once. Their form is checked once an entry is found under one.
  */
-function roleNames(
+export function roleNames(
   catalog: CompiledCatalog,
   ps: Record<string, unknown> | undefined,
   sr: Record<string, unknown> | undefined,
@@ -143,8 +143,25 @@ function roleNames(
   return new Set([...Object.keys(ps ?? {}), ...Object.keys(sr ?? {}), ...catalog.presets.keys()]);
 }
 
+/**
+ * The places of `pl` an item points at, read one at a time: `"/"` for no index. A place is checked
+ * to be a string and nothing more, so one in another spelling of a key is returned as `pl` holds
+ * it. An index `pl` does not hold is malformed, and so are a `pl` that is not a list and a place
+ * that is not a string.
+ */
+export function placesOf(grants: Record<string, unknown>): PlaceOf {
+  return (index, item) => {
+    if (index === undefined) return "/";
+    const pl = ownList(grants, "pl");
+    if (!pl || index >= pl.length) throw shapeError(item);
+    const place: unknown = pl[index];
+    if (typeof place !== "string") throw shapeError(place);
+    return place;
+  };
+}
+
 /** Every item of a checked entry, by member, each place found by `placeOf`. */
-function readEntry(entry: Record<string, unknown>, placeOf: PlaceOf<unknown>): EntryRead {
+function readEntry(entry: Record<string, unknown>, placeOf: PlaceOf): EntryRead {
   return {
     a: readItems(entry, "a", placeOf),
     d: readItems(entry, "d", placeOf),
@@ -152,7 +169,7 @@ function readEntry(entry: Record<string, unknown>, placeOf: PlaceOf<unknown>): E
   };
 }
 
-type EntryRead = Record<"a" | "d" | "x", GrantsItemRead<unknown>[]>;
+type EntryRead = Record<"a" | "d" | "x", GrantsItemRead[]>;
 
 /**
  * Where a read finds a role by name: a copy in `ps`, then a stored role in `sr`, each definition
@@ -189,19 +206,6 @@ function definitionsOf(
       read.set(name, role);
     }
     return role;
-  };
-}
-
-/**
- * The places of `pl` an item points at, read one at a time and never checked: `"/"` for no index.
- * An index `pl` does not hold is malformed, and so is a `pl` that is not a list.
- */
-function placesOf(grants: Record<string, unknown>): PlaceOf<unknown> {
-  return (index, item) => {
-    if (index === undefined) return "/";
-    const pl = ownList(grants, "pl");
-    if (!pl || index >= pl.length) throw shapeError(item);
-    return pl[index];
   };
 }
 

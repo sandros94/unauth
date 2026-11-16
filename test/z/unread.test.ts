@@ -34,8 +34,6 @@ function answer(statements: unknown[], question: Question<P> = read, stored: unk
 
 describe("a question reads only the statements at the keys of its chain that it looks up (Section 7)", () => {
   const offChain: [string, unknown][] = [
-    ["`null`", null],
-    ["a number", 42],
     [
       "a statement under another spelling of a key on the chain",
       { kind: "deny", subject: "eva", value: "report:read", place: "/org=acme/" },
@@ -52,7 +50,6 @@ describe("a question reads only the statements at the keys of its chain that it 
       "a malformed subject at another place",
       { kind: "deny", subject: 7, value: "*", place: "/org=globex" },
     ],
-    ["a place that is not a string", { kind: "deny", subject: "eva", value: "*", place: 7 }],
   ];
   const unrelated: [string, unknown][] = [
     [
@@ -140,6 +137,108 @@ describe("a question reads only the statements at the keys of its chain that it 
       cause: { what: "statement" },
     });
   });
+});
+
+describe("the place of every statement handed in is read (Section 3, Section 7)", () => {
+  const offPlace = { kind: "allow", subject: "eva", value: "match:join", place: "/org=globex" };
+  const placed: [string, unknown][] = [
+    ["an assignment at `null`", { kind: "assign", subject: "eva", value: "viewer", place: null }],
+    ["a deny at `null`", { kind: "deny", subject: "eva", value: "report:read", place: null }],
+    [
+      "a deny at `null` of a value no question here looks up",
+      { kind: "deny", subject: "eva", value: "match:join", place: null },
+    ],
+    ["an allow at a number", { kind: "allow", subject: "eva", value: "report:read", place: 5 }],
+    ["an exclusion at an object", { kind: "exclude", subject: "team", value: "*", place: {} }],
+    ["a deny at a number, malformed beside", { kind: "deny", subject: 7, value: "*", place: 7 }],
+  ];
+
+  it.each(placed)("refuses %s, on the chain and beside statements elsewhere", (_, statement) => {
+    const place = (statement as { place: unknown }).place;
+    const expected = { code: "ERR_AUTHZ_MALFORMED", cause: { what: "place", value: place } };
+    for (const question of [read, { permission: "chat:read", place: ACME }] as const) {
+      expect(refused(() => answer([...needed, statement], question))).toMatchObject(expected);
+      expect(refused(() => answer([statement, ...needed], question))).toMatchObject(expected);
+      expect(refused(() => answer([offPlace, statement], question))).toMatchObject(expected);
+    }
+    expect(validateStatement(catalog, statement, { roles, now }).length).toBeGreaterThan(0);
+    expect(
+      refused(() =>
+        issueGrants(
+          catalog,
+          { subject: "eva", statements: [...needed, statement] as Statement[], roles },
+          { now },
+        ),
+      ).code,
+    ).toBe("ERR_AUTHZ_MALFORMED");
+  });
+
+  it("refuses a deny at `null` that would otherwise be passed over, beside an assignment", () => {
+    const assigned = [{ kind: "assign", subject: "eva", value: "viewer" }];
+    expect(answer(assigned).allowed).toBe(true);
+    expect(
+      refused(() =>
+        answer([...assigned, { kind: "deny", subject: "eva", value: "report:read", place: null }]),
+      ),
+    ).toMatchObject({ code: "ERR_AUTHZ_MALFORMED", cause: { what: "place", value: null } });
+  });
+
+  it("answers alike for a place absent, `undefined` and `/`", () => {
+    const at = (place?: unknown) => [
+      {
+        kind: "assign",
+        subject: "eva",
+        value: "viewer",
+        ...(place === undefined ? {} : { place }),
+      },
+      {
+        kind: "deny",
+        subject: "team",
+        value: "report:write",
+        ...(place === undefined ? {} : { place }),
+      },
+    ];
+    const explicit = [
+      { kind: "assign", subject: "eva", value: "viewer", place: undefined },
+      { kind: "deny", subject: "team", value: "report:write", place: undefined },
+    ];
+    for (const question of [read, { permission: "report:write", place: ARCHIVES }] as const) {
+      const root = answer(at("/"), question);
+      const absent = answer(at(), question);
+      expect(at()[0]).not.toHaveProperty("place");
+      expect(absent).toMatchObject({ allowed: root.allowed, covered: true });
+      expect(answer(explicit, question)).toMatchObject({ allowed: root.allowed });
+      expect(absent.by).toMatchObject({ kind: root.by?.kind, value: root.by?.value });
+    }
+  });
+
+  it.each([
+    ["`null`", null],
+    ["a number", 42],
+    ["a string", "deny"],
+    ["a list", [{ kind: "deny", subject: "eva", value: "*" }]],
+    ["`undefined`", undefined],
+  ])(
+    "refuses an item that is not an object, %s, wherever it sits and whatever is asked",
+    (_, item) => {
+      const expected = { code: "ERR_AUTHZ_MALFORMED", cause: { what: "statement", value: item } };
+      for (const question of [read, { permission: "chat:read", place: ACME }] as const) {
+        expect(refused(() => answer([item, ...needed], question))).toMatchObject(expected);
+        expect(refused(() => answer([...needed, item], question))).toMatchObject(expected);
+        expect(refused(() => answer([offPlace, item], question))).toMatchObject(expected);
+      }
+      expect(validateStatement(catalog, item, { roles, now }).length).toBeGreaterThan(0);
+      expect(
+        refused(() =>
+          issueGrants(
+            catalog,
+            { subject: "eva", statements: [...needed, item] as Statement[], roles },
+            { now },
+          ),
+        ).code,
+      ).toBe("ERR_AUTHZ_MALFORMED");
+    },
+  );
 });
 
 describe("stored roles, read by name (Section 7.1)", () => {

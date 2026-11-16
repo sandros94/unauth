@@ -704,8 +704,20 @@ describe("what is read", () => {
   });
 
   it("is answered, not refused, for a statement or a stored role the question does not read", () => {
-    const read = { subject: "a", statements: [null], roles: [7] } as unknown as SubjectStatements;
+    const read = {
+      subject: "a",
+      statements: [{ kind: "grant", subject: 7 }],
+      roles: [7],
+    } as unknown as SubjectStatements;
     expect(ask(catalog, read, question)).toStrictEqual({ allowed: false, covered: true });
+  });
+
+  it("is refused for an item handed in as a statement that is not an object", () => {
+    const read = { subject: "a", statements: [null] } as unknown as SubjectStatements;
+    expect(refused(() => ask(catalog, read, question))).toMatchObject({
+      code: "ERR_AUTHZ_MALFORMED",
+      cause: { what: "statement", value: null },
+    });
   });
 
   it("is read after the question is checked", () => {

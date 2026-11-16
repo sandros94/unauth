@@ -108,10 +108,10 @@ describe("assertGrants", () => {
     expect(() => assertGrants(catalog, carried(named), { now })).not.toThrow();
   });
 
-  it("throws `ERR_AUTHZ_GRANTS_EARLY` when the clock reads before their issue", () => {
+  it("throws `ERR_AUTHZ_GRANTS_FUTURE` when the clock reads before their issue", () => {
     expect(
       refused(() => assertGrants(catalog, carried(), { now: () => (MONDAY - 1) * 1000 })).code,
-    ).toBe("ERR_AUTHZ_GRANTS_EARLY");
+    ).toBe("ERR_AUTHZ_GRANTS_FUTURE");
     expect(() => assertGrants(catalog, carried(), { now })).not.toThrow();
   });
 

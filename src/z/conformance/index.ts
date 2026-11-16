@@ -4,6 +4,7 @@ export type {
   Diverged,
   Engine,
   GrantsPart,
+  GrantsReadOptions,
   Issue,
   IssueGrantsOptions,
   Question,

@@ -35,7 +35,7 @@ export type KnownUnauthErrorCode =
   | "ERR_AUTHZ_QUESTION_INVALID" // a question naming no permission, or a wildcard
   | "ERR_AUTHZ_ROLE_INVALID" // a role that is not a preset nor handed in, a stored role that references one or loops, or two stored roles of one name
   | "ERR_AUTHZ_GRANTS_FORMAT" // grants of another format revision
-  | "ERR_AUTHZ_GRANTS_EARLY" // grants read at a time before their issue
+  | "ERR_AUTHZ_GRANTS_FUTURE" // grants whose time of issue is later than the time of the read by more than the clock tolerance
   | "ERR_AUTHZ_STATEMENT_ENDED"; // a statement being validated whose end is not later than the time of the call
 
 /** An {@link UnauthError} `code`: a {@link KnownUnauthErrorCode}, or any code of the application's own. */
@@ -141,8 +141,7 @@ export interface UnauthErrorCauseMap {
       | "statement"
       | "subject"
       | "question"
-      | "grants"
-      | "omit";
+      | "grants";
     value: unknown;
   };
   /**

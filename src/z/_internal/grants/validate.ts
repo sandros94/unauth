@@ -22,7 +22,7 @@ import {
  *
  * @throws `ERR_AUTHZ_GRANTS_FORMAT` for a `v` other than `"1"`.
  * @throws `ERR_AUTHZ_MALFORMED` (`grants`) for a set that fails any check of form.
- * @throws `ERR_AUTHZ_GRANTS_EARLY` for `time` earlier than `at`.
+ * @throws `ERR_AUTHZ_GRANTS_FUTURE` for `time` earlier than `at`.
  */
 export function assertGrantsSet(grants: unknown, time: number): void {
   const head = readHead(grants);
@@ -39,7 +39,10 @@ export function assertGrantsSet(grants: unknown, time: number): void {
   const nt = own(set, "nt");
   if (!isRecord(nt)) throw shapeError(nt);
   const placeOf = (index: number | undefined, item: unknown) => {
-    if (index !== undefined && index >= places.length) throw shapeError(item);
+    if (index === undefined) return "/";
+    const place = places[index];
+    if (place === undefined) throw shapeError(item);
+    return place;
   };
   for (const name of Object.keys(nt)) {
     const permission = isValue(name, table);

@@ -55,6 +55,17 @@ export interface ClockOptions {
   now?: () => number;
 }
 
+/** The time of a read of grants, and the clock tolerance the application gives it. */
+export interface GrantsReadOptions extends ClockOptions {
+  /**
+   * The clock tolerance of the read, a count of seconds, for a clock that reads grants other than
+   * the one that issued them. Under a tolerance `T` the grants are refused as issued in the future
+   * only when the time plus `T` is earlier than the issue, and an end counts `T` later, for a deny
+   * and an exclusion as for an allow. None applies when absent.
+   */
+  clockTolerance?: number;
+}
+
 /** A part of grants an application may leave out at issue: `"presets"` carries presets by name alone. */
 export type GrantsPart = "presets";
 
@@ -89,20 +100,26 @@ export interface Engine {
     options?: ClockOptions,
   ): Decision;
   /** Answers a question from grants, one set or several read together. */
-  could(catalog: Catalog, grants: unknown, question: Question, options?: ClockOptions): Decision;
+  could(
+    catalog: Catalog,
+    grants: unknown,
+    question: Question,
+    options?: GrantsReadOptions,
+  ): Decision;
   /**
    * What of grants, one set or several, has diverged from the catalog, without a question:
    * `undefined` when both segments of every set match. Refuses what every read refuses, and, of a
    * set whose segment differs, a permission table, a preset table or a stored role table that is
    * malformed, since it reads those whole.
    */
-  diverged(catalog: Catalog, grants: unknown, options?: ClockOptions): Diverged | undefined;
+  diverged(catalog: Catalog, grants: unknown, options?: GrantsReadOptions): Diverged | undefined;
   /**
    * Validates one whole grants object against every rule of its form, where the application
    * receives one: throws `ERR_AUTHZ_MALFORMED` for a rule that fails, `ERR_AUTHZ_GRANTS_FORMAT`
-   * for another revision, `ERR_AUTHZ_GRANTS_EARLY` when the clock reads earlier than the issue.
+   * for another revision, `ERR_AUTHZ_GRANTS_FUTURE` when the clock reads earlier than the issue by
+   * more than the clock tolerance, when one is given.
    */
-  assertGrants(catalog: Catalog, value: unknown, options?: ClockOptions): void;
+  assertGrants(catalog: Catalog, value: unknown, options?: GrantsReadOptions): void;
   issueGrants(catalog: Catalog, read: SubjectStatements, options?: IssueGrantsOptions): unknown;
   /** Every problem of the statement, none when it may be written. */
   validateStatement(

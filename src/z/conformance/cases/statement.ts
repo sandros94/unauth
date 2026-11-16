@@ -239,6 +239,13 @@ export const statementCases: readonly StatementCase[] = [
   refused("place-trailing-slash", "A key ending in `/`", [malformed("place")], at("/org=acme/")),
   refused("place-empty", "An empty key", [malformed("place")], at("")),
   refused("place-number", "A place written as a number", [malformed("place")], at(7)),
+  refused("place-null", "A place read from a NULL column", [malformed("place")], at(null)),
+  refused(
+    "place-object",
+    "A place an ORM returned as its level and value",
+    [malformed("place")],
+    at({ org: "acme" }),
+  ),
   refused(
     "place-unit-at-root",
     "A unit directly under the root",
@@ -268,6 +275,23 @@ export const statementCases: readonly StatementCase[] = [
     expect: [],
   },
   {
+    id: "statement/root-written-out-without-places",
+    title: "The root written out as `/` in an application that declares it has no places",
+    catalog: { permissions: ["report:read"], places: false },
+    at: VALIDATED_AT,
+    statement: at("/"),
+    expect: [],
+  },
+  {
+    id: "statement/place-null-without-places",
+    title:
+      "A place read from a NULL column in an application that declares it has no places: not the root, malformed",
+    catalog: { permissions: ["report:read"], places: false },
+    at: VALIDATED_AT,
+    statement: at(null),
+    expect: [malformed("place")],
+  },
+  {
     id: "statement/place-unchecked",
     title: "Any canonical key where the catalog says nothing about places",
     catalog: { permissions: ["report:read"] },
@@ -280,6 +304,12 @@ export const statementCases: readonly StatementCase[] = [
     "An end at the very second of the validation",
     [ended("expiresAt")],
     until(VALIDATED_AT),
+  ),
+  refused(
+    "end-a-second-ago",
+    "An end one second before the validation",
+    [ended("expiresAt")],
+    until(VALIDATED_AT - 1),
   ),
   refused(
     "end-yesterday",

@@ -166,7 +166,7 @@ describe("diverged", () => {
       "ERR_AUTHZ_GRANTS_FORMAT",
     );
     expect(refused(() => diverged(catalog, issued, { now: () => (MONDAY - 1) * 1000 })).code).toBe(
-      "ERR_AUTHZ_GRANTS_EARLY",
+      "ERR_AUTHZ_GRANTS_FUTURE",
     );
     expect(refused(() => diverged(catalog, [issued, null], { now })).code).toBe(
       "ERR_AUTHZ_MALFORMED",

@@ -58,12 +58,6 @@ export interface Question<TPermission extends string = string> {
   place?: string;
 }
 
-/** Options of a question, `ask` and `could`, and of `diverged`. */
-export interface QuestionOptions {
-  /** The clock, in ms. Read once per call. @default Date.now */
-  now?: () => number;
-}
-
 /**
  * The answer to a question. `TBy` is what can decide: the statement type handed to `ask`, or for
  * grants a statement without its subject.

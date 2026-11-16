@@ -29,3 +29,17 @@ export function readAsked(catalog: CompiledCatalog, question: unknown): ReadAske
     place: checkPlace(catalog, place),
   };
 }
+
+/**
+ * Checks the place of a question whose permission is not read: `"/"` for no question.
+ *
+ * @throws `ERR_AUTHZ_MALFORMED` (`question`) for a question present that is not an object.
+ * @throws what `checkPlace` throws for the place.
+ */
+export function readAskedPlace(catalog: CompiledCatalog, question: unknown): string {
+  if (question === undefined) return "/";
+  if (!isRecord(question)) {
+    throw malformed("The question is not in its shape.", { what: "question", value: question });
+  }
+  return checkPlace(catalog, question.place);
+}

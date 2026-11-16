@@ -556,18 +556,18 @@ describe("refusals", () => {
       () => issueGrants(catalog, { subject: "sue", statements: {} as unknown as Statement[] }),
       "statement",
     ],
-    [
-      "an `omit` naming a part that does not exist",
-      () => issueGrants(catalog, sue, { omit: ["preset" as GrantsPart] }),
-      "omit",
-    ],
-    [
-      "an `omit` that is not a list",
-      () => issueGrants(catalog, sue, { omit: "presets" as unknown as GrantsPart[] }),
-      "omit",
-    ],
   ])("refuses %s as malformed", (_, run, what) => {
     expect(refused(run)).toMatchObject({ code: "ERR_AUTHZ_MALFORMED", cause: { what } });
+  });
+
+  it.each([
+    ["naming a part that does not exist", ["preset"]],
+    ["that is not a list", "presets"],
+    ["that is `null`", null],
+  ])("refuses an `omit` %s as a configuration that cannot work", (_, omit) => {
+    const run = () => issueGrants(catalog, sue, { omit: omit as GrantsPart[] });
+    expect(refused(run)).toMatchObject({ code: "ERR_UNAUTH_CONFIG_INVALID", status: 500 });
+    expect(refused(run).message).toMatch(/^\[unauth\/z\] /);
   });
 
   it("refuses a base outside the structure", () => {

@@ -266,6 +266,16 @@ export const malformedCases: readonly GrantsCase[] = [
         "An item written as a number",
         { ...zoe, nt: { "report:*": { a: [0] } } },
       ],
+      [
+        "item-place-null",
+        "A deny of reading pointing at a slot of the place table holding `null`",
+        { ...zoe, pl: [ACME, null], nt: { ...zoe.nt, "report:read": { d: [[1]] } } },
+      ],
+      [
+        "item-place-number",
+        "A deny of reading pointing at a slot of the place table holding a number",
+        { ...zoe, pl: [ACME, 7], nt: { ...zoe.nt, "report:read": { d: [[1]] } } },
+      ],
     ],
     null,
   ),

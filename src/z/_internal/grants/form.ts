@@ -6,8 +6,8 @@ import { isCanonicalKey } from "../keys.ts";
 import { MAX_TIME, isTime } from "../time.ts";
 
 /** One item of grants as read: its place, the second it ends, and its bundle. */
-export interface GrantsItemRead<TPlace = string> {
-  readonly place: TPlace;
+export interface GrantsItemRead {
+  readonly place: string;
   readonly end: number | undefined;
   readonly bundle: number | undefined;
 }
@@ -16,7 +16,7 @@ export interface GrantsItemRead<TPlace = string> {
  * The place of an item from its index, `undefined` for the root: throws `ERR_AUTHZ_MALFORMED` for
  * an index that `pl` does not hold. `item` is the item, for the error.
  */
-export type PlaceOf<TPlace> = (index: number | undefined, item: unknown) => TPlace;
+export type PlaceOf = (index: number | undefined, item: unknown) => string;
 
 /** What every use of a set reads first: the object, its fingerprint and its time of issue. */
 export interface GrantsHead {
@@ -47,12 +47,12 @@ export function readHead(grants: unknown): GrantsHead {
   return { grants, ct, at };
 }
 
-/** `ERR_AUTHZ_GRANTS_EARLY` when `time` is earlier than the issue of `head`. */
+/** `ERR_AUTHZ_GRANTS_FUTURE` when `time` is earlier than the issue of `head`. */
 export function assertIssued(head: GrantsHead, time: number): void {
   if (time < head.at) {
     throw new UnauthError(
       "The grants were issued after the time asked.",
-      "ERR_AUTHZ_GRANTS_EARLY",
+      "ERR_AUTHZ_GRANTS_FUTURE",
       { status: 401 },
     );
   }
@@ -114,11 +114,11 @@ export function readEntryMembers(entry: unknown, permission: boolean): Record<st
  * The items of one member of a checked entry, each in its form and its place found by `placeOf`:
  * `[]` when the member is absent.
  */
-export function readItems<TPlace>(
+export function readItems(
   entry: Record<string, unknown>,
   member: "a" | "d" | "x",
-  placeOf: PlaceOf<TPlace>,
-): GrantsItemRead<TPlace>[] {
+  placeOf: PlaceOf,
+): GrantsItemRead[] {
   const items = own(entry, member);
   if (items === undefined) return [];
   if (!Array.isArray(items)) throw shapeError(items);
@@ -161,11 +161,7 @@ export const POSITION: RegExp = /^(?:0|[1-9][0-9]*)$/;
 const FINGERPRINT = /^[A-Za-z0-9_-]{11}\.[A-Za-z0-9_-]{11}$/;
 const EXCLUDED_POSITION = /^-(?:0|[1-9][0-9]*)$/;
 
-function readItem<TPlace>(
-  item: unknown,
-  deny: boolean,
-  placeOf: PlaceOf<TPlace>,
-): GrantsItemRead<TPlace> {
+function readItem(item: unknown, deny: boolean, placeOf: PlaceOf): GrantsItemRead {
   if (!Array.isArray(item) || item.length > 3) throw shapeError(item);
   const index: unknown = item[0] ?? undefined;
   const end: unknown = item[1] ?? undefined;

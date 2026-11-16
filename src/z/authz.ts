@@ -1,6 +1,17 @@
-import { ask } from "./ask.ts";
+import { isRecord } from "../_internal/shared.ts";
+import { type AskOptions, ask } from "./ask.ts";
+import { compiledOf } from "./_internal/compile.ts";
 import { type Catalog, type CatalogData, defineCatalog } from "./catalog.ts";
-import { type IssueGrantsOptions, could, diverged, issueGrants } from "./grants.ts";
+import {
+  type CouldOptions,
+  type DivergedOptions,
+  type IssueGrantsOptions,
+  type RolesOfOptions,
+  could,
+  diverged,
+  issueGrants,
+  rolesOf,
+} from "./grants.ts";
 import { placeFits } from "./place.ts";
 import { type RelatedValues, relatedValues } from "./relate.ts";
 import { type ResolveRoleOptions, resolveRole } from "./roles.ts";
@@ -10,7 +21,6 @@ import type {
   Grants,
   GrantsPart,
   Question,
-  QuestionOptions,
   Statement,
   SubjectStatements,
   ValidationIssue,
@@ -38,16 +48,18 @@ export interface Authz<TPermission extends string = string, TPreset extends stri
   ask<TStatement extends Statement>(
     read: SubjectStatements<TStatement>,
     question: Question<TPermission>,
-    options?: QuestionOptions,
+    options?: AskOptions,
   ): Decision<TStatement>;
   /** See {@link could}. */
   could(
     grants: unknown,
     question: Question<TPermission>,
-    options?: QuestionOptions,
+    options?: CouldOptions,
   ): Decision<Omit<Statement, "subject">>;
   /** See {@link diverged}. */
-  diverged(grants: unknown, options?: QuestionOptions): Diverged | undefined;
+  diverged(grants: unknown, options?: DivergedOptions): Diverged | undefined;
+  /** See {@link rolesOf}. */
+  rolesOf(grants: unknown, question?: Pick<Question, "place">, options?: RolesOfOptions): string[];
   /**
    * See {@link issueGrants}. `omit` defaults to the one given to {@link defineAuthz}, and one given
    * here replaces it.
@@ -65,6 +77,30 @@ export interface Authz<TPermission extends string = string, TPreset extends stri
   placeFits(key: string): boolean;
 }
 
+/**
+ * The permissions of a catalog, from {@link defineCatalog}, or of an engine, from
+ * {@link defineAuthz}: `type Permission = PermissionOf<typeof catalog>`. Anything else, the data of
+ * a catalog included, does not compile.
+ */
+export type PermissionOf<T extends Catalog | Authz> =
+  T extends Catalog<infer TPermission, infer _TPreset>
+    ? TPermission
+    : T extends Authz<infer TPermission, infer _TPreset>
+      ? TPermission
+      : never;
+
+/**
+ * The presets of a catalog, from {@link defineCatalog}, or of an engine, from {@link defineAuthz}:
+ * `type Preset = PresetOf<typeof catalog>`. Anything else, the data of a catalog included, does not
+ * compile.
+ */
+export type PresetOf<T extends Catalog | Authz> =
+  T extends Catalog<infer _TPermission, infer TPreset>
+    ? TPreset
+    : T extends Authz<infer _TPermission, infer TPreset>
+      ? TPreset
+      : never;
+
 /** Options of {@link defineAuthz}. */
 export interface AuthzOptions {
   /** What the bound `issueGrants` omits when a call names nothing: see {@link IssueGrantsOptions}. */
@@ -72,10 +108,17 @@ export interface AuthzOptions {
 }
 
 /**
- * Checks a catalog and returns the engine bound to it: the same functions as `unauth/z` exports,
- * with the catalog already given.
+ * Returns the engine bound to a catalog: the same functions as `unauth/z` exports, with the
+ * catalog already given. Takes catalog data, which it checks as {@link defineCatalog} does, or a
+ * catalog already defined, which it binds as it is: one catalog, defined once in code that the
+ * server and the client share, then serves both.
  *
- * @throws `ERR_AUTHZ_CATALOG_INVALID` as {@link defineCatalog} does.
+ * It binds every function of the engine, so a bundler cannot drop the ones a caller does not use.
+ * A client that only reads, a browser showing or hiding things, imports the functions it needs and
+ * passes the catalog itself: `could(catalog, grants, question)`.
+ *
+ * @throws `ERR_AUTHZ_CATALOG_INVALID` as {@link defineCatalog} does, and for a catalog whose
+ * fingerprint is not the one its data gives.
  *
  * @example
  * export const authz = defineAuthz({
@@ -85,18 +128,32 @@ export interface AuthzOptions {
  *
  * const { allowed, diverged } = authz.could(session.data.grants, { permission: "report:write" });
  * if (!allowed) throw forbidden();
+ *
+ * @example
+ * export const catalog = defineCatalog({ permissions: ["report:read"] });
+ * export const authz = defineAuthz(catalog);
  */
+export function defineAuthz<TPermission extends string, TPreset extends string>(
+  catalog: Catalog<TPermission, TPreset>,
+  defaults?: AuthzOptions,
+): Authz<TPermission, TPreset>;
 export function defineAuthz<const TPermission extends string, const TPreset extends string = never>(
   data: CatalogData<TPermission, TPreset>,
   defaults?: AuthzOptions,
+): Authz<TPermission, TPreset>;
+export function defineAuthz<TPermission extends string, TPreset extends string>(
+  source: Catalog<TPermission, TPreset> | CatalogData<TPermission, TPreset>,
+  defaults?: AuthzOptions,
 ): Authz<TPermission, TPreset> {
-  const catalog = defineCatalog(data);
+  const catalog = isCatalog(source) ? source : defineCatalog(source);
+  compiledOf(catalog);
   const omit = defaults?.omit;
   return {
     catalog,
     ask: (read, question, options) => ask(catalog, read, question, options),
     could: (grants, question, options) => could(catalog, grants, question, options),
     diverged: (grants, options) => diverged(catalog, grants, options),
+    rolesOf: (grants, question, options) => rolesOf(catalog, grants, question, options),
     issueGrants: (read, options) =>
       issueGrants(catalog, read, { ...options, omit: options?.omit ?? omit }),
     validateStatement: (value, options) => validateStatement(catalog, value, options),
@@ -105,4 +162,10 @@ export function defineAuthz<const TPermission extends string, const TPreset exte
     relatedValues: (permission) => relatedValues(catalog, permission),
     placeFits: (key) => placeFits(catalog, key),
   };
+}
+
+function isCatalog<TPermission extends string, TPreset extends string>(
+  source: Catalog<TPermission, TPreset> | CatalogData<TPermission, TPreset>,
+): source is Catalog<TPermission, TPreset> {
+  return isRecord(source) && "fingerprint" in source && "data" in source;
 }

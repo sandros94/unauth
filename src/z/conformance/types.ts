@@ -114,6 +114,11 @@ export interface ReadStep {
   expect: "allowed" | "denied" | "not-covered" | ScenarioRefusal;
   /** What the read must tell has diverged. Unchecked when absent. */
   diverged?: ExpectedDiverged;
+  /**
+   * The clock tolerance of the read, in seconds, given to the engine as `clockTolerance`. None when
+   * absent.
+   */
+  clockTolerance?: number;
 }
 
 /**
@@ -181,11 +186,16 @@ export interface GrantsCase {
   /**
    * What validating the whole object, each set on its own, must give at `at`: `"valid"` or the
    * code it must throw. @default the read's refusal when it refuses the grants for what they are,
-   * malformed, of another format or read early, `"valid"` otherwise
+   * malformed, of another format or issued in the future, `"valid"` otherwise
    */
   whole?: "valid" | ScenarioRefusal;
   /** What the read must tell has diverged. Unchecked when absent. */
   diverged?: ExpectedDiverged;
+  /**
+   * The clock tolerance, in seconds, the read, `diverged` and the whole validation are given as
+   * `clockTolerance`. None when absent.
+   */
+  clockTolerance?: number;
 }
 
 /** The code validation reports a problem of the value with. */

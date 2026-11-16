@@ -292,7 +292,7 @@ export const printedCases: readonly GrantsCase[] = [
   readCase(
     "read-one-second-early",
     "A read one second before the grants were issued",
-    { catalog: reports, grants: zoe, expect: "ERR_AUTHZ_GRANTS_EARLY", at: MONDAY - 1 },
+    { catalog: reports, grants: zoe, expect: "ERR_AUTHZ_GRANTS_FUTURE", at: MONDAY - 1 },
     "report:read",
     ACME,
   ),

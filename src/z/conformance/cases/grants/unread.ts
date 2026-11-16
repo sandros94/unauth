@@ -37,6 +37,11 @@ export const unreadCases: readonly GrantsCase[] = [
     "A deny of billing at a place written in lowercase hexadecimal: no item read names it",
     { ...zoe, pl: [ACME, "/org=caf%c3%a9"], nt: { ...zoe.nt, "billing:read": { d: [[1]] } } },
   ),
+  unread(
+    "place-table-null-slot",
+    "A deny of billing pointing at a slot of the place table holding `null`: no item read names it",
+    { ...zoe, pl: [ACME, null], nt: { ...zoe.nt, "billing:read": { d: [[1]] } } },
+  ),
   unread("root-in-place-table", "The root written in the place table at a position no item names", {
     ...zoe,
     pl: [ACME, "/"],

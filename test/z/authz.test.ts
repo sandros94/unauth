@@ -1,7 +1,9 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { ask } from "../../src/z/ask.ts";
-import { defineAuthz } from "../../src/z/authz.ts";
+import { type Authz, type PermissionOf, type PresetOf, defineAuthz } from "../../src/z/authz.ts";
+import { defineCatalog } from "../../src/z/catalog.ts";
 import { assertGrants, could, diverged, issueGrants } from "../../src/z/grants.ts";
+import type { Catalog } from "../../src/z/catalog.ts";
 import type { Grants, Statement } from "../../src/z/types.ts";
 import { validateRole, validateStatement } from "../../src/z/validate.ts";
 import { refused } from "./_expect.ts";
@@ -73,6 +75,45 @@ describe("the engine bound to its catalog", () => {
     expect(named.issueGrants(ana, { omit: [], now }).ps).toStrictEqual({ viewer: [0] });
     expect(named.issueGrants(ana, { omit: undefined, now })).not.toHaveProperty("ps");
     expect(authz.issueGrants(ana, { omit: ["presets"], now })).not.toHaveProperty("ps");
+  });
+
+  it("takes a catalog already defined, the very object, so that one catalog serves several places", () => {
+    const catalog = defineCatalog({
+      permissions: ["report:read", "report:write"],
+      presets: { viewer: ["report:read"] },
+    });
+    const bound = defineAuthz(catalog, { omit: ["presets"] });
+    expect(bound.catalog).toBe(catalog);
+    expectTypeOf(bound).toEqualTypeOf<Authz<"report:read" | "report:write", "viewer">>();
+    const read = {
+      subject: "ana",
+      statements: [{ kind: "assign", subject: "ana", value: "viewer" }],
+    } as const;
+    const question = { permission: "report:read" } as const;
+    expect(bound.ask(read, question, { now })).toEqual(ask(catalog, read, question, { now }));
+    expect(bound.issueGrants(read, { now })).not.toHaveProperty("ps");
+    expect(defineAuthz(catalog).issueGrants(read, { now })).toHaveProperty("ps");
+  });
+
+  it("refuses a catalog whose fingerprint is not the one its data gives, when it is defined", () => {
+    const loaded = { data: authz.catalog.data, fingerprint: "AAAAAAAAAAA.AAAAAAAAAAA" };
+    expect(refused(() => defineAuthz(loaded))).toMatchObject({
+      code: "ERR_AUTHZ_CATALOG_INVALID",
+      cause: { reason: "fingerprint" },
+    });
+    const copied = { data: authz.catalog.data, fingerprint: authz.catalog.fingerprint };
+    expect(defineAuthz(copied).catalog).toBe(copied);
+  });
+
+  it.each([
+    ["`null`", null],
+    ["a string", "report:read"],
+    ["a number", 7],
+    ["`undefined`", undefined],
+  ])("refuses %s as a catalog, as `defineCatalog` does", (_, value) => {
+    const expected = { code: "ERR_AUTHZ_CATALOG_INVALID", status: 500 };
+    expect(refused(() => defineCatalog(value as never))).toMatchObject(expected);
+    expect(refused(() => defineAuthz(value as never))).toMatchObject(expected);
   });
 
   it("tells what has diverged as the function does, and reads in `could` grants by name with its own presets", () => {
@@ -148,9 +189,39 @@ describe("the engine bound to its catalog", () => {
       "placeFits",
       "relatedValues",
       "resolveRole",
+      "rolesOf",
       "validateRole",
       "validateStatement",
     ]);
+  });
+
+  it("names the permissions and presets of a catalog or an engine as types, and nothing of anything else", () => {
+    const catalog = defineCatalog({
+      permissions: ["report:read", "report:write"],
+      presets: { viewer: ["report:read"] },
+    });
+    expectTypeOf<PermissionOf<typeof catalog>>().toEqualTypeOf<"report:read" | "report:write">();
+    expectTypeOf<PresetOf<typeof catalog>>().toEqualTypeOf<"viewer">();
+    expectTypeOf<PermissionOf<typeof authz>>().toEqualTypeOf<
+      "report:read" | "report:write" | "access:manage"
+    >();
+    expectTypeOf<PresetOf<typeof authz>>().toEqualTypeOf<"viewer" | "owner">();
+    const bound = defineAuthz(catalog);
+    expectTypeOf<PermissionOf<typeof bound>>().toEqualTypeOf<"report:read" | "report:write">();
+    expectTypeOf<PresetOf<typeof bound>>().toEqualTypeOf<"viewer">();
+    const plain = defineCatalog({ permissions: ["report:read"] });
+    expectTypeOf<PermissionOf<typeof plain>>().toEqualTypeOf<"report:read">();
+    expectTypeOf<PresetOf<typeof plain>>().toEqualTypeOf<never>();
+    expectTypeOf<PermissionOf<Catalog>>().toEqualTypeOf<string>();
+    expectTypeOf<PermissionOf<Authz>>().toEqualTypeOf<string>();
+    // @ts-expect-error catalog data is not a catalog
+    expectTypeOf<PermissionOf<{ permissions: ["report:read"] }>>();
+    // @ts-expect-error a string is neither a catalog nor an engine
+    expectTypeOf<PresetOf<string>>();
+    // @ts-expect-error the data of a catalog is not the catalog
+    expectTypeOf<PermissionOf<typeof catalog.data>>();
+    // @ts-expect-error the data of a catalog is not the catalog
+    expectTypeOf<PresetOf<typeof catalog.data>>();
   });
 
   it("keeps the permissions of its catalog as types", () => {

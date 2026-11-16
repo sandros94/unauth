@@ -4,7 +4,7 @@ import type { Statement, StatementKind } from "../types.ts";
 import type { CompiledCatalog } from "./compiled.ts";
 import { malformed } from "./errors.ts";
 import { isPattern, isToken } from "./grammar.ts";
-import { assertKey, chainOf } from "./keys.ts";
+import { assertKey, chainOf, keyMalformed } from "./keys.ts";
 import { blocking, down, isSpellingOf, wanted } from "./permissions.ts";
 import { assertTime } from "./time.ts";
 
@@ -48,11 +48,16 @@ export function readSubjectStatements(read: unknown): {
  * those at a key of the chain of `place`, an absent place being the root, compared byte by byte
  * and never parsed, and of those the assignments and the statements whose value is a spelling the
  * question looks up for their kind: what blocks the permission for a deny, what satisfies it for
- * an allow, what takes one of those out for an exclusion. Every other item is skipped unchecked,
- * whatever it holds. What is read is checked for its form, as {@link readWrittenStatements} checks
- * it.
+ * an allow, what takes one of those out for an exclusion. To find them it reads the place of every
+ * item handed in, wherever it sits in the list and whatever the question: an item that is not an
+ * object, and an object whose place is present and is not a string, `null` included, give it
+ * nothing to compare and are refused. A string equal to no key of the chain is a statement
+ * elsewhere, whatever its spelling. Beyond its place, every other item is skipped unchecked,
+ * whatever it holds, an unknown kind included. What is read is checked for its form, as
+ * {@link readWrittenStatements} checks it.
  *
- * @throws `ERR_AUTHZ_MALFORMED` (`statement`) for `statements` that is not a list, and what
+ * @throws `ERR_AUTHZ_MALFORMED` (`statement`) for `statements` that is not a list or an item of it
+ * that is not an object, (`place`) for a place present that is not a string, and what
  * {@link readWellFormed} throws for a statement read.
  */
 export function readAskedStatements(
@@ -72,9 +77,10 @@ export function readAskedStatements(
   };
   const out: ReadStatement[] = [];
   for (const statement of list) {
-    if (!isRecord(statement)) continue;
+    if (!isRecord(statement)) throw statementMalformed(statement);
     const { kind, value, place = "/" } = statement;
-    if (typeof place !== "string" || !chain.has(place)) continue;
+    if (typeof place !== "string") throw keyMalformed(place);
+    if (!chain.has(place)) continue;
     if (!isKind(kind)) continue;
     const permissions = looked[kind];
     if (permissions && !isSpellingOf(value, permissions)) continue;

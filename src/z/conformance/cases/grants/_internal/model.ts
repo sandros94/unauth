@@ -139,7 +139,7 @@ export function readCase(
   id: string,
   title: string,
   read: Pick<GrantsCase, "catalog" | "grants" | "expect"> &
-    Partial<Pick<GrantsCase, "issuedUnder" | "whole" | "diverged" | "at">>,
+    Partial<Pick<GrantsCase, "issuedUnder" | "whole" | "diverged" | "at" | "clockTolerance">>,
   permission: string,
   place?: string,
 ): GrantsCase {

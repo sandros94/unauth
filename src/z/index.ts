@@ -7,7 +7,6 @@ export type {
   GrantsPart,
   GrantsRoleEntry,
   Question,
-  QuestionOptions,
   Statement,
   StatementIdentity,
   StatementKind,
@@ -31,8 +30,19 @@ export {
   placeKey,
   placeRange,
 } from "./place.ts";
-export { ask } from "./ask.ts";
-export { type IssueGrantsOptions, assertGrants, could, diverged, issueGrants } from "./grants.ts";
+export { type AskOptions, ask } from "./ask.ts";
+export {
+  type AssertGrantsOptions,
+  type CouldOptions,
+  type DivergedOptions,
+  type IssueGrantsOptions,
+  type RolesOfOptions,
+  assertGrants,
+  could,
+  diverged,
+  issueGrants,
+  rolesOf,
+} from "./grants.ts";
 export {
   type ValidateRoleOptions,
   type ValidateStatementOptions,
@@ -43,4 +53,10 @@ export {
 } from "./validate.ts";
 export { type ResolveRoleOptions, resolveRole } from "./roles.ts";
 export { type RelatedValues, relatedValues } from "./relate.ts";
-export { type Authz, type AuthzOptions, defineAuthz } from "./authz.ts";
+export {
+  type Authz,
+  type AuthzOptions,
+  type PermissionOf,
+  type PresetOf,
+  defineAuthz,
+} from "./authz.ts";

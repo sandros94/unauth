@@ -1,3 +1,4 @@
+import { configError } from "../../_internal/shared.ts";
 import type { UnauthErrorCauseMap } from "../../error.ts";
 import { UnauthError } from "../../error.ts";
 
@@ -16,6 +17,18 @@ export function malformed(
   cause: MalformedCause,
 ): UnauthError<"ERR_AUTHZ_MALFORMED"> {
   return new UnauthError(message, "ERR_AUTHZ_MALFORMED", { status: 400, cause });
+}
+
+/**
+ * `ERR_UNAUTH_CONFIG_INVALID` (500) for the option `name`, which needs `expected` and was given
+ * `value`.
+ */
+export function optionInvalid(
+  name: string,
+  expected: string,
+  value: unknown,
+): UnauthError<"ERR_UNAUTH_CONFIG_INVALID"> {
+  return configError(`${name} needs ${expected}, got ${shown(value)}.`, { prefix: "[unauth/z]" });
 }
 
 /** `ERR_AUTHZ_CATALOG_INVALID` (500). */
@@ -75,4 +88,13 @@ export function statementEnded(expiresAt: number): UnauthError<"ERR_AUTHZ_STATEM
     status: 400,
     cause: { expiresAt },
   });
+}
+
+function shown(value: unknown): string {
+  if (typeof value === "number") return String(value);
+  try {
+    return JSON.stringify(value) ?? typeof value;
+  } catch {
+    return typeof value;
+  }
 }
