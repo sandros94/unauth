@@ -41,6 +41,8 @@ export default defineBuildConfig({
         "./src/dpop.ts",
         "./src/error.ts",
         "./src/argon2.ts",
+        "./src/z/index.ts",
+        "./src/z/conformance/index.ts",
         ...PROVIDERS.map((id) => `./src/n/providers/${id}.ts`),
       ],
       rolldown: { platform: "neutral" },
